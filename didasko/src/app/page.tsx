@@ -11,7 +11,7 @@ export default function Home() {
 
   const handleO365Login = async () => {
     try {
-      await signIn('google', { callbackUrl: '/dashboard' });
+      await signIn('google', { callbackUrl: '/dashboard/academic-head' });
     } catch (err) {
       setError('Failed to sign in with Gmail');
     }

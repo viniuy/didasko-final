@@ -55,7 +55,7 @@ export function AppSidebar() {
       collapsible='icon'
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
-      className='h-screen flex flex-col'
+      className='h-screen flex flex-col bg-blue-900 text-white'
     >
       <SidebarContent className='flex-1'>
         {/* User Profile */}

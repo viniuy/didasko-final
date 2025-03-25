@@ -18,14 +18,14 @@ export default function VantaBackground() {
           gyroControls: false,
           minHeight: 200.0,
           minWidth: 200.0,
-          highlightColor: 0x1010f, // Updated colors
+          highlightColor: 0x1010f,
           midtoneColor: 0x1794ed,
           lowlightColor: 0x16a4de,
           baseColor: 0xcdd3d9,
           blurFactor: 0.3,
           speed: 0.1,
           zoom: 0.4,
-          THREE, // Pass Three.js instance
+          THREE,
         }),
       );
     }
