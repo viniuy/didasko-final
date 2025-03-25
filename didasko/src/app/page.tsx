@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { signIn } from 'next-auth/react';
 import VantaBackground from '@/components/VantaBackground';
@@ -13,7 +13,7 @@ export default function Home() {
     try {
       await signIn('google', { callbackUrl: '/dashboard/academic-head' });
     } catch (err) {
-      setError('Failed to sign in with Gmail');
+      setError('Failed to sign in with Gmail' + err);
     }
   };
 
