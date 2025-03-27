@@ -33,18 +33,20 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from '@/components/ui/alert-dialog';
+import { usePathname } from 'next/navigation';
 
 const items = [
-  { title: 'Dashboard', url: '#', icon: Home },
-  { title: 'Courses', url: '#', icon: Book },
-  { title: 'Attendance', url: '#', icon: CalendarCheck },
-  { title: 'Grading', url: '#', icon: ClipboardList },
-  { title: 'Settings', url: '#', icon: Settings },
+  { title: 'Dashboard', url: '/dashboard/academic-head', icon: Home },
+  { title: 'Courses', url: '/courses', icon: Book },
+  { title: 'Attendance', url: '/attendance', icon: CalendarCheck },
+  { title: 'Grading', url: '/grading', icon: ClipboardList },
+  { title: 'Settings', url: '/settings', icon: Settings },
 ];
 
 export function AppSidebar() {
   const { open, setOpen } = useSidebar();
   const { data: session } = useSession();
+  const pathname = usePathname();
 
   const handleLogout = async () => {
     await signOut({ callbackUrl: '/' });
@@ -55,7 +57,7 @@ export function AppSidebar() {
       collapsible='icon'
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
-      className='h-screen flex flex-col bg-blue-900 text-white'
+      className='h-screen flex flex-col bg-[#124A69] text-white'
     >
       <SidebarContent className='flex-1'>
         {/* User Profile */}
@@ -93,7 +95,9 @@ export function AppSidebar() {
                 <SidebarMenuItem key={item.title}>
                   <a
                     href={item.url}
-                    className='flex items-center gap-3 p-3 rounded hover:bg-blue-950 w-full'
+                    className={`flex items-center gap-3 p-3 rounded hover:bg-gray-800 w-full ${
+                      pathname === item.url ? 'bg-gray-800 ' : ''
+                    }`}
                   >
                     <item.icon className='w-6 h-6 shrink-0' />
                     <span
@@ -117,7 +121,7 @@ export function AppSidebar() {
       <SidebarFooter className='p-4'>
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <button className='flex items-center gap-3 p-3 rounded hover:bg-blue-950 text-black-600'>
+            <button className='flex items-center gap-3 p-3 rounded hover:bg-gray-800 text-black-600'>
               <LogOut className='w-6 h-6 shrink-0' />
               <span
                 className={`transition-all duration-300 ${
