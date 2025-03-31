@@ -7,8 +7,9 @@ export default function Rightsidebar() {
       className={`w-[360px] bg-[#124A69] p-4 pt-2 border-l h-screen flex flex-col transition-transform duration-300`}
     >
       <div className='flex items-center justify-center'></div>
-      <UpcomingEvents />
       <div className='flex-grow'>
+        <UpcomingEvents />
+
         <Notes />
       </div>
     </div>
