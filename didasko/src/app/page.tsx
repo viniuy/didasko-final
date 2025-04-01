@@ -30,15 +30,12 @@ export default function Home() {
           <motion.img
             src='/Logo.png'
             alt='Didasko Logo'
-            className='w-40 mb-6 ml-35'
+            className='w-60 mb-3 ml-6 '
             animate={{ rotate: isSignUp ? 360 : 0 }}
             transition={{ type: 'spring', stiffness: 100, damping: 10 }}
           />
-          <h1 className='text-3xl font-bold mb-4 z-1'>Welcome to Didasko</h1>
-          <p className='max-w-md text-lg opacity-80'>
-            A web-based teacher-centric platform for streamlining education and
-            administrative processes.
-          </p>
+          <h1 className='text-3xl drop-shadow-md font-bold mb-4 z-1'>Welcome to Didasko</h1>
+          
         </div>
       </div>
 
