@@ -37,7 +37,6 @@ import { usePathname } from 'next/navigation';
 
 const items = [
   { title: 'Dashboard', url: '/dashboard/academic-head', icon: Home },
-  { title: 'Courses', url: '/courses', icon: Book },
   { title: 'Attendance', url: '/attendance', icon: CalendarCheck },
   { title: 'Grading', url: '/grading', icon: ClipboardList },
   { title: 'Settings', url: '/settings', icon: Settings },
