@@ -38,6 +38,7 @@ import { usePathname } from 'next/navigation';
 const items = [
   { title: 'Dashboard', url: '/dashboard/academic-head', icon: Home },
   { title: 'Attendance', url: '/attendance', icon: CalendarCheck },
+  { title: 'Faculty Load', url: '/faculty-load', icon: CalendarCheck },
   { title: 'Grading', url: '/grading', icon: ClipboardList },
   { title: 'Settings', url: '/settings', icon: Settings },
 ];
