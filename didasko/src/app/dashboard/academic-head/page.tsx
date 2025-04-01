@@ -27,6 +27,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               Courses
             </h2>
             <Courses />
+            
             <WeeklySchedule />
           </div>
 

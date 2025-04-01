@@ -1,5 +1,5 @@
 import UpcomingEvents from '@/components/events';
-import { Notes } from '@/components/notes';
+import Notes  from '@/components/notes';
 
 export default function Rightsidebar() {
   return (
