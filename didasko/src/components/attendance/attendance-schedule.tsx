@@ -11,7 +11,17 @@ import {
 } from '@/components/ui/pagination';
 
 // Course Card Component
-const CourseCard = ({ title, code, time, day }) => {
+const CourseCard = ({ 
+  title,
+  code,
+  time,
+  day
+}: {
+  title: string;
+  code: string;
+  time: string;
+  day: string;
+}) => {
   return (
     <Card className='bg-[#FAEDCB] text-[#124A69] rounded-lg shadow-md p-4 w-full'>
 

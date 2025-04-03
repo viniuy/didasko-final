@@ -14,7 +14,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider open={open} onOpenChange={setOpen}>
-      <div className='flex h-screen'>
+      <div className='flex h-screen w-screen overflow-hidden relative'>
         <AppSidebar />
 
         <main className={`flex flex-1 h-screen overflow-hidden transition-all`}>
@@ -27,8 +27,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               Courses
             </h2>
             <Courses />
-            
-            <WeeklySchedule />
+
+            <WeeklySchedule
+              teacherInfo={{
+                id: 'current-user-id',
+                name: 'Current User',
+                department: 'Your Department',
+                image: '/icon-person.png',
+              }}
+              onBack={() => {}}
+            />
           </div>
 
           <Rightsidebar />

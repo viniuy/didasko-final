@@ -11,7 +11,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider open={open} onOpenChange={setOpen}>
-      <div className='flex h-screen'>
+      <div className='flex h-screen w-screen overflow-hidden relative'>
         <AppSidebar />
 
         <main className={`flex flex-1 h-screen overflow-hidden transition-all`}>
@@ -37,4 +37,3 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     </SidebarProvider>
   );
 }
-
