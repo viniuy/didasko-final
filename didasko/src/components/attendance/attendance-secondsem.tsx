@@ -22,13 +22,13 @@ interface CourseCardProps {
 
 const CourseCard = ({ title, code, year, absents, date }: CourseCardProps) => {
   return (
-    <Card className='bg-[#124A69] text-white rounded-lg shadow-md h-[200px] flex flex-col justify-between'>
-      <div className='p-4'>
-        <CardHeader className='flex justify-between items-center p-0 mb-4'>
+    <Card className='bg-[#124A69] text-white rounded-lg shadow-md p-4 w-full max-w-[400px] flex flex-col justify-between h-full'>
+      <div>
+        <CardHeader className='flex justify-between items-center'>
           <CardTitle className='text-lg font-bold'>{title}</CardTitle>
-          <BookOpenText size={40} />
+          <BookOpenText size={50} />
         </CardHeader>
-        <CardContent className='p-0'>
+        <CardContent>
           <p className='text-sm'>
             {code} - {year}
           </p>
@@ -38,13 +38,14 @@ const CourseCard = ({ title, code, year, absents, date }: CourseCardProps) => {
           <p className='text-xs text-gray-400'>Last updated: {date}</p>
         </CardContent>
       </div>
-      <div className='p-4 flex justify-end'>
-        <Link
-          href={`/course/${code.toLowerCase().replace(/\s+/g, '-')}`}
-          className='bg-[#FAEDCB] text-black text-sm px-4 py-2 rounded-md shadow-md hover:bg-[#f5e3b8] transition'
+      <div className='flex justify-end mt-auto p-2'>
+        <Button
+          asChild
+          variant='secondary'
+          className='bg-[#FAEDCB] text-black text-sm'
         >
-          View Details
-        </Link>
+          <Link href='attendance/details'>View Details</Link>
+        </Button>
       </div>
     </Card>
   );
@@ -106,14 +107,14 @@ export default function Courses() {
   );
 
   return (
-    <Card className='p-6 shadow-md rounded-lg'>
-      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6'>
+    <Card className='p-4 shadow-md rounded-lg'>
+      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4'>
         {currentCourses.map((course, index) => (
           <CourseCard key={index} {...course} />
         ))}
       </div>
 
-      <div className='flex justify-between items-center mt-6 px-2'>
+      <div className='flex justify-between items-center px-2'>
         <p className='text-sm text-gray-500'>
           {currentPage * itemsPerPage - (itemsPerPage - 1)}-
           {Math.min(currentPage * itemsPerPage, courses.length)} out of{' '}

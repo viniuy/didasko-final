@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
+import Image from 'next/image';
 
 interface WeeklyScheduleProps {
   teacherId?: string;
@@ -139,10 +140,12 @@ export default function WeeklySchedule({
             </svg>
           </button>
           <div className='flex items-center ml-2'>
-            <img
+            <Image
               src='/icon-person.png'
               alt='Teacher'
-              className='w-12 h-12 rounded-full mr-3'
+              width={48}
+              height={48}
+              className='rounded-full mr-3'
             />
             <div>
               <h3 className='font-semibold text-lg'>{teacherInfo.name}</h3>

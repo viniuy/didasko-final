@@ -1,6 +1,5 @@
 'use client';
 
-import { useSession } from 'next-auth/react';
 import { User, BookOpen } from 'lucide-react';
 import { Card, CardContent, CardDescription } from '@/components/ui/card';
 
@@ -27,8 +26,6 @@ const StatCard = ({ icon, count, label }: StatCardProps) => {
 };
 
 export default function Dashboard() {
-  const { data: session } = useSession();
-
   return (
     <div className='pt-2 px-5'>
       <div className='grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4'>

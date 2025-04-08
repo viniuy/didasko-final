@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { signIn } from 'next-auth/react';
 import VantaBackground from '@/components/VantaBackground';
+import Image from 'next/image';
 
 export default function Home() {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -34,8 +35,9 @@ export default function Home() {
             animate={{ rotate: isSignUp ? 360 : 0 }}
             transition={{ type: 'spring', stiffness: 100, damping: 10 }}
           />
-          <h1 className='text-3xl drop-shadow-md font-bold mb-4 z-1'>Welcome to Didasko</h1>
-          
+          <h1 className='text-3xl drop-shadow-md font-bold mb-4 z-1'>
+            Welcome to Didasko
+          </h1>
         </div>
       </div>
 
@@ -58,10 +60,12 @@ export default function Home() {
                   className='flex items-center justify-center bg-[#EA4727] text-white px-6 py-2 rounded-md w-full shadow-md hover:bg-opacity-90 transition'
                   onClick={handleO365Login}
                 >
-                  <img
+                  <Image
                     src='https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg'
                     alt='Microsoft Logo'
-                    className='w-5 h-5 mr-2'
+                    width={20}
+                    height={20}
+                    className='mr-2'
                   />
                   Sign in with Microsoft 365
                 </button>

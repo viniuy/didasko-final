@@ -1,7 +1,6 @@
 'use client';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/app-sidebar';
-import Greet from '@/components/greeting';
 import { TableDemo } from '@/components/grading/gradebook';
 import Header from '@/components/header';
 import Rightsidebar from '@/components/right-sidebar';

@@ -4,15 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
   AlertDialog,
-  AlertDialogTrigger,
   AlertDialogContent,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -21,13 +13,12 @@ import {
   AlertDialogAction,
   AlertDialogDescription,
 } from '@/components/ui/alert-dialog';
-import { toast as sonnerToast, Toaster } from 'sonner';
 import { Trash, Edit, Plus, CalendarIcon } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Textarea } from './ui/textarea';
 import { format } from 'date-fns';
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from '@/components/ui/use-toast';
 import { Calendar } from '@/components/ui/calendar';
 import {
   Popover,
@@ -41,13 +32,58 @@ interface Note {
   date: Date;
 }
 
+// NoteCard component for displaying individual notes
+interface NoteCardProps {
+  note: Note;
+  onEdit: (index: number) => void;
+  onDelete: (index: number) => void;
+  index: number;
+}
+
+function NoteCard({ note, onEdit, onDelete, index }: NoteCardProps) {
+  return (
+    <Card className='mb-2'>
+      <CardContent className='p-3'>
+        <div className='flex justify-between items-start'>
+          <div>
+            <h3 className='font-medium text-[#124A69]'>{note.title}</h3>
+            <p className='text-sm text-gray-500'>
+              {format(note.date, 'MMMM d, yyyy')}
+            </p>
+          </div>
+          <div className='flex space-x-1'>
+            <Button
+              variant='ghost'
+              size='icon'
+              className='h-8 w-8'
+              onClick={() => onEdit(index)}
+            >
+              <Edit className='h-4 w-4 text-[#124A69]' />
+            </Button>
+            <Button
+              variant='ghost'
+              size='icon'
+              className='h-8 w-8'
+              onClick={() => onDelete(index)}
+            >
+              <Trash className='h-4 w-4 text-red-500' />
+            </Button>
+          </div>
+        </div>
+        <p className='mt-2 text-sm text-gray-700 whitespace-pre-line'>
+          {note.content}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Notes() {
   const { toast } = useToast();
-  const today = new Date();
   const [noteList, setNoteList] = useState<Note[]>([
     {
-      title: "Welcome Note",
-      content: "This is a sample note to help you get started.",
+      title: 'Welcome Note',
+      content: 'This is a sample note to help you get started.',
       date: new Date(),
     },
   ]);
@@ -76,7 +112,7 @@ export default function Notes() {
     if (!newNote.title || !newNote.date) return;
 
     const updatedNotes = [...noteList];
-    
+
     // Add new note at the end
     updatedNotes.push({
       title: newNote.title,
@@ -99,10 +135,10 @@ export default function Notes() {
     setNoteList(updatedNotes);
     setOpenAdd(false);
     setNewNote({ title: '', content: '', date: new Date() });
-    
+
     toast({
-      title: "Note added successfully",
-      description: "Your new note has been added.",
+      title: 'Note added successfully',
+      description: 'Your new note has been added.',
     });
   }
 
@@ -118,10 +154,10 @@ export default function Notes() {
       setNoteList(updatedNotes);
       setOpenDelete(false);
       setNoteToDelete(null);
-      
+
       toast({
-        title: "Note deleted successfully",
-        description: "The note has been removed.",
+        title: 'Note deleted successfully',
+        description: 'The note has been removed.',
       });
     }
   }
@@ -148,19 +184,10 @@ export default function Notes() {
 
     setNoteList(updatedNotes);
     setOpenEdit(false);
-    
-    toast({
-      title: "Note updated successfully",
-      description: "Your note has been updated.",
-    });
-  }
 
-  function formatDate(date: Date) {
-    return date.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
+    toast({
+      title: 'Note updated successfully',
+      description: 'Your note has been updated.',
     });
   }
 
@@ -173,7 +200,7 @@ export default function Notes() {
             variant='ghost'
             size='icon'
             className='w-6 h-6 rounded-full bg-[#124A69] text-white flex items-center justify-center hover:bg-[#0a2f42]'
-            onClick={handleAddClick} 
+            onClick={handleAddClick}
           >
             <Plus className='w-3 h-3' />
           </Button>
@@ -192,227 +219,184 @@ export default function Notes() {
               });
 
               // Sort dates (newest first)
-              const sortedDates = Object.keys(groupedNotes).sort((a, b) => 
-                new Date(b).getTime() - new Date(a).getTime()
+              const sortedDates = Object.keys(groupedNotes).sort(
+                (a, b) => new Date(b).getTime() - new Date(a).getTime(),
               );
 
               return sortedDates.map((dateKey) => (
                 <div key={dateKey}>
-                  <div className='flex items-center gap-2 text-[#124A69] mb-1'>
-                    <p className='text-xs'>
-                      {format(new Date(dateKey), 'MMMM d, yyyy')} ({format(new Date(dateKey), 'EEEE')})
-                    </p>
-                  </div>
-                  {groupedNotes[dateKey].map((note, index) => (
-                    <Card
-                      key={`${dateKey}-${index}`}
-                      className='border-l-[8px] border-[#FAEDCB] mb-1 hover:shadow-md transition-shadow'
-                    >
-                      <CardContent className='p-2 relative'>
-                        <div className='absolute right-1 -top-5 flex gap-0.5'>
-                          <Button
-                            variant='ghost'
-                            className='h-5 w-5 p-0 hover:bg-transparent'
-                            onClick={() => handleEditClick(noteList.indexOf(note))}
-                          >
-                            <Edit className='h-3 w-3' color='#124a69' />
-                          </Button>
-                          <Button
-                            variant='ghost'
-                            className='h-5 w-5 p-0 hover:bg-transparent'
-                            onClick={() => handleDeleteClick(noteList.indexOf(note))}
-                          >
-                            <Trash className='h-3 w-3' color='#124a69' />
-                          </Button>
-                        </div>
-                        <div className='-mt-4 -mb-4'>
-                          <div className='text-[#124A69] font-medium text-xs mb-0.5'>{note.title}</div>
-                          <div className='text-gray-600 text-[11px] whitespace-pre-wrap'>{note.content}</div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                  <h3 className='text-sm font-medium text-gray-500 mb-1'>
+                    {format(new Date(dateKey), 'MMMM d, yyyy')}
+                  </h3>
+                  {groupedNotes[dateKey].map((note, index) => {
+                    const globalIndex = noteList.findIndex((n) => n === note);
+                    return (
+                      <NoteCard
+                        key={globalIndex}
+                        note={note}
+                        index={globalIndex}
+                        onEdit={handleEditClick}
+                        onDelete={handleDeleteClick}
+                      />
+                    );
+                  })}
                 </div>
               ));
             })()
           ) : (
-            <p className='text-gray-500 text-xs text-center'>No notes yet.</p>
+            <p className='text-center text-gray-500 py-4'>
+              No notes yet. Add your first note!
+            </p>
           )}
         </div>
       </div>
 
-      <AlertDialog open={openDelete} onOpenChange={setOpenDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the note.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel 
-              onClick={() => setOpenDelete(false)}
-              className="bg-gray-100 text-gray-700 hover:bg-gray-200"
-            >
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={confirmDelete}
-              className="bg-[#124A69] text-white hover:bg-[#0a2f42]"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={openEdit} onOpenChange={setOpenEdit}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Edit Note</AlertDialogTitle>
-          </AlertDialogHeader>
-          <div className='space-y-2'>
-            <Label className='text-medium'>Title *</Label>
-            <Input
-              placeholder='Title'
-              value={editData.title}
-              onChange={(e) => {
-                if (e.target.value.length <= 15) {
-                  setEditData({ ...editData, title: e.target.value })
-                }
-              }}
-            />
-            <p className='text-xs flex justify-end mt-2 text-gray-500'>
-              {editData.title.length}/15
-            </p>
-
-            <Label className='text-medium'>Date *</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant='outline'
-                  className='w-full flex justify-between'
-                >
-                  {editData.date ? format(editData.date, 'PPP') : 'Pick a date'}
-                  <CalendarIcon className='ml-2 h-4 w-4' />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align='start' className='w-auto p-0'>
-                <Calendar
-                  mode='single'
-                  selected={editData.date}
-                  onSelect={(date) => setEditData({ ...editData, date: date || new Date() })}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
-
-            <Label className='text-medium'>Content</Label>
-            <Textarea
-              placeholder='Add your note content'
-              className='resize-none min-h-[100px] max-h-[100px] overflow-y-auto w-full break-words'
-              value={editData.content}
-              onChange={(e) => {
-                if (e.target.value.length <= 30) {
-                  setEditData({ ...editData, content: e.target.value })
-                }
-              }}
-            />
-            <p className='text-xs flex justify-end mt-2 text-gray-500'>
-              {editData.content.length}/30
-            </p>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel 
-              onClick={() => setOpenEdit(false)}
-              className="bg-gray-100 text-gray-700 hover:bg-gray-200"
-            >
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={saveEdit}
-              className="bg-[#124A69] text-white hover:bg-[#0a2f42]"
-            >
-              Save
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
+      {/* Add Note Dialog */}
       <AlertDialog open={openAdd} onOpenChange={setOpenAdd}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Add New Note</AlertDialogTitle>
           </AlertDialogHeader>
-          <div className='space-y-2'>
-            <div>
-              <Label className='text-medium'>Title *</Label>
+          <div className='space-y-4 py-4'>
+            <div className='space-y-2'>
+              <Label htmlFor='title'>Title</Label>
               <Input
-                placeholder='Title'
+                id='title'
                 value={newNote.title}
-                onChange={(e) => {
-                  if (e.target.value.length <= 15) {
-                    setNewNote({ ...newNote, title: e.target.value })
-                  }
-                }}
+                onChange={(e) =>
+                  setNewNote({ ...newNote, title: e.target.value })
+                }
+                placeholder='Enter note title'
               />
-              <p className='text-xs flex justify-end mt-2 text-gray-500'>
-                {newNote.title.length}/15
-              </p>
             </div>
-
-            <div>
-              <Label className='text-medium'>Date *</Label>
+            <div className='space-y-2'>
+              <Label htmlFor='content'>Content</Label>
+              <Textarea
+                id='content'
+                value={newNote.content}
+                onChange={(e) =>
+                  setNewNote({ ...newNote, content: e.target.value })
+                }
+                placeholder='Enter note content'
+                rows={4}
+              />
+            </div>
+            <div className='space-y-2'>
+              <Label>Date</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant='outline'
-                    className='w-full flex justify-between'
+                    className='w-full justify-start text-left font-normal'
                   >
-                    {newNote.date ? format(newNote.date, 'PPP') : 'Pick a date'}
-                    <CalendarIcon className='ml-2 h-4 w-4' />
+                    <CalendarIcon className='mr-2 h-4 w-4' />
+                    {newNote.date ? (
+                      format(newNote.date, 'PPP')
+                    ) : (
+                      <span>Pick a date</span>
+                    )}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent align='start' className='w-auto p-0'>
+                <PopoverContent className='w-auto p-0'>
                   <Calendar
                     mode='single'
                     selected={newNote.date}
-                    onSelect={(date) => setNewNote({ ...newNote, date: date || new Date() })}
+                    onSelect={(date) =>
+                      date && setNewNote({ ...newNote, date })
+                    }
                     initialFocus
                   />
                 </PopoverContent>
               </Popover>
             </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={saveNewNote}>Save</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-            <div>
-              <Label className='text-medium'>Content</Label>
-              <Textarea
-                placeholder='Add your note content'
-                className='resize-none min-h-[100px] max-h-[200px] overflow-y-auto w-full break-words whitespace-pre-wrap'
-                value={newNote.content}
-                onChange={(e) => {
-                  if (e.target.value.length <= 30) {
-                    setNewNote({ ...newNote, content: e.target.value })
-                  }
-                }}
+      {/* Edit Note Dialog */}
+      <AlertDialog open={openEdit} onOpenChange={setOpenEdit}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Edit Note</AlertDialogTitle>
+          </AlertDialogHeader>
+          <div className='space-y-4 py-4'>
+            <div className='space-y-2'>
+              <Label htmlFor='edit-title'>Title</Label>
+              <Input
+                id='edit-title'
+                value={editData.title}
+                onChange={(e) =>
+                  setEditData({ ...editData, title: e.target.value })
+                }
+                placeholder='Enter note title'
               />
-              <p className='text-xs flex justify-end mt-2 text-gray-500'>
-                {newNote.content.length}/30
-              </p>
+            </div>
+            <div className='space-y-2'>
+              <Label htmlFor='edit-content'>Content</Label>
+              <Textarea
+                id='edit-content'
+                value={editData.content}
+                onChange={(e) =>
+                  setEditData({ ...editData, content: e.target.value })
+                }
+                placeholder='Enter note content'
+                rows={4}
+              />
+            </div>
+            <div className='space-y-2'>
+              <Label>Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant='outline'
+                    className='w-full justify-start text-left font-normal'
+                  >
+                    <CalendarIcon className='mr-2 h-4 w-4' />
+                    {editData.date ? (
+                      format(editData.date, 'PPP')
+                    ) : (
+                      <span>Pick a date</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className='w-auto p-0'>
+                  <Calendar
+                    mode='single'
+                    selected={editData.date}
+                    onSelect={(date) =>
+                      date && setEditData({ ...editData, date })
+                    }
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel 
-              onClick={() => setOpenAdd(false)}
-              className="bg-gray-100 text-gray-700 hover:bg-gray-200"
-            >
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={saveNewNote}
-              className="bg-[#124A69] text-white hover:bg-[#0a2f42]"
-            >
-              Save
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={saveEdit}>Save</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={openDelete} onOpenChange={setOpenDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Note</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this note? This action cannot be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete}>
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

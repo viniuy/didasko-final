@@ -2,7 +2,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BookOpenText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
-import { buttonVariants } from '@/components/ui/button';
 import {
   Pagination,
   PaginationContent,
@@ -12,7 +11,6 @@ import {
   PaginationNext,
 } from '@/components/ui/pagination';
 
-// Course Card Component
 import Link from 'next/link';
 
 const CourseCard = ({

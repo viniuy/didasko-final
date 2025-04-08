@@ -13,11 +13,9 @@ import { ChevronLeft, ChevronRight, CalendarIcon } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
-  SheetHeader,
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-import { Checkbox } from '@/components/ui/checkbox';
 import { format } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
