@@ -1,4 +1,5 @@
 import 'next-auth';
+import { Role } from '@prisma/client';
 
 declare module 'next-auth' {
   interface Session {
@@ -7,6 +8,8 @@ declare module 'next-auth' {
       name?: string | null;
       email?: string | null;
       image?: string | null;
+      role?: Role;
     };
+    redirectPath?: string;
   }
 }
