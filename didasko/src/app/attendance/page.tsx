@@ -8,7 +8,7 @@ import Schedule from '@/components/attendance/attendance-schedule';
 import Firstsemlist from '@/components/attendance/attendance-firstsem';
 import Secondsemlist from '@/components/attendance/attendance-secondsem';
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default function AttendancePage() {
   const [open, setOpen] = React.useState(false);
 
   return (
@@ -20,7 +20,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           className={`flex flex-1 h-screen overflow-hidden transition-all overflow-y-auto`}
         >
           <div className='flex flex-col flex-grow px-4'>
-            {children}
             <Header />
 
             <h2 className='pl-2 pb-1 text-2xl font-bold text-muted-foreground'>

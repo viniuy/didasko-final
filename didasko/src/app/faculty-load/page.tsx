@@ -7,7 +7,7 @@ import Rightsidebar from '@/components/right-sidebar';
 import Header from '@/components/header';
 import ChatbotButton from '@/components/chatbot-button';
 
-export default function Layout() {
+export default function FacultyLoadPage() {
   const [open, setOpen] = React.useState(false);
 
   return (

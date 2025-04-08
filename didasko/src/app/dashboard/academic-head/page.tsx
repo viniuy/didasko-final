@@ -9,7 +9,7 @@ import Header from '@/components/header';
 import Rightsidebar from '@/components/right-sidebar';
 import React from 'react';
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default function AcademicHeadDashboard() {
   const [open, setOpen] = React.useState(false);
 
   return (
@@ -17,9 +17,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <div className='flex h-screen w-screen overflow-hidden relative'>
         <AppSidebar />
 
-        <main className={`flex flex-1 h-screen overflow-hidden transition-all`}>
+        <main className='flex flex-1 h-screen overflow-hidden transition-all'>
           <div className='flex flex-col flex-grow px-4'>
-            {children}
             <Header />
             <Greet />
             <Stats />
