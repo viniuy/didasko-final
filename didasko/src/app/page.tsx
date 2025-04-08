@@ -3,18 +3,23 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { signIn } from 'next-auth/react';
+import { useToast } from '@/components/ui/use-toast';
 import VantaBackground from '@/components/VantaBackground';
 import Image from 'next/image';
 
 export default function Home() {
   const [isSignUp, setIsSignUp] = useState(false);
-  const [error, setError] = useState('');
+  const { toast } = useToast();
 
   const handleO365Login = async () => {
     try {
-      await signIn('google', { callbackUrl: '/dashboard/academic-head' });
+      await signIn('google');
     } catch (err) {
-      setError('Failed to sign in with Gmail' + err);
+      toast({
+        variant: 'destructive',
+        title: 'Authentication Error',
+        description: 'Failed to sign in with Google. Please try again.',
+      });
     }
   };
 
@@ -55,7 +60,6 @@ export default function Home() {
                 <h2 className='text-2xl font-semibold mb-4 text-gray-800'>
                   Sign in with Microsoft 365
                 </h2>
-                {error && <p className='text-red-500 text-sm mb-2'>{error}</p>}
                 <button
                   className='flex items-center justify-center bg-[#EA4727] text-white px-6 py-2 rounded-md w-full shadow-md hover:bg-opacity-90 transition'
                   onClick={handleO365Login}
