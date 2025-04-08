@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import FacultyList from './faculty-list';
-import { facultyMembers } from './faculty-data';
 import WeeklySchedule from '../weekly-schedule';
 
 interface Teacher {
-  id: number;
+  id: string;
   name: string;
   department: string;
   image: string;

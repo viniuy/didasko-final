@@ -106,6 +106,15 @@ interface FilterState {
   status: string[];
 }
 
+// Add interface for Excel data
+interface ExcelRow {
+  Students: string;
+  Name: string;
+  Status: string;
+  Date: string;
+  Semester: string;
+}
+
 export default function StudentList() {
   const [studentList, setStudentList] = useState<Student[]>(students);
   const [searchQuery, setSearchQuery] = useState('');
@@ -296,20 +305,14 @@ export default function StudentList() {
         const workbook = XLSX.read(data, { type: 'binary' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json<{
-          Students: string;
-          Name: string;
-          Status: string;
-          Date: string;
-          Semester: string;
-        }>(worksheet);
+        const jsonData = XLSX.utils.sheet_to_json<ExcelRow>(worksheet);
 
         // Process the imported data
-        const importedStudents = jsonData.map((row: any) => ({
-          name: row['Students'] || row['Name'] || '',
-          status: row['Status'] || '',
-          date: row['Date'] || new Date().toISOString().split('T')[0],
-          semester: row['Semester'] || '1st Semester',
+        const importedStudents = jsonData.map((row: ExcelRow) => ({
+          name: row.Students || row.Name || '',
+          status: row.Status || '',
+          date: row.Date || new Date().toISOString().split('T')[0],
+          semester: row.Semester || '1st Semester',
         }));
 
         setStudentList(importedStudents);

@@ -3,7 +3,6 @@
 import {
   Home,
   LogOut,
-  Book,
   CalendarCheck,
   ClipboardList,
   Settings,
