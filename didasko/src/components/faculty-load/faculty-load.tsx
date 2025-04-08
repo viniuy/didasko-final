@@ -1,3 +1,4 @@
+'use client';
 import React, { useState } from 'react';
 import FacultyList from './faculty-list';
 import WeeklySchedule from '../weekly-schedule';

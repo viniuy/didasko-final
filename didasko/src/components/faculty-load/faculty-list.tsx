@@ -1,3 +1,4 @@
+'use client';
 import React from 'react';
 import { facultyMembers } from './faculty-data';
 import Image from 'next/image';
