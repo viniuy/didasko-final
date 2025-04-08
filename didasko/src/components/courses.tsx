@@ -11,8 +11,16 @@ import {
   PaginationNext,
 } from '@/components/ui/pagination';
 
+interface CourseCardProps {
+  title: string;
+  code: string;
+  year: string;
+  absents: number;
+  date: string;
+}
+
 // Course Card Component
-const CourseCard = ({ title, code, year, absents, date }) => {
+const CourseCard = ({ title, code, year, absents, date }: CourseCardProps) => {
   return (
     <Card className='bg-[#124A69] text-white'>
       <CardHeader className='flex justify-between items-center'>
