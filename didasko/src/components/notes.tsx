@@ -228,7 +228,7 @@ export default function Notes() {
                   <h3 className='text-sm font-medium text-gray-500 mb-1'>
                     {format(new Date(dateKey), 'MMMM d, yyyy')}
                   </h3>
-                  {groupedNotes[dateKey].map((note, index) => {
+                  {groupedNotes[dateKey].map((note) => {
                     const globalIndex = noteList.findIndex((n) => n === note);
                     return (
                       <NoteCard

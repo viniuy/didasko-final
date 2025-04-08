@@ -10,7 +10,7 @@ interface Teacher {
   image: string;
 }
 
-const FacultyLoad = () => {
+export default function FacultyLoad() {
   const [search, setSearch] = useState('');
   const [sortOption, setSortOption] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -31,11 +31,8 @@ const FacultyLoad = () => {
   };
 
   const handleBack = () => {
-    console.log('Back button clicked'); // Debug log
     setSelectedTeacher(null);
   };
-
-  const totalPages = Math.ceil(facultyMembers.length / itemsPerPage);
 
   return (
     <div className='h-full flex flex-col'>
@@ -106,6 +103,4 @@ const FacultyLoad = () => {
       </div>
     </div>
   );
-};
-
-export default FacultyLoad;
+}

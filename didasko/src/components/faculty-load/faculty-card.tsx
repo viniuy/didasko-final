@@ -1,4 +1,6 @@
-import React from "react";
+import React from 'react';
+import { Card, CardContent } from '@/components/ui/card';
+import Image from 'next/image';
 
 interface FacultyCardProps {
   name: string;
@@ -7,26 +9,33 @@ interface FacultyCardProps {
   onDepartmentClick: (department: string) => void;
 }
 
-const FacultyCard: React.FC<FacultyCardProps> = ({ name, image, department, onDepartmentClick }) => {
+const FacultyCard: React.FC<FacultyCardProps> = ({
+  name,
+  image,
+  department,
+  onDepartmentClick,
+}) => {
   return (
-    <div className="w-full aspect-[3/4] p-3 rounded-lg bg-white border border-gray-200 hover:shadow-md transition-shadow flex flex-col items-center">
-      <div className="w-4/5 aspect-square mb-2">
-        <div className="w-full h-full rounded-full border-2 border-gray-200 overflow-hidden">
-          <img
+    <Card
+      className='hover:shadow-md transition-shadow cursor-pointer'
+      onClick={() => onDepartmentClick(department)}
+    >
+      <CardContent className='p-4'>
+        <div className='flex items-center'>
+          <Image
             src={image}
             alt={name}
-            className="w-full h-full object-cover"
+            width={48}
+            height={48}
+            className='rounded-full mr-4'
           />
+          <div>
+            <h3 className='font-medium text-[#124A69]'>{name}</h3>
+            <p className='text-sm text-gray-500'>{department}</p>
+          </div>
         </div>
-      </div>
-      <p className="text-center text-gray-700 text-sm font-medium line-clamp-2 mb-1">{name}</p>
-      <button
-        onClick={() => onDepartmentClick(department)}
-        className="text-center text-xs text-[#124A69] hover:text-[#1a6998] font-medium cursor-pointer"
-      >
-        {department}
-      </button>
-    </div>
+      </CardContent>
+    </Card>
   );
 };
 

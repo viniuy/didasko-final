@@ -111,9 +111,7 @@ export default function StudentList() {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedDate] = useState<'newest' | 'oldest' | ''>('');
-  const [selectedSemester, setSelectedSemester] = useState<
-    '1st Semester' | '2nd Semester' | ''
-  >('');
+  const [selectedSemester] = useState<'1st Semester' | '2nd Semester' | ''>('');
   const [imageToRemove, setImageToRemove] = useState<{
     index: number;
     name: string;
@@ -180,7 +178,7 @@ export default function StudentList() {
     currentPage * itemsPerPage,
   );
 
-  const handleImageUpload = (studentIndex: number, studentName: string) => {
+  const handleImageUpload = (index: number) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/jpeg,image/png';
@@ -195,7 +193,7 @@ export default function StudentList() {
         const reader = new FileReader();
         reader.onload = (event) => {
           setTempImage({
-            index: studentIndex,
+            index: index,
             dataUrl: event.target?.result as string,
           });
         };
@@ -298,7 +296,13 @@ export default function StudentList() {
         const workbook = XLSX.read(data, { type: 'binary' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+        const jsonData = XLSX.utils.sheet_to_json<{
+          Students: string;
+          Name: string;
+          Status: string;
+          Date: string;
+          Semester: string;
+        }>(worksheet);
 
         // Process the imported data
         const importedStudents = jsonData.map((row: any) => ({
@@ -311,7 +315,7 @@ export default function StudentList() {
         setStudentList(importedStudents);
         toast.success('Students imported successfully');
         setShowImportDialog(false);
-      } catch (error) {
+      } catch {
         toast.error('Error importing file. Please check the file format.');
       }
     };
