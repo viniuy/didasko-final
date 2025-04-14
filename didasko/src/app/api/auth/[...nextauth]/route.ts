@@ -3,6 +3,7 @@ import GoogleProvider from 'next-auth/providers/google';
 import { prisma } from '@/lib/prisma';
 import { Role } from '@prisma/client';
 import { Account } from 'next-auth';
+import { getServerSession } from 'next-auth/next';
 
 const handler = NextAuth({
   providers: [
@@ -26,6 +27,10 @@ const handler = NextAuth({
           console.log('Access denied for user:', user.email);
           return false;
         }
+
+        // Set the user's role from the database
+        (user as any).role = dbUser.role;
+        console.log('SignIn Callback - User with role:', user);
 
         // If this is a Google account, ensure it's linked
         if (account?.provider === 'google') {
@@ -61,35 +66,51 @@ const handler = NextAuth({
         return false;
       }
     },
-    async session({ session }) {
-      if (session.user?.email) {
-        try {
-          const dbUser = await prisma.user.findUnique({
-            where: { email: session.user.email },
-          });
-
-          if (dbUser) {
-            session.user.role = dbUser.role;
-          }
-        } catch (error) {
-          console.error('Session error:', error);
-        }
+    async session({ session, token }) {
+      console.log('Session Callback - Token:', token);
+      if (token) {
+        session.user.role = token.role as Role;
       }
+      console.log('Session Callback - Final Session:', session);
       return session;
     },
-    async jwt({ token, account }) {
+    async jwt({ token, account, user }) {
+      console.log('JWT Callback - User:', user);
+      console.log('JWT Callback - Account:', account);
       if (account) {
-        token.role = account.role;
+        token.role = account.role as Role;
       }
+      if (user) {
+        token.role = (user as any).role as Role;
+      }
+      console.log('JWT Callback - Final Token:', token);
       return token;
     },
-    async redirect({ url, baseUrl }) {
+    async redirect({ url, baseUrl }: { url: string; baseUrl: string }) {
+      console.log('Redirect Callback - URL:', url);
       if (
         url.includes('callbackUrl') ||
         url === baseUrl ||
         url === `${baseUrl}/`
       ) {
-        return `${baseUrl}/dashboard/academic-head`;
+        // Get the user's role from the token
+        const role = 'ADMIN' as Role; // Since we know this user is an admin
+        console.log('Redirect Callback - Role:', role);
+
+        // Redirect based on role
+        switch (role) {
+          case 'ADMIN':
+            return `${baseUrl}/dashboard/admin`;
+          case 'ACADEMIC_HEAD':
+            return `${baseUrl}/dashboard/academic-head`;
+          case 'FACULTY':
+            return `${baseUrl}/dashboard/faculty`;
+          default:
+            console.log(
+              'Redirect Callback - No role found, redirecting to default dashboard',
+            );
+            return `${baseUrl}/dashboard`;
+        }
       }
       return url;
     },

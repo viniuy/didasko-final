@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { generateToken, setAuthCookie } from '@/lib/auth';
-import { Role, WorkType } from '@prisma/client';
+import { Role } from '@prisma/client';
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,7 +29,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if user has permission
     if (user.permission !== 'GRANTED') {
       return NextResponse.json(
         {
@@ -41,7 +40,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate JWT token
     if (!user.name || !user.email) {
       return NextResponse.json(
         { error: 'User data is incomplete' },
@@ -56,7 +54,6 @@ export async function POST(request: NextRequest) {
       role: user.role,
     });
 
-    // Create response with cookie
     const response = NextResponse.json({
       user: {
         id: user.id,
@@ -67,7 +64,6 @@ export async function POST(request: NextRequest) {
       redirectPath: getRedirectPath(user.role),
     });
 
-    // Set auth cookie
     setAuthCookie(token, response);
 
     return response;

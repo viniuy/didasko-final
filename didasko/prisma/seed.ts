@@ -13,7 +13,7 @@ async function main() {
       department: 'Administration',
       workType: 'FULL_TIME',
       role: 'ADMIN',
-      permission: true,
+      permission: 'GRANTED',
     },
   });
 
@@ -27,7 +27,7 @@ async function main() {
       department: 'Computer Science',
       workType: 'FULL_TIME',
       role: 'FACULTY',
-      permission: true,
+      permission: 'GRANTED',
     },
   });
 
@@ -41,7 +41,7 @@ async function main() {
       department: 'Computer Science',
       workType: 'FULL_TIME',
       role: 'ACADEMIC_HEAD',
-      permission: true,
+      permission: 'GRANTED',
     },
   });
 

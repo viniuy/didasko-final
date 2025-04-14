@@ -37,6 +37,7 @@ model User {
 
   accounts   Account[]
   sessions   Session[]
+  notes      Note[]
 
   @@map("users")
 }
@@ -73,4 +74,100 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+model Section {
+  id        String   @id @default(uuid())
+  title     String
+  section   String
+  classes   Class[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("sections")
+}
+
+model Class {
+  id         String      @id @default(uuid())
+  name       String
+  sectionId  String
+  section    Section     @relation(fields: [sectionId], references: [id])
+  gradeItems GradeItem[]
+  criteria   Criteria[]
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+
+  @@map("classes")
+}
+
+model Student {
+  id            String    @id @default(uuid())
+  lastName      String
+  firstName     String
+  middleInitial String?
+  grades        Grade[]
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@map("students")
+}
+
+model Grade {
+  id        String   @id @default(uuid())
+  value     Float
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id])
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("grades")
+}
+
+model GradeItem {
+  id        String   @id @default(uuid())
+  name      String
+  classId   String
+  class     Class    @relation(fields: [classId], references: [id])
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("grade_items")
+}
+
+model Criteria {
+  id        String   @id @default(uuid())
+  name      String
+  classId   String
+  class     Class    @relation(fields: [classId], references: [id])
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("criteria")
+}
+
+model Event {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  date        DateTime 
+  fromTime    String?
+  toTime      String?
+  role        Role
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("events")
+}
+
+model Note {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  date        DateTime  // Date for the note
+  userId      String    @map("user_id")
+  user        User      @relation(fields: [userId], references: [id])
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("notes")
 }
