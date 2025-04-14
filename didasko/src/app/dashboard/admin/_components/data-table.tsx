@@ -31,6 +31,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Plus, Upload, Download, ChevronDown } from 'lucide-react';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
+import { AddUserSheet } from './add-user-sheet';
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
@@ -116,9 +124,16 @@ export function DataTable<TData, TValue>({
           <Button variant='outline'>
             <Download className='mr-2 h-4 w-4' /> Export Data
           </Button>
-          <Button>
-            <Plus className='mr-2 h-4 w-4' /> Add New User
-          </Button>
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button>
+                <Plus className='mr-2 h-4 w-4' /> Add New User
+              </Button>
+            </SheetTrigger>
+            <SheetContent side='right' className='p-4'>
+              <AddUserSheet isInline={true} />
+            </SheetContent>
+          </Sheet>
         </div>
       </div>
       {/* Table */}
