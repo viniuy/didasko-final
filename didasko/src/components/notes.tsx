@@ -13,7 +13,15 @@ import {
   AlertDialogAction,
   AlertDialogDescription,
 } from '@/components/ui/alert-dialog';
-import { Trash, Edit, Plus, CalendarIcon } from 'lucide-react';
+import {
+  Trash,
+  Edit,
+  Plus,
+  CalendarIcon,
+  X,
+  CheckCircle2,
+  AlertCircle,
+} from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Textarea } from './ui/textarea';
@@ -31,6 +39,8 @@ import {
   handleDeleteNote,
 } from '@/lib/note-handlers';
 import { useSession } from 'next-auth/react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { cn } from '@/lib/utils';
 
 interface Note {
   id: string;
@@ -65,6 +75,35 @@ export default function Notes() {
 
   const previousStatus = useRef(status);
 
+  const [alert, setAlert] = useState<{
+    show: boolean;
+    title: string;
+    description: string;
+    variant: 'success' | 'error';
+  }>({
+    show: false,
+    title: '',
+    description: '',
+    variant: 'success',
+  });
+
+  const showAlert = (
+    title: string,
+    description: string,
+    variant: 'success' | 'error' = 'success',
+  ) => {
+    setAlert({
+      show: true,
+      title,
+      description,
+      variant,
+    });
+
+    setTimeout(() => {
+      setAlert((prev) => ({ ...prev, show: false }));
+    }, 3000);
+  };
+
   useEffect(() => {
     console.log('Session status:', status);
     console.log('Session data:', session);
@@ -87,7 +126,6 @@ export default function Notes() {
       console.log('Starting to fetch notes...');
       setIsLoading(true);
 
-      // Direct API call without user ID
       const response = await fetch('/api/notes');
       console.log('Notes response status:', response.status);
 
@@ -110,11 +148,7 @@ export default function Notes() {
       }
     } catch (error) {
       console.error('Error fetching notes:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to fetch notes',
-        variant: 'destructive',
-      });
+      showAlert('Error', 'Failed to fetch notes', 'error');
       setNoteList([]);
     } finally {
       setIsLoading(false);
@@ -176,11 +210,7 @@ export default function Notes() {
 
   const saveNewNote = async () => {
     if (!newNote.title.trim()) {
-      toast({
-        title: 'Error',
-        description: 'Title is required',
-        variant: 'destructive',
-      });
+      showAlert('Error', 'Title is required', 'error');
       return;
     }
 
@@ -204,16 +234,9 @@ export default function Notes() {
     );
 
     if (result.success) {
-      toast({
-        title: 'Success',
-        description: 'Note added successfully',
-      });
+      showAlert('Success', 'Note added successfully', 'success');
     } else {
-      toast({
-        title: 'Error',
-        description: result.error || 'Failed to add note',
-        variant: 'destructive',
-      });
+      showAlert('Error', result.error || 'Failed to add note', 'error');
     }
   };
 
@@ -231,7 +254,6 @@ export default function Notes() {
         return;
       }
 
-      // Direct API call to delete the note using the ID in the URL path
       const response = await fetch(`/api/notes/${noteToDelete}`, {
         method: 'DELETE',
       });
@@ -246,26 +268,14 @@ export default function Notes() {
         setOpenDelete(false);
         setNoteToDelete(null);
         refreshNotes();
-
-        toast({
-          title: 'Success',
-          description: 'Note deleted successfully',
-        });
+        showAlert('Success', 'Note deleted successfully', 'success');
       } else {
         console.log('Failed to delete note');
-        toast({
-          title: 'Error',
-          description: 'Failed to delete note',
-          variant: 'destructive',
-        });
+        showAlert('Error', 'Failed to delete note', 'error');
       }
     } catch (error) {
       console.error('Error in confirmDelete:', error);
-      toast({
-        title: 'Error',
-        description: 'An error occurred while deleting the note',
-        variant: 'destructive',
-      });
+      showAlert('Error', 'An error occurred while deleting the note', 'error');
     }
   }
 
@@ -276,11 +286,7 @@ export default function Notes() {
 
   const saveEdit = async () => {
     if (!editData.title.trim()) {
-      toast({
-        title: 'Error',
-        description: 'Title is required',
-        variant: 'destructive',
-      });
+      showAlert('Error', 'Title is required', 'error');
       return;
     }
 
@@ -299,34 +305,65 @@ export default function Notes() {
     );
 
     if (result.success) {
-      toast({
-        title: 'Success',
-        description: 'Note updated successfully',
-      });
+      showAlert('Success', 'Note updated successfully', 'success');
     } else {
-      toast({
-        title: 'Error',
-        description: result.error || 'Failed to update note',
-        variant: 'destructive',
-      });
+      showAlert('Error', result.error || 'Failed to update note', 'error');
     }
   };
 
   return (
     <div className='mb-2'>
-      <h2 className='text-lg font-semibold text-[#FAEDCB] mb-1'>Notes</h2>
-      <div className='bg-white rounded-lg p-2 shadow-md h-[280px] overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#124A69] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#0a2f42]'>
-        <div className='absolute right-7 '>
-          <Button
-            variant='ghost'
-            size='icon'
-            className='w-6 h-6 rounded-full bg-[#124A69] text-white flex items-center justify-center hover:bg-[#0a2f42]'
-            onClick={handleAddClick}
+      {alert.show && (
+        <div className='fixed top-4 right-4 z-50 w-80 animate-in fade-in slide-in-from-top-2'>
+          <Alert
+            variant={alert.variant === 'success' ? 'default' : 'destructive'}
+            className={cn(
+              'relative border-l-4',
+              alert.variant === 'success'
+                ? 'border-l-[#124A69] bg-[#F0F7FA] text-[#124A69]'
+                : 'border-l-red-500 bg-red-50 text-red-800',
+            )}
           >
-            <Plus className='w-3 h-3' />
-          </Button>
+            <div className='flex items-start gap-3'>
+              {alert.variant === 'success' ? (
+                <CheckCircle2 className='h-4 w-4 text-[#124A69] mt-0.5' />
+              ) : (
+                <AlertCircle className='h-4 w-4 text-red-500 mt-0.5' />
+              )}
+              <div className='flex-1'>
+                <AlertDescription className='text-sm font-medium'>
+                  {alert.description}
+                </AlertDescription>
+              </div>
+              <Button
+                variant='ghost'
+                size='icon'
+                className={cn(
+                  'absolute right-1 top-1 h-6 w-6 p-0 hover:bg-transparent',
+                  alert.variant === 'success'
+                    ? 'text-[#124A69] hover:text-[#0a2f42]'
+                    : 'text-red-500 hover:text-red-700',
+                )}
+                onClick={() => setAlert((prev) => ({ ...prev, show: false }))}
+              >
+                <X className='h-3 w-3' />
+              </Button>
+            </div>
+          </Alert>
         </div>
-
+      )}
+      <div className='flex justify-between items-center mb-1'>
+        <h2 className='text-lg font-semibold text-[#FAEDCB] mb-1'>Notes</h2>
+        <Button
+          variant='ghost'
+          size='icon'
+          className='w-6 h-6 rounded-full bg-[#124A69] text-white flex items-center justify-center hover:bg-[#0a2f42]'
+          onClick={handleAddClick}
+        >
+          <Plus className='w-3 h-3' />
+        </Button>
+      </div>
+      <div className='bg-white rounded-lg p-2 shadow-md h-[280px] overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#124A69] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#0a2f42]'>
         {noteList.length > 0 ? (
           (() => {
             // Group notes by date while preserving order
@@ -394,24 +431,26 @@ export default function Notes() {
       </div>
 
       <AlertDialog open={openDelete} onOpenChange={setOpenDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
+        <AlertDialogContent className=''>
+          <AlertDialogHeader className=''>
+            <AlertDialogTitle className='text-xl font-semibold'>
+              Are you sure?
+            </AlertDialogTitle>
+            <AlertDialogDescription className='text-gray-600'>
               This action cannot be undone. This will permanently delete the
               note.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
+          <AlertDialogFooter className='gap-2'>
             <AlertDialogCancel
               onClick={() => setOpenDelete(false)}
-              className='bg-gray-100 text-gray-700 hover:bg-gray-200'
+              className='border-0 bg-gray-100 hover:bg-gray-200 text-gray-900'
             >
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDelete}
-              className='bg-[#124A69] text-white hover:bg-[#0a2f42]'
+              className='bg-[#124A69] hover:bg-[#0a2f42] text-white'
             >
               Delete
             </AlertDialogAction>
@@ -420,73 +459,85 @@ export default function Notes() {
       </AlertDialog>
 
       <AlertDialog open={openEdit} onOpenChange={setOpenEdit}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Edit Note</AlertDialogTitle>
+        <AlertDialogContent className='max-w-[425px] w-full h-[500px]'>
+          <AlertDialogHeader className='space-y-3'>
+            <AlertDialogTitle className='text-xl font-semibold'>
+              Edit Note
+            </AlertDialogTitle>
           </AlertDialogHeader>
-          <div className='space-y-2'>
-            <Label className='text-medium'>Title *</Label>
-            <Input
-              placeholder='Title'
-              value={editData.title}
-              onChange={(e) => {
-                if (e.target.value.length <= 15) {
-                  setEditData({ ...editData, title: e.target.value });
-                }
-              }}
-            />
-            <p className='text-xs flex justify-end mt-2 text-gray-500'>
-              {editData.title.length}/15
-            </p>
-
-            <Label className='text-medium'>Date *</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant='outline'
-                  className='w-full flex justify-between'
-                >
-                  {editData.date ? format(editData.date, 'PPP') : 'Pick a date'}
-                  <CalendarIcon className='ml-2 h-4 w-4' />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align='start' className='w-auto p-0'>
-                <Calendar
-                  mode='single'
-                  selected={editData.date}
-                  onSelect={(date) =>
-                    setEditData({ ...editData, date: date || new Date() })
+          <div className='space-y-4'>
+            <div>
+              <Label className='text-sm font-medium mb-2 block'>Title *</Label>
+              <Input
+                placeholder='Title'
+                value={editData.title}
+                onChange={(e) => {
+                  if (e.target.value.length <= 15) {
+                    setEditData({ ...editData, title: e.target.value });
                   }
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
+                }}
+                className='rounded-lg'
+              />
+              <p className='text-xs flex justify-end mt-2 text-gray-500'>
+                {editData.title.length}/15
+              </p>
+            </div>
 
-            <Label className='text-medium'>Content</Label>
-            <Textarea
-              placeholder='Add your note content'
-              className='resize-none min-h-[100px] max-h-[100px] overflow-y-auto w-full break-words'
-              value={editData.description || ''}
-              onChange={(e) => {
-                if (e.target.value.length <= 30) {
-                  setEditData({ ...editData, description: e.target.value });
-                }
-              }}
-            />
-            <p className='text-xs flex justify-end mt-2 text-gray-500'>
-              {(editData.description || '').length}/30
-            </p>
+            <div>
+              <Label className='text-sm font-medium mb-2 block'>Date *</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant='outline'
+                    className='w-full flex justify-between rounded-lg'
+                  >
+                    {editData.date
+                      ? format(editData.date, 'PPP')
+                      : 'Pick a date'}
+                    <CalendarIcon className='ml-2 h-4 w-4' />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align='start' className='w-auto p-0'>
+                  <Calendar
+                    mode='single'
+                    selected={editData.date}
+                    onSelect={(date) =>
+                      setEditData({ ...editData, date: date || new Date() })
+                    }
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div>
+              <Label className='text-sm font-medium mb-2 block'>Content</Label>
+              <Textarea
+                placeholder='Add your note content'
+                className='resize-none min-h-[100px] max-h-[100px] overflow-y-auto w-full break-words rounded-lg'
+                value={editData.description || ''}
+                onChange={(e) => {
+                  if (e.target.value.length <= 30) {
+                    setEditData({ ...editData, description: e.target.value });
+                  }
+                }}
+              />
+              <p className='text-xs flex justify-end mt-2 text-gray-500'>
+                {(editData.description || '').length}/30
+              </p>
+            </div>
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel
-              onClick={() => setOpenEdit(false)}
-              className='bg-gray-100 text-gray-700 hover:bg-gray-200'
+              onClick={() => setOpenAdd(false)}
+              className='bg-gray-100 text-gray-700 hover:bg-gray-200 h-8 text-xs'
             >
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={saveEdit}
-              className='bg-[#124A69] text-white hover:bg-[#0a2f42]'
+              className='bg-[#124A69] text-white hover:bg-[#0a2f42] h-8 text-xs'
+              disabled={!editData.title.trim()}
             >
               Save
             </AlertDialogAction>
@@ -495,13 +546,15 @@ export default function Notes() {
       </AlertDialog>
 
       <AlertDialog open={openAdd} onOpenChange={setOpenAdd}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Add New Note</AlertDialogTitle>
+        <AlertDialogContent className='max-w-[425px] w-full h-[500px]'>
+          <AlertDialogHeader className='space-y-3'>
+            <AlertDialogTitle className='text-xl font-semibold'>
+              Add New Note
+            </AlertDialogTitle>
           </AlertDialogHeader>
-          <div className='space-y-2'>
+          <div className='space-y-4'>
             <div>
-              <Label className='text-medium'>Title *</Label>
+              <Label className='text-sm font-medium mb-2 block'>Title *</Label>
               <Input
                 placeholder='Title'
                 value={newNote.title}
@@ -510,6 +563,7 @@ export default function Notes() {
                     setNewNote({ ...newNote, title: e.target.value });
                   }
                 }}
+                className='rounded-lg'
               />
               <p className='text-xs flex justify-end mt-2 text-gray-500'>
                 {newNote.title.length}/15
@@ -517,12 +571,12 @@ export default function Notes() {
             </div>
 
             <div>
-              <Label className='text-medium'>Date *</Label>
+              <Label className='text-sm font-medium mb-2 block'>Date *</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant='outline'
-                    className='w-full flex justify-between'
+                    className='w-full flex justify-between rounded-lg'
                   >
                     {newNote.date ? format(newNote.date, 'PPP') : 'Pick a date'}
                     <CalendarIcon className='ml-2 h-4 w-4' />
@@ -542,10 +596,10 @@ export default function Notes() {
             </div>
 
             <div>
-              <Label className='text-medium'>Content</Label>
+              <Label className='text-sm font-medium mb-2 block'>Content</Label>
               <Textarea
                 placeholder='Add your note content'
-                className='resize-none min-h-[100px] max-h-[200px] overflow-y-auto w-full break-words whitespace-pre-wrap'
+                className='resize-none min-h-[100px] max-h-[200px] overflow-y-auto w-full break-words whitespace-pre-wrap rounded-lg'
                 value={newNote.description || ''}
                 onChange={(e) => {
                   if (e.target.value.length <= 30) {
@@ -558,16 +612,32 @@ export default function Notes() {
               </p>
             </div>
           </div>
-          <AlertDialogFooter>
+          {/* <AlertDialogFooter className='gap-2 mt-6'>
             <AlertDialogCancel
               onClick={() => setOpenAdd(false)}
-              className='bg-gray-100 text-gray-700 hover:bg-gray-200'
+              className='border-0 bg-gray-100 hover:bg-gray-200 text-gray-900'
             >
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={saveNewNote}
-              className='bg-[#124A69] text-white hover:bg-[#0a2f42]'
+              className='bg-[#124A69] hover:bg-[#0a2f42] text-white disabled:cursor-not-allowed disabled:opacity-50'
+              disabled={!newNote.title.trim()}
+            >
+              Save
+            </AlertDialogAction>
+          </AlertDialogFooter> */}
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => setOpenAdd(false)}
+              className='bg-gray-100 text-gray-700 hover:bg-gray-200 h-8 text-xs'
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={saveNewNote}
+              className='bg-[#124A69] text-white hover:bg-[#0a2f42] h-8 text-xs'
+              disabled={!newNote.title.trim()}
             >
               Save
             </AlertDialogAction>

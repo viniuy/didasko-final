@@ -21,34 +21,12 @@ export async function GET(request: Request) {
         name: true,
         email: true,
         role: true,
+        department: true,
       },
     });
 
     if (!user) {
       console.log('User not found for email:', email);
-      // For development, let's create a default user if none exists
-      if (email === 'admin@example.com') {
-        console.log('Creating default admin user');
-        const defaultUser = await prisma.user.create({
-          data: {
-            name: 'Admin User',
-            email: 'admin@example.com',
-            department: 'Administration',
-            workType: 'FULL_TIME',
-            role: 'ADMIN',
-            permission: 'GRANTED',
-          },
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-          },
-        });
-        console.log('Created default user:', defaultUser);
-        return NextResponse.json({ user: defaultUser });
-      }
-
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 

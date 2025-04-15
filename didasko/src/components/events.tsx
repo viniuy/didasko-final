@@ -1,6 +1,14 @@
 'use client';
 
-import { Clock } from 'lucide-react';
+import {
+  Clock,
+  Trash,
+  Edit,
+  Plus,
+  X,
+  CheckCircle2,
+  AlertCircle,
+} from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   AlertDialog,
@@ -12,7 +20,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Trash, Edit, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,6 +30,8 @@ import { CalendarIcon } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { useSession } from 'next-auth/react';
 import { Role } from '@/lib/types';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { cn } from '@/lib/utils';
 
 import {
   Popover,
@@ -56,6 +65,17 @@ export default function UpcomingEvents() {
 
   const [eventList, setEventList] = useState<GroupedEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [alert, setAlert] = useState<{
+    show: boolean;
+    title: string;
+    description: string;
+    variant: 'success' | 'error';
+  }>({
+    show: false,
+    title: '',
+    description: '',
+    variant: 'success',
+  });
 
   // Check if user is authorized to manage events
   const canManageEvents = canUserManageEvents(userRole);
@@ -86,17 +106,22 @@ export default function UpcomingEvents() {
 
   const [timeError, setTimeError] = useState<string>('');
 
-  // Function to show toast notifications
-  const showToast = (
+  // Function to show alert notifications
+  const showAlert = (
     title: string,
     description: string,
-    variant: 'default' | 'destructive' = 'default',
+    variant: 'success' | 'error' = 'success',
   ) => {
-    toast({
+    setAlert({
+      show: true,
       title,
       description,
       variant,
     });
+
+    setTimeout(() => {
+      setAlert((prev) => ({ ...prev, show: false }));
+    }, 3000);
   };
 
   // Function to refresh events
@@ -104,7 +129,7 @@ export default function UpcomingEvents() {
     const { events, error } = await getEvents();
 
     if (error) {
-      showToast('Error', error, 'destructive');
+      showAlert('Error', error, 'error');
       return false;
     }
 
@@ -176,10 +201,10 @@ export default function UpcomingEvents() {
 
   function handleAddClick() {
     if (!canManageEvents) {
-      showToast(
+      showAlert(
         'Unauthorized',
         'Only Admin and Academic Head can add events',
-        'destructive',
+        'error',
       );
       return;
     }
@@ -240,8 +265,8 @@ export default function UpcomingEvents() {
     const result = await handleSaveNewEvent({
       newEvent,
       userRole,
-      onSuccess: (message) => showToast('Success', message),
-      onError: (error) => showToast('Error', error, 'destructive'),
+      onSuccess: (message) => showAlert('Success', message, 'success'),
+      onError: (error) => showAlert('Error', error, 'error'),
     });
 
     if (result?.success) {
@@ -252,10 +277,10 @@ export default function UpcomingEvents() {
 
   function handleDeleteClick(eventId: string) {
     if (!canManageEvents) {
-      showToast(
+      showAlert(
         'Unauthorized',
         'Only Admin and Academic Head can delete events',
-        'destructive',
+        'error',
       );
       return;
     }
@@ -270,8 +295,8 @@ export default function UpcomingEvents() {
     const result = await handleDeleteEvent({
       eventId: eventToDelete,
       userRole,
-      onSuccess: (message) => showToast('Success', message),
-      onError: (error) => showToast('Error', error, 'destructive'),
+      onSuccess: (message) => showAlert('Success', message, 'success'),
+      onError: (error) => showAlert('Error', error, 'error'),
     });
 
     if (result?.success) {
@@ -283,10 +308,10 @@ export default function UpcomingEvents() {
 
   function handleEditClick(event: EventItem) {
     if (!canManageEvents) {
-      showToast(
+      showAlert(
         'Unauthorized',
         'Only Admin and Academic Head can edit events',
-        'destructive',
+        'error',
       );
       return;
     }
@@ -307,8 +332,8 @@ export default function UpcomingEvents() {
     const result = await handleUpdateEvent({
       editData,
       userRole,
-      onSuccess: (message) => showToast('Success', message),
-      onError: (error) => showToast('Error', error, 'destructive'),
+      onSuccess: (message) => showAlert('Success', message, 'success'),
+      onError: (error) => showAlert('Error', error, 'error'),
     });
 
     if (result?.success) {
@@ -340,7 +365,6 @@ export default function UpcomingEvents() {
     }));
   }
 
-  // Handle date change for additional dates
   function handleAdditionalDateChange(index: number, date: Date | null) {
     setNewEvent((prev) => {
       const newDates = [...prev.dates];
@@ -349,7 +373,6 @@ export default function UpcomingEvents() {
     });
   }
 
-  // Handle time change for additional dates
   function handleAdditionalTimeChange(
     index: number,
     value: string,
@@ -368,6 +391,46 @@ export default function UpcomingEvents() {
 
   return (
     <div className='mb-2'>
+      {alert.show && (
+        <div className='fixed top-4 right-4 z-50 w-80 animate-in fade-in slide-in-from-top-2'>
+          <Alert
+            variant={alert.variant === 'success' ? 'default' : 'destructive'}
+            className={cn(
+              'relative border-l-4',
+              alert.variant === 'success'
+                ? 'border-l-[#124A69] bg-[#F0F7FA] text-[#124A69]'
+                : 'border-l-red-500 bg-red-50 text-red-800',
+            )}
+          >
+            <div className='flex items-start gap-3'>
+              {alert.variant === 'success' ? (
+                <CheckCircle2 className='h-4 w-4 text-[#124A69] mt-0.5' />
+              ) : (
+                <AlertCircle className='h-4 w-4 text-red-500 mt-0.5' />
+              )}
+              <div className='flex-1'>
+                <AlertDescription className='text-sm font-medium'>
+                  {alert.description}
+                </AlertDescription>
+              </div>
+              <Button
+                variant='ghost'
+                size='icon'
+                className={cn(
+                  'absolute right-1 top-1 h-6 w-6 p-0 hover:bg-transparent',
+                  alert.variant === 'success'
+                    ? 'text-[#124A69] hover:text-[#0a2f42]'
+                    : 'text-red-500 hover:text-red-700',
+                )}
+                onClick={() => setAlert((prev) => ({ ...prev, show: false }))}
+              >
+                <X className='h-3 w-3' />
+              </Button>
+            </div>
+          </Alert>
+        </div>
+      )}
+
       <div className='flex justify-between items-center mb-1'>
         <h2 className='text-lg font-semibold text-[#FAEDCB]'>
           Upcoming Events
@@ -589,13 +652,13 @@ export default function UpcomingEvents() {
                 placeholder='Title'
                 value={newEvent.title}
                 onChange={(e) => {
-                  if (e.target.value.length <= 50) {
+                  if (e.target.value.length <= 15) {
                     setNewEvent({ ...newEvent, title: e.target.value });
                   }
                 }}
               />
               <p className='text-[10px] flex justify-end mt-1 text-gray-500'>
-                {newEvent.title.length}/50
+                {newEvent.title.length}/15
               </p>
             </div>
             <div>
@@ -605,13 +668,13 @@ export default function UpcomingEvents() {
                 className='resize-none h-16'
                 value={newEvent.description}
                 onChange={(e) => {
-                  if (e.target.value.length <= 100) {
+                  if (e.target.value.length <= 30) {
                     setNewEvent({ ...newEvent, description: e.target.value });
                   }
                 }}
               />
               <p className='text-[10px] flex justify-end mt-1 text-gray-500'>
-                {newEvent.description.length}/100
+                {newEvent.description.length}/30
               </p>
             </div>
 
@@ -684,23 +747,13 @@ export default function UpcomingEvents() {
                   </div>
                   <div
                     className={`mt-1 space-y-2 ${
-                      newEvent.dates.length > 6
+                      newEvent.dates.length > 4
                         ? 'max-h-60 overflow-y-auto pr-1'
                         : ''
                     }`}
                   >
                     {newEvent.dates.map((dateItem, index) => (
-                      <div
-                        key={index}
-                        className='border p-2 rounded-md relative'
-                      >
-                        <button
-                          onClick={() => removeDate(index)}
-                          className='absolute right-1 top-1 text-gray-500 hover:text-red-500'
-                          type='button'
-                        >
-                          <Trash className='h-3 w-3' />
-                        </button>
+                      <div key={index} className='border p-2 rounded-md'>
                         <div className='grid grid-cols-2 gap-2'>
                           <div>
                             <Popover>
@@ -737,33 +790,59 @@ export default function UpcomingEvents() {
                               </PopoverContent>
                             </Popover>
                           </div>
-                          <div className='grid grid-cols-2 gap-1'>
-                            <Input
-                              type='time'
-                              value={dateItem.fromTime}
-                              onChange={(e) =>
-                                handleAdditionalTimeChange(
-                                  index,
-                                  e.target.value,
-                                  true,
-                                )
-                              }
-                              className='h-7 text-[11px]'
-                              placeholder='Start'
-                            />
-                            <Input
-                              type='time'
-                              value={dateItem.toTime}
-                              onChange={(e) =>
-                                handleAdditionalTimeChange(
-                                  index,
-                                  e.target.value,
-                                  false,
-                                )
-                              }
-                              className='h-7 text-[11px]'
-                              placeholder='End'
-                            />
+                          <div className='flex items-center gap-1'>
+                            <div className='grid grid-cols-2 gap-1'>
+                              <div className='relative'>
+                                <Input
+                                  type='time'
+                                  value={dateItem.fromTime}
+                                  onChange={(e) =>
+                                    handleAdditionalTimeChange(
+                                      index,
+                                      e.target.value,
+                                      true,
+                                    )
+                                  }
+                                  className='h-7 text-[11px] cursor-pointer'
+                                  onClick={(e) => {
+                                    const input = e.target as HTMLInputElement;
+                                    input.showPicker();
+                                  }}
+                                />
+                                {!dateItem.fromTime && (
+                                  <div className='absolute inset-0 flex items-center px-3 pointer-events-none text-[11px] text-muted-foreground'></div>
+                                )}
+                              </div>
+                              <div className='relative'>
+                                <Input
+                                  type='time'
+                                  value={dateItem.toTime}
+                                  onChange={(e) =>
+                                    handleAdditionalTimeChange(
+                                      index,
+                                      e.target.value,
+                                      false,
+                                    )
+                                  }
+                                  className='h-7 text-[11px] cursor-pointer'
+                                  onClick={(e) => {
+                                    const input = e.target as HTMLInputElement;
+                                    input.showPicker();
+                                  }}
+                                />
+                                {!dateItem.toTime && (
+                                  <div className='absolute inset-0 flex items-center px-3 pointer-events-none text-[11px] text-muted-foreground'></div>
+                                )}
+                              </div>
+                            </div>
+                            <Button
+                              onClick={() => removeDate(index)}
+                              variant='ghost'
+                              className='h-7 w-7 p-0 hover:bg-red-50'
+                              type='button'
+                            >
+                              <Trash className='h-3 w-3 text-red-500' />
+                            </Button>
                           </div>
                         </div>
                       </div>
@@ -780,7 +859,7 @@ export default function UpcomingEvents() {
                 className='mt-1 text-[11px] w-full'
                 onClick={addNewDate}
               >
-                <Plus className='mr-1 h-3 w-3' /> Add Another Date
+                <Plus className='mr-1 h-3 w-3' />
               </Button>
             </div>
           </div>

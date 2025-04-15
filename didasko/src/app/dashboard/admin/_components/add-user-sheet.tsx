@@ -216,7 +216,12 @@ export function AddUserSheet({ isInline = false }: AddUserSheetProps) {
           </div>
 
           <div className='flex justify-between pt-4'>
-            <Button type='button' variant='outline' disabled={isLoading}>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setIsOpen(false)}
+              disabled={isLoading}
+            >
               Cancel
             </Button>
             <Button type='submit' disabled={isLoading}>
@@ -249,10 +254,10 @@ export function AddUserSheet({ isInline = false }: AddUserSheetProps) {
               value={formData.lastName}
               onChange={handleInputChange}
               required
-              maxLength={15}
+              maxLength={30}
             />
             <div className='text-xs text-muted-foreground text-right'>
-              {formData.lastName.length}/15
+              {formData.lastName.length}/30
             </div>
           </div>
 
@@ -263,10 +268,10 @@ export function AddUserSheet({ isInline = false }: AddUserSheetProps) {
               name='middleName'
               value={formData.middleName}
               onChange={handleInputChange}
-              maxLength={15}
+              maxLength={30}
             />
             <div className='text-xs text-muted-foreground text-right'>
-              {formData.middleName.length}/15
+              {formData.middleName.length}/30
             </div>
           </div>
 
@@ -278,10 +283,10 @@ export function AddUserSheet({ isInline = false }: AddUserSheetProps) {
               value={formData.firstName}
               onChange={handleInputChange}
               required
-              maxLength={20}
+              maxLength={30}
             />
             <div className='text-xs text-muted-foreground text-right'>
-              {formData.firstName.length}/20
+              {formData.firstName.length}/30
             </div>
           </div>
 

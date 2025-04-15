@@ -5,39 +5,21 @@ import { prisma } from '@/lib/db';
 
 // Function to get user ID by email
 async function getUserIdByEmail(email: string) {
-  // Default admin email if none provided
-  const lookupEmail = email || 'admin@example.com';
+  if (!email) {
+    return null;
+  }
 
   try {
     // Try to find user by email
     const user = await prisma.user.findUnique({
-      where: { email: lookupEmail },
+      where: { email },
       select: { id: true },
     });
 
     // If user found, return ID
     if (user) {
-      console.log(`Found user ID ${user.id} for email ${lookupEmail}`);
+      console.log(`Found user ID ${user.id} for email ${email}`);
       return user.id;
-    }
-
-    // If not found and using admin email, create default admin
-    if (lookupEmail === 'admin@example.com') {
-      console.log('Creating default admin user');
-      const newUser = await prisma.user.create({
-        data: {
-          name: 'Admin User',
-          email: 'admin@example.com',
-          department: 'Administration',
-          workType: 'FULL_TIME',
-          role: 'ADMIN',
-          permission: 'GRANTED',
-        },
-        select: { id: true },
-      });
-
-      console.log(`Created default admin with ID ${newUser.id}`);
-      return newUser.id;
     }
 
     return null;

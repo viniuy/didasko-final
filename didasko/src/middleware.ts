@@ -24,7 +24,10 @@ export async function middleware(request: NextRequest) {
 
   // Check if user is authenticated
   if (!token) {
-    return NextResponse.redirect(new URL('/', request.url));
+    // Store the attempted URL to redirect back after login
+    const url = new URL('/', request.url);
+    url.searchParams.set('callbackUrl', pathname);
+    return NextResponse.redirect(url);
   }
 
   // For dashboard routes, check role-based access
@@ -34,7 +37,7 @@ export async function middleware(request: NextRequest) {
 
     if (!allowedPaths.some((path) => pathname.startsWith(path))) {
       // Redirect to appropriate dashboard if trying to access unauthorized path
-      const redirectPath = allowedPaths[0] || '/dashboard';
+      const redirectPath = allowedPaths[0] || '/';
       return NextResponse.redirect(new URL(redirectPath, request.url));
     }
   }
@@ -44,5 +47,14 @@ export async function middleware(request: NextRequest) {
 
 // See "Matching Paths" below to learn more
 export const config = {
-  matcher: ['/((?!api/auth).*)'], // Exclude NextAuth routes
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - api/auth (auth API routes)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     */
+    '/((?!api/auth|_next/static|_next/image|favicon.ico).*)',
+  ],
 };

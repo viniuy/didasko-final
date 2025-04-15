@@ -85,7 +85,7 @@ export function DataTable<TData, TValue>({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant='outline' className='ml-auto'>
-                Add filter <ChevronDown className='ml-2 h-4 w-4' />
+                Filter <ChevronDown className='ml-2 h-4 w-4' />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align='start'>

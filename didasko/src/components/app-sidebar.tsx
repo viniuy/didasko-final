@@ -74,10 +74,8 @@ function SidebarSkeleton() {
       <SidebarContent className='flex-1'>
         {/* User Profile Skeleton */}
         <SidebarHeader className='flex flex-row items-center gap-3 px-2 mt-4'>
-          <Skeleton className='w-12 h-12 rounded-full' />
           <div className='space-y-2'>
-            <Skeleton className='h-4 w-32' />
-            <Skeleton className='h-3 w-24' />
+            <Skeleton className='h-12 w-12 rounded-full' />
           </div>
         </SidebarHeader>
 
@@ -114,6 +112,11 @@ export function AppSidebar() {
   const { open, setOpen } = useSidebar();
   const { data: session, status } = useSession();
   const pathname = usePathname();
+  const [userData, setUserData] = useState<{
+    name: string;
+    department: string;
+  } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const isAdmin = session?.user?.role === 'ADMIN';
   const items = isAdmin ? adminItems : academicHeadItems;
@@ -123,12 +126,51 @@ export function AppSidebar() {
   };
 
   useEffect(() => {
+    const fetchUserData = async () => {
+      if (session?.user?.email) {
+        setIsLoading(true);
+        try {
+          const response = await fetch(
+            `/api/users/by-email?email=${session.user.email}`,
+          );
+          if (response.ok) {
+            const data = await response.json();
+            if (data.user) {
+              setUserData({
+                name: data.user.name,
+                department:
+                  data.user.department ||
+                  (isAdmin ? 'Administrator' : 'Academic Head'),
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching user data:', error);
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    if (session?.user?.email) {
+      fetchUserData();
+    } else {
+      setIsLoading(false);
+    }
+  }, [session?.user?.email, isAdmin]);
+
+  useEffect(() => {
     if (!open) setIsGradingOpen(false);
   }, [open]);
 
-  if (status === 'loading') {
+  if (status === 'loading' || isLoading) {
     return <SidebarSkeleton />;
   }
+
+  const displayName = userData?.name || 'Loading...';
+  const displayDepartment =
+    userData?.department || (isAdmin ? 'Administrator' : 'Academic Head');
+  const avatarInitial = displayName.charAt(0);
 
   return (
     <Sidebar
@@ -145,9 +187,7 @@ export function AppSidebar() {
               src={session?.user?.image || 'https://i.imgur.com/kT3j3Lf.jpeg'}
               className='object-cover'
             />
-            <AvatarFallback className='text-xl'>
-              {session?.user?.name ? session.user.name.charAt(0) : '?'}
-            </AvatarFallback>
+            <AvatarFallback className='text-xl'>{avatarInitial}</AvatarFallback>
           </Avatar>
           <div
             className={`overflow-hidden transition-all duration-300 delay-150 ${
@@ -157,10 +197,10 @@ export function AppSidebar() {
             }`}
           >
             <p className='text-lg font-semibold whitespace-nowrap'>
-              {session?.user?.name || 'Guest User'}
+              {displayName}
             </p>
             <p className='text-sm text-gray-400 whitespace-nowrap'>
-              Academic Head
+              {displayDepartment}
             </p>
           </div>
         </SidebarHeader>

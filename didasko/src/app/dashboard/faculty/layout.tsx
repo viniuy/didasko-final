@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { withAuth } from '@/components/route-protection';
 
-function AdminDashboardLayoutContent({
+function FacultyDashboardLayoutContent({
   children,
 }: {
   children: React.ReactNode;
@@ -18,4 +18,4 @@ function AdminDashboardLayoutContent({
   );
 }
 
-export default withAuth(AdminDashboardLayoutContent);
+export default withAuth(FacultyDashboardLayoutContent);
