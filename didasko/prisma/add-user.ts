@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  const email = 'epickiller312873@gmail.com';
+  const email = 'vincent.enolpe@gmail.com';
   const name = 'Epic Killer'; // You can change this name if you'd like
 
   // Create academic head user
