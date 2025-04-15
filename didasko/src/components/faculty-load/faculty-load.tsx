@@ -2,12 +2,34 @@
 import React, { useState } from 'react';
 import FacultyList from './faculty-list';
 import WeeklySchedule from '../weekly-schedule';
+import FacultyDetails from './faculty-details';
+import { Role, WorkType } from '@prisma/client';
+
+interface Course {
+  id: string;
+  code: string;
+  title: string;
+  description: string | null;
+  semester: string;
+  schedules: {
+    id: string;
+    day: Date;
+    fromTime: string;
+    toTime: string;
+  }[];
+  students: {
+    id: string;
+  }[];
+}
 
 interface Teacher {
   id: string;
   name: string;
+  email: string;
   department: string;
-  image: string;
+  workType: WorkType;
+  role: Role;
+  coursesTeaching: Course[];
 }
 
 export default function FacultyLoad() {
@@ -87,7 +109,10 @@ export default function FacultyLoad() {
       <div className='flex-grow overflow-auto'>
         <div className='grid grid-cols-1 gap-4 mb-4'>
           {selectedTeacher ? (
-            <WeeklySchedule teacherInfo={selectedTeacher} onBack={handleBack} />
+            <div>
+              <FacultyDetails faculty={selectedTeacher} />
+              <WeeklySchedule teacherInfo={selectedTeacher} onBack={handleBack} />
+            </div>
           ) : (
             <FacultyList
               search={search}

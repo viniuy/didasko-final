@@ -1,7 +1,6 @@
 import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { prisma } from './db';
-import { compare } from 'bcryptjs';
 import { Role } from '@prisma/client';
 
 export const authOptions: NextAuthOptions = {
@@ -17,28 +16,37 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const user = await prisma.user.findUnique({
-          where: {
-            email: credentials.email,
-          },
-        });
+        try {
+          const user = await prisma.user.findUnique({
+            where: {
+              email: credentials.email,
+            },
+          });
 
-        if (!user) {
+          if (!user) {
+            console.log('No user found for email:', credentials.email);
+            return null;
+          }
+
+          // For development, accept a simple password
+          const isPasswordValid = credentials.password === 'password123';
+
+          if (!isPasswordValid) {
+            console.log('Invalid password for user:', credentials.email);
+            return null;
+          }
+
+          console.log('User authenticated:', user);
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+          };
+        } catch (error) {
+          console.error('Error in authorize:', error);
           return null;
         }
-
-        const isPasswordValid = credentials.password === 'password123';
-
-        if (!isPasswordValid) {
-          return null;
-        }
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-        };
       },
     }),
   ],
@@ -48,6 +56,7 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         token.role = user.role;
       }
+      console.log('JWT callback - token:', token);
       return token;
     },
     async session({ session, token }) {
@@ -55,6 +64,7 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.id as string;
         session.user.role = token.role as Role;
       }
+      console.log('Session callback - session:', session);
       return session;
     },
   },
@@ -64,4 +74,5 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: 'jwt',
   },
+  debug: true, // Enable debug messages
 };

@@ -8,9 +8,11 @@ import WeeklySchedule from '@/components/weekly-schedule';
 import Header from '@/components/header';
 import Rightsidebar from '@/components/right-sidebar';
 import React from 'react';
+import { useSession } from 'next-auth/react';
 
 export default function AcademicHeadDashboard() {
   const [open, setOpen] = React.useState(false);
+  const { data: session } = useSession();
 
   return (
     <SidebarProvider open={open} onOpenChange={setOpen}>
@@ -27,15 +29,14 @@ export default function AcademicHeadDashboard() {
             </h2>
             <Courses />
 
-            <WeeklySchedule
-              teacherInfo={{
-                id: 'current-user-id',
-                name: 'Current User',
-                department: 'Your Department',
-                image: '/icon-person.png',
-              }}
-              onBack={() => {}}
-            />
+            {session?.user?.email && (
+              <WeeklySchedule
+                teacherInfo={{
+                  email: session.user.email
+                }}
+                onBack={() => {}}
+              />
+            )}
           </div>
 
           <Rightsidebar />

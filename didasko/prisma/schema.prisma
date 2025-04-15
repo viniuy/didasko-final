@@ -39,6 +39,9 @@ model User {
   sessions   Session[]
   notes      Note[]
 
+  coursesTeaching Course[]    @relation("FacultyCourses")
+  coursesEnrolled Course[]    @relation("StudentCourses")
+
   @@map("users")
 }
 
@@ -170,4 +173,33 @@ model Note {
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   @@map("notes")
+}
+
+model Course {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  title       String
+  description String?
+  semester    String   
+  facultyId   String
+  faculty     User     @relation("FacultyCourses", fields: [facultyId], references: [id])
+  students    User[]   @relation("StudentCourses")
+  schedules   CourseSchedule[]
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("courses")
+}
+
+model CourseSchedule {
+  id        String   @id @default(uuid())
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id])
+  day       DateTime
+  fromTime  String
+  toTime    String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("course_schedules")
 }

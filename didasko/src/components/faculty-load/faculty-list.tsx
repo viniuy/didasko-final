@@ -1,13 +1,33 @@
 'use client';
-import React from 'react';
-import { facultyMembers } from './faculty-data';
-import Image from 'next/image';
+import React, { useEffect, useState } from 'react';
+import { Role, WorkType } from '@prisma/client';
+import { UserCircle2 } from 'lucide-react';
+
+interface Course {
+  id: string;
+  code: string;
+  title: string;
+  description: string | null;
+  semester: string;
+  schedules: {
+    id: string;
+    day: Date;
+    fromTime: string;
+    toTime: string;
+  }[];
+  students: {
+    id: string;
+  }[];
+}
 
 interface FacultyMember {
   id: string;
   name: string;
+  email: string;
   department: string;
-  image: string;
+  workType: WorkType;
+  role: Role;
+  coursesTeaching: Course[];
 }
 
 interface FacultyListProps {
@@ -29,7 +49,46 @@ const FacultyList: React.FC<FacultyListProps> = ({
   onTeacherClick,
   onPageChange,
 }) => {
-  const filteredFaculty = facultyMembers
+  const [faculty, setFaculty] = useState<FacultyMember[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchFaculty = async () => {
+      try {
+        const response = await fetch('/api/users/faculty');
+        if (!response.ok) {
+          throw new Error('Failed to fetch faculty');
+        }
+        const data = await response.json();
+        setFaculty(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch faculty');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchFaculty();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#124A69]"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center text-red-500 p-4">
+        Error: {error}
+      </div>
+    );
+  }
+
+  const filteredFaculty = faculty
     .filter((faculty) =>
       faculty.name.toLowerCase().includes(search.toLowerCase()),
     )
@@ -46,7 +105,7 @@ const FacultyList: React.FC<FacultyListProps> = ({
 
   return (
     <div className='flex flex-col space-y-4'>
-      <div className='grid grid-cols-3 gap-4'>
+      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
         {currentFaculty.map((faculty) => (
           <div
             key={faculty.id}
@@ -54,14 +113,8 @@ const FacultyList: React.FC<FacultyListProps> = ({
           >
             <div className='flex items-center space-x-4'>
               <div className='flex-shrink-0'>
-                <div className='w-12 h-12 rounded-full overflow-hidden bg-[#124A69]'>
-                  <Image
-                    src='/icon-person.png'
-                    alt={faculty.name}
-                    width={48}
-                    height={48}
-                    className='object-cover w-full h-full'
-                  />
+                <div className='w-12 h-12 rounded-full overflow-hidden bg-[#124A69] flex items-center justify-center text-white'>
+                  <UserCircle2 size={36} />
                 </div>
               </div>
               <div className='flex-1 min-w-0'>
@@ -69,6 +122,10 @@ const FacultyList: React.FC<FacultyListProps> = ({
                   <p className='text-sm font-medium text-gray-900 w-full truncate'>
                     {faculty.name}
                   </p>
+                  <div className='flex flex-col items-end w-full'>
+                    <span className='text-xs text-gray-500'>{faculty.role}</span>
+                    <span className='text-xs text-gray-500'>{faculty.workType}</span>
+                  </div>
                   <button
                     onClick={() => onTeacherClick(faculty)}
                     className='text-xs bg-[#124A69]/80 text-white px-3 py-1.5 rounded hover:bg-[#124A69] transition-colors'
@@ -90,65 +147,67 @@ const FacultyList: React.FC<FacultyListProps> = ({
           </div>
         ))}
       </div>
-      <div className='flex items-center justify-between'>
-        <span className='text-sm text-gray-500'>
-          Showing {startIndex + 1}-{Math.min(endIndex, totalItems)} out of{' '}
-          {totalItems} faculty members
-        </span>
-        <div className='flex items-center gap-1'>
-          <button
-            onClick={() => onPageChange(currentPage - 1)}
-            disabled={currentPage === 1}
-            className='p-1 text-gray-600 hover:text-gray-900 disabled:text-gray-400'
-          >
-            <svg
-              xmlns='http://www.w3.org/2000/svg'
-              className='h-5 w-5'
-              viewBox='0 0 20 20'
-              fill='currentColor'
-            >
-              <path
-                fillRule='evenodd'
-                d='M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z'
-                clipRule='evenodd'
-              />
-            </svg>
-          </button>
-
-          {pageNumbers.map((number) => (
+      {totalPages > 1 && (
+        <div className='flex items-center justify-between'>
+          <span className='text-sm text-gray-500'>
+            Showing {startIndex + 1}-{Math.min(endIndex, totalItems)} out of{' '}
+            {totalItems} faculty members
+          </span>
+          <div className='flex items-center gap-1'>
             <button
-              key={number}
-              onClick={() => onPageChange(number)}
-              className={`w-8 h-8 text-sm rounded-lg ${
-                currentPage === number
-                  ? 'bg-[#124A69] text-white'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
+              onClick={() => onPageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              className='p-1 text-gray-600 hover:text-gray-900 disabled:text-gray-400'
             >
-              {number}
+              <svg
+                xmlns='http://www.w3.org/2000/svg'
+                className='h-5 w-5'
+                viewBox='0 0 20 20'
+                fill='currentColor'
+              >
+                <path
+                  fillRule='evenodd'
+                  d='M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z'
+                  clipRule='evenodd'
+                />
+              </svg>
             </button>
-          ))}
 
-          <button
-            onClick={() => onPageChange(currentPage + 1)}
-            disabled={currentPage === totalPages}
-            className='p-1 text-gray-600 hover:text-gray-900 disabled:text-gray-400'
-          >
-            <svg
-              xmlns='http://www.w3.org/2000/svg'
-              className='h-5 w-5'
-              viewBox='0 0 20 20'
-              fill='currentColor'
+            {pageNumbers.map((number) => (
+              <button
+                key={number}
+                onClick={() => onPageChange(number)}
+                className={`w-8 h-8 text-sm rounded-lg ${
+                  currentPage === number
+                    ? 'bg-[#124A69] text-white'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {number}
+              </button>
+            ))}
+
+            <button
+              onClick={() => onPageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className='p-1 text-gray-600 hover:text-gray-900 disabled:text-gray-400'
             >
-              <path
-                fillRule='evenodd'
-                d='M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z'
-                clipRule='evenodd'
-              />
-            </svg>
-          </button>
+              <svg
+                xmlns='http://www.w3.org/2000/svg'
+                className='h-5 w-5'
+                viewBox='0 0 20 20'
+                fill='currentColor'
+              >
+                <path
+                  fillRule='evenodd'
+                  d='M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z'
+                  clipRule='evenodd'
+                />
+              </svg>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

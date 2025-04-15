@@ -271,7 +271,7 @@ export default function UpcomingEvents() {
 
     if (result?.success) {
       await refreshEvents();
-      setOpenAdd(false);
+    setOpenAdd(false);
     }
   }
 
@@ -338,7 +338,7 @@ export default function UpcomingEvents() {
 
     if (result?.success) {
       await refreshEvents();
-      setOpenEdit(false);
+    setOpenEdit(false);
     }
   }
 
@@ -440,12 +440,12 @@ export default function UpcomingEvents() {
             variant='ghost'
             size='icon'
             className='w-6 h-6 rounded-full bg-[#124A69] text-white flex items-center justify-center hover:bg-[#0a2f42]'
-            onClick={handleAddClick}
+            onClick={handleAddClick} 
           >
             <Plus className='w-3 h-3' />
           </Button>
         )}
-      </div>
+        </div>
       <div className='bg-white rounded-lg p-2 shadow-md h-[280px] overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#124A69] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#0a2f42]'>
         <div className='space-y-2 mt-2'>
           {isLoading ? (
@@ -453,7 +453,7 @@ export default function UpcomingEvents() {
               Loading events...
             </p>
           ) : eventList.length > 0 ? (
-            eventList.map((event, eventIndex) => (
+          eventList.map((event, eventIndex) => (
               <div key={eventIndex}>
                 <div className='flex items-center gap-2 text-[#124A69] mb-1'>
                   <p className='text-xs'>
@@ -462,27 +462,27 @@ export default function UpcomingEvents() {
                   </p>
                 </div>
                 {event.items.map((item) => (
-                  <Card
+                <Card
                     key={item.id}
                     className='border-l-[8px] border-[#124A69] mb-1 hover:shadow-md transition-shadow'
-                  >
+                >
                     <CardContent className='p-2 relative'>
                       {canManageEvents && (
                         <div className='absolute right-1 -top-5 flex gap-0.5'>
-                          <Button
-                            variant='ghost'
+                      <Button
+                        variant='ghost'
                             className='h-5 w-5 p-0 hover:bg-transparent'
                             onClick={() => handleEditClick(item)}
-                          >
+                      >
                             <Edit className='h-3 w-3' color='#124a69' />
-                          </Button>
-                          <Button
-                            variant='ghost'
+                      </Button>
+                      <Button
+                        variant='ghost'
                             className='h-5 w-5 p-0 hover:bg-transparent'
                             onClick={() => handleDeleteClick(item.id)}
-                          >
+                      >
                             <Trash className='h-3 w-3' color='#124a69' />
-                          </Button>
+                      </Button>
                         </div>
                       )}
                       <div className='-mt-4 -mb-4'>
@@ -497,19 +497,19 @@ export default function UpcomingEvents() {
                             <Clock className='w-3 h-3 mr-0.5' />
                             {formatTimeTo12Hour(item.fromTime)} -{' '}
                             {formatTimeTo12Hour(item.toTime)}
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            ))
-          ) : (
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ))
+        ) : (
             <p className='text-gray-500 text-xs text-center'>
               No upcoming events.
             </p>
-          )}
+        )}
         </div>
       </div>
 
@@ -546,7 +546,7 @@ export default function UpcomingEvents() {
               onChange={(e) => {
                 if (e.target.value.length <= 20) {
                   setEditData({ ...editData, title: e.target.value });
-                }
+              }
               }}
             />
             <p className='text-xs flex justify-end mt-2 text-gray-500'>
@@ -571,21 +571,21 @@ export default function UpcomingEvents() {
             <div className='grid grid-cols-2 gap-4'>
               <div>
                 <Label className='text-medium'>Date *</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant='outline'
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant='outline'
                       className='w-full flex justify-between'
-                    >
+                >
                       {editData.date
                         ? format(editData.date, 'PPP')
                         : 'Pick a date'}
-                      <CalendarIcon className='ml-2 h-4 w-4' />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent align='start' className='w-auto p-0'>
-                    <Calendar
-                      mode='single'
+                  <CalendarIcon className='ml-2 h-4 w-4' />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align='start' className='w-auto p-0'>
+                <Calendar
+                  mode='single'
                       selected={editData.date || undefined}
                       onSelect={(date) =>
                         setEditData({ ...editData, date: date || null })
@@ -593,10 +593,10 @@ export default function UpcomingEvents() {
                       disabled={(date) =>
                         date < new Date(new Date().setHours(0, 0, 0, 0))
                       }
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
               </div>
               <div>
                 <Label className='text-medium'>Time</Label>
@@ -656,23 +656,23 @@ export default function UpcomingEvents() {
                     setNewEvent({ ...newEvent, title: e.target.value });
                   }
                 }}
-              />
+              />  
               <p className='text-[10px] flex justify-end mt-1 text-gray-500'>
                 {newEvent.title.length}/15
               </p>
-            </div>
+            </div>  
             <div>
-              <Label className='text-medium'>Description</Label>
-              <Textarea
-                placeholder='Add a description'
+            <Label className='text-medium'>Description</Label>
+            <Textarea
+              placeholder='Add a description'
                 className='resize-none h-16'
                 value={newEvent.description}
-                onChange={(e) => {
+              onChange={(e) => {
                   if (e.target.value.length <= 30) {
                     setNewEvent({ ...newEvent, description: e.target.value });
-                  }
-                }}
-              />
+                }
+              }}
+            />
               <p className='text-[10px] flex justify-end mt-1 text-gray-500'>
                 {newEvent.description.length}/30
               </p>
@@ -682,22 +682,22 @@ export default function UpcomingEvents() {
               <Label className='text-medium'>Date and Time *</Label>
               <div className='space-y-1'>
                 <div className='grid grid-cols-2 gap-2'>
-                  <div>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant='outline'
+            <div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant='outline'
                           className='w-full h-7 text-[11px] flex justify-between'
                         >
                           {newEvent.date
                             ? format(newEvent.date, 'MMM d, yyyy')
                             : 'Pick a date'}
                           <CalendarIcon className='ml-1 h-3 w-3' />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent align='start' className='w-auto p-0'>
-                        <Calendar
-                          mode='single'
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align='start' className='w-auto p-0'>
+                <Calendar
+                  mode='single'
                           selected={newEvent.date || undefined}
                           onSelect={(date) =>
                             setNewEvent({
@@ -785,10 +785,10 @@ export default function UpcomingEvents() {
                                     date <
                                     new Date(new Date().setHours(0, 0, 0, 0))
                                   }
-                                  initialFocus
-                                />
-                              </PopoverContent>
-                            </Popover>
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
                           </div>
                           <div className='flex items-center gap-1'>
                             <div className='grid grid-cols-2 gap-1'>

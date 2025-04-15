@@ -105,9 +105,6 @@ export default function Notes() {
   };
 
   useEffect(() => {
-    console.log('Session status:', status);
-    console.log('Session data:', session);
-
     // Only fetch notes once when component mounts or session changes from unauthenticated to authenticated
     if (
       !noteList.length ||
@@ -123,15 +120,12 @@ export default function Notes() {
 
   async function fetchNotes() {
     try {
-      console.log('Starting to fetch notes...');
       setIsLoading(true);
 
       const response = await fetch('/api/notes');
-      console.log('Notes response status:', response.status);
 
       if (response.ok) {
         const data = await response.json();
-        console.log('Fetched notes data:', data);
 
         if (Array.isArray(data.notes)) {
           const processedNotes = data.notes.map((note: any) => ({
@@ -140,14 +134,12 @@ export default function Notes() {
           }));
           setNoteList(processedNotes);
         } else {
-          console.error('Notes data is not an array:', data.notes);
           setNoteList([]);
         }
       } else {
         throw new Error('Failed to fetch notes');
       }
     } catch (error) {
-      console.error('Error fetching notes:', error);
       showAlert('Error', 'Failed to fetch notes', 'error');
       setNoteList([]);
     } finally {
@@ -612,21 +604,6 @@ export default function Notes() {
               </p>
             </div>
           </div>
-          {/* <AlertDialogFooter className='gap-2 mt-6'>
-            <AlertDialogCancel
-              onClick={() => setOpenAdd(false)}
-              className='border-0 bg-gray-100 hover:bg-gray-200 text-gray-900'
-            >
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={saveNewNote}
-              className='bg-[#124A69] hover:bg-[#0a2f42] text-white disabled:cursor-not-allowed disabled:opacity-50'
-              disabled={!newNote.title.trim()}
-            >
-              Save
-            </AlertDialogAction>
-          </AlertDialogFooter> */}
           <AlertDialogFooter>
             <AlertDialogCancel
               onClick={() => setOpenAdd(false)}
