@@ -11,10 +11,14 @@
 3. Setup Database
   > npx prisma generate
   > npx prisma migrate dev
-  > pnx prisma db push
+  > npx prisma db push
 
 4. Create intial users
   > npx ts-node prisma/add-user.ts
 
 5. Start the development server
  > npm run dev
+
+
+NOTE: To access gui of database
+      > npx prisma studio
