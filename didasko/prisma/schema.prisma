@@ -24,6 +24,13 @@ enum Permission {
   DENIED
 }
 
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+  EXCUSED
+}
+
 model User {
   id         String   @id @default(uuid())
   name       String
@@ -38,9 +45,7 @@ model User {
   accounts   Account[]
   sessions   Session[]
   notes      Note[]
-
   coursesTeaching Course[]    @relation("FacultyCourses")
-  coursesEnrolled Course[]    @relation("StudentCourses")
 
   @@map("users")
 }
@@ -108,7 +113,10 @@ model Student {
   lastName      String
   firstName     String
   middleInitial String?
+  image         String?
   grades        Grade[]
+  attendance    Attendance[]
+  coursesEnrolled Course[] @relation("StudentCourses")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
@@ -183,8 +191,9 @@ model Course {
   semester    String   
   facultyId   String
   faculty     User     @relation("FacultyCourses", fields: [facultyId], references: [id])
-  students    User[]   @relation("StudentCourses")
+  students    Student[]   @relation("StudentCourses")
   schedules   CourseSchedule[]
+  attendance  Attendance[]
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -202,4 +211,22 @@ model CourseSchedule {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("course_schedules")
+}
+
+model Attendance {
+  id          String           @id @default(uuid())
+  studentId   String
+  student     Student         @relation(fields: [studentId], references: [id])
+  courseId    String
+  course      Course          @relation(fields: [courseId], references: [id])
+  date        DateTime
+  status      AttendanceStatus
+  reason      String?         // Optional reason field for excused absences
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  @@map("attendance")
+  @@index([studentId])
+  @@index([courseId])
+  @@index([date])
 }

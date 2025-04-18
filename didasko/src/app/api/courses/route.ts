@@ -27,13 +27,28 @@ export async function GET(request: Request) {
         search
           ? {
               OR: [
-                { title: { contains: search, mode: 'insensitive' as Prisma.QueryMode } },
-                { code: { contains: search, mode: 'insensitive' as Prisma.QueryMode } },
-                { description: { contains: search, mode: 'insensitive' as Prisma.QueryMode } },
+                {
+                  title: {
+                    contains: search,
+                    mode: 'insensitive' as Prisma.QueryMode,
+                  },
+                },
+                {
+                  code: {
+                    contains: search,
+                    mode: 'insensitive' as Prisma.QueryMode,
+                  },
+                },
+                {
+                  description: {
+                    contains: search,
+                    mode: 'insensitive' as Prisma.QueryMode,
+                  },
+                },
               ],
             }
           : {},
-      ].filter(condition => Object.keys(condition).length > 0),
+      ].filter((condition) => Object.keys(condition).length > 0),
     };
 
     // Get total count for pagination
@@ -54,18 +69,16 @@ export async function GET(request: Request) {
         students: {
           select: {
             id: true,
-            name: true,
-            email: true,
+            lastName: true,
+            firstName: true,
+            middleInitial: true,
           },
         },
         schedules: true,
       },
       skip,
       take: limit,
-      orderBy: [
-        { updatedAt: 'desc' },
-        { createdAt: 'desc' }
-      ],
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
     });
 
     return NextResponse.json({
@@ -81,7 +94,7 @@ export async function GET(request: Request) {
     console.error('Error fetching courses:', error);
     return NextResponse.json(
       { error: 'Failed to fetch courses' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -100,22 +113,22 @@ export async function POST(request: Request) {
     if (!code || !title || !facultyId) {
       return NextResponse.json(
         { error: 'Missing required fields' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     // Check if course code already exists
     const existingCourse = await prisma.course.findFirst({
-      where: { 
+      where: {
         code,
-        NOT: { id: body.id }
+        NOT: { id: body.id },
       },
     });
 
     if (existingCourse) {
       return NextResponse.json(
         { error: 'Course code already exists' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -151,7 +164,7 @@ export async function POST(request: Request) {
     console.error('Error creating course:', error);
     return NextResponse.json(
       { error: 'Failed to create course' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -169,7 +182,7 @@ export async function DELETE(request: Request) {
     if (!id) {
       return NextResponse.json(
         { error: 'Course ID is required' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -177,15 +190,15 @@ export async function DELETE(request: Request) {
       where: { id },
     });
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
-      message: 'Course deleted successfully' 
+      message: 'Course deleted successfully',
     });
   } catch (error) {
     console.error('Error deleting course:', error);
     return NextResponse.json(
       { error: 'Failed to delete course' },
-      { status: 500 }
+      { status: 500 },
     );
   }
-} 
+}

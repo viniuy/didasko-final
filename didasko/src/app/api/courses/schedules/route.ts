@@ -12,7 +12,7 @@ async function hasScheduleOverlap(
   day: Date,
   fromTime: string,
   toTime: string,
-  excludeScheduleId?: string
+  excludeScheduleId?: string,
 ) {
   const existingSchedules = await prisma.courseSchedule.findMany({
     where: {
@@ -42,7 +42,7 @@ export async function GET(request: Request) {
     console.log('Starting GET request for schedules');
     const session = await getServerSession(authOptions);
     console.log('Session:', JSON.stringify(session, null, 2));
-    
+
     if (!session) {
       console.log('No session found');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -55,35 +55,34 @@ export async function GET(request: Request) {
     if (!facultyId) {
       return NextResponse.json(
         { error: 'Faculty ID is required' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     // Verify the user exists
     const user = await prisma.user.findUnique({
       where: {
-        id: facultyId
+        id: facultyId,
       },
       select: {
         id: true,
         email: true,
-        role: true
-      }
+        role: true,
+      },
     });
 
     console.log('Found user:', JSON.stringify(user, null, 2));
 
     if (!user) {
       console.log('User not found in database');
-      return NextResponse.json(
-        { error: 'Faculty not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Faculty not found' }, { status: 404 });
     }
 
     // First get all courses for this faculty
     console.log('Finding courses for faculty:', facultyId);
-    const courses = await prisma.$queryRaw<Array<{ id: string; title: string }>>`
+    const courses = await prisma.$queryRaw<
+      Array<{ id: string; title: string }>
+    >`
       SELECT id, title 
       FROM courses 
       WHERE "facultyId" = ${facultyId}
@@ -95,23 +94,25 @@ export async function GET(request: Request) {
       return NextResponse.json([]);
     }
 
-    const courseIds = courses.map(course => course.id);
+    const courseIds = courses.map((course) => course.id);
     console.log('Course IDs:', courseIds);
 
     // Then get schedules for these courses
     console.log('Finding schedules for courses:', courseIds);
-    const schedules = await prisma.$queryRaw<Array<{
-      id: string;
-      courseId: string;
-      day: Date;
-      fromTime: string;
-      toTime: string;
-      course: {
-        code: string;
-        title: string;
-        description: string | null;
-      }
-    }>>`
+    const schedules = await prisma.$queryRaw<
+      Array<{
+        id: string;
+        courseId: string;
+        day: Date;
+        fromTime: string;
+        toTime: string;
+        course: {
+          code: string;
+          title: string;
+          description: string | null;
+        };
+      }>
+    >`
       SELECT 
         cs.id,
         cs."courseId",
@@ -119,6 +120,7 @@ export async function GET(request: Request) {
         cs."fromTime",
         cs."toTime",
         json_build_object(
+          'id', c.id,
           'code', c.code,
           'title', c.title,
           'description', c.description,
@@ -139,12 +141,15 @@ export async function GET(request: Request) {
       stack: error?.stack,
       cause: error?.cause,
       prismaAvailable: !!prisma,
-      prismaModels: Object.keys(prisma)
+      prismaModels: Object.keys(prisma),
     });
 
     return NextResponse.json(
-      { error: 'Failed to fetch schedules', details: error?.message || 'Unknown error' },
-      { status: 500 }
+      {
+        error: 'Failed to fetch schedules',
+        details: error?.message || 'Unknown error',
+      },
+      { status: 500 },
     );
   }
 }
@@ -163,16 +168,21 @@ export async function POST(request: Request) {
     if (!courseId || !day || !fromTime || !toTime) {
       return NextResponse.json(
         { error: 'Missing required fields' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     // Check for schedule overlap
-    const hasOverlap = await hasScheduleOverlap(courseId, new Date(day), fromTime, toTime);
+    const hasOverlap = await hasScheduleOverlap(
+      courseId,
+      new Date(day),
+      fromTime,
+      toTime,
+    );
     if (hasOverlap) {
       return NextResponse.json(
         { error: 'Schedule overlaps with existing schedule' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -193,7 +203,7 @@ export async function POST(request: Request) {
     console.error('Error creating schedule:', error);
     return NextResponse.json(
       { error: 'Failed to create schedule' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -211,7 +221,7 @@ export async function DELETE(request: Request) {
     if (!id) {
       return NextResponse.json(
         { error: 'Schedule ID is required' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -224,7 +234,7 @@ export async function DELETE(request: Request) {
     console.error('Error deleting schedule:', error);
     return NextResponse.json(
       { error: 'Failed to delete schedule' },
-      { status: 500 }
+      { status: 500 },
     );
   }
-} 
+}

@@ -1,10 +1,10 @@
 'use client';
 import React from 'react';
 import { SidebarProvider } from '@/components/ui/sidebar';
-import { AppSidebar } from '@/components/app-sidebar';
-import Courses from '@/components/grading/courses';
-import Header from '@/components/header';
-import Rightsidebar from '@/components/right-sidebar';
+import { AppSidebar } from '@/components/shared/layout/app-sidebar';
+import Header from '@/components/shared/layout/header';
+import Rightsidebar from '@/components/shared/layout/right-sidebar';
+import SemesterCourses from '@/components/shared/semester-courses';
 
 export default function GradingPage() {
   const [open, setOpen] = React.useState(false);
@@ -19,11 +19,11 @@ export default function GradingPage() {
             <div className='flex-1 p-4'>
               <div className='mb-8'>
                 <h2 className='text-2xl font-bold mb-4'>1st Semester</h2>
-                <Courses />
+                <SemesterCourses semester='1st Semester' type='grading' />
               </div>
               <div>
                 <h2 className='text-2xl font-bold mb-4'>2nd Semester</h2>
-                <Courses />
+                <SemesterCourses semester='2nd Semester' type='grading' />
               </div>
             </div>
           </div>

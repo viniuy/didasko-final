@@ -111,7 +111,10 @@ export default function FacultyLoad() {
           {selectedTeacher ? (
             <div>
               <FacultyDetails faculty={selectedTeacher} />
-              <WeeklySchedule teacherInfo={selectedTeacher} onBack={handleBack} />
+              <WeeklySchedule
+                teacherInfo={selectedTeacher}
+                onBack={handleBack}
+              />
             </div>
           ) : (
             <FacultyList

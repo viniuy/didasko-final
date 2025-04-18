@@ -1,34 +1,21 @@
-import { prisma } from '@/lib/db';
-import { Permission, Role, WorkType } from '@prisma/client';
+import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { User, Library, Users, UserCheck, UserX } from 'lucide-react';
 import { AdminDataTable } from './_components/admin-data-table';
-import { AppSidebar } from '@/components/app-sidebar';
-import Header from '@/components/header';
-import Rightsidebar from '@/components/right-sidebar';
+import { AppSidebar } from '@/components/shared/layout/app-sidebar';
+import Header from '@/components/shared/layout/header';
+import Rightsidebar from '@/components/shared/layout/right-sidebar';
+import { getDashboardData } from './_components/dashboard-data';
 
 export default async function AdminDashboardPage() {
-  const users = await prisma.user.findMany({
-    orderBy: { createdAt: 'desc' },
-  });
-
-  const fullTimeCount = await prisma.user.count({
-    where: { workType: WorkType.FULL_TIME, role: Role.FACULTY },
-  });
-
-  const partTimeCount = await prisma.user.count({
-    where: { workType: WorkType.PART_TIME, role: Role.FACULTY },
-  });
-
-  const grantedCount = await prisma.user.count({
-    where: { permission: Permission.GRANTED },
-  });
-
-  const deniedCount = await prisma.user.count({
-    where: { permission: Permission.DENIED },
-  });
-
-  const totalUsers = await prisma.user.count();
+  const {
+    users,
+    fullTimeCount,
+    partTimeCount,
+    grantedCount,
+    deniedCount,
+    totalUsers,
+  } = await getDashboardData();
 
   return (
     <div className='flex h-screen w-screen overflow-hidden relative'>

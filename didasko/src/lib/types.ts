@@ -1,13 +1,12 @@
 export enum WorkType {
   FULL_TIME = 'FULL_TIME',
   PART_TIME = 'PART_TIME',
-  CONTRACTUAL = 'CONTRACTUAL'
+  CONTRACTUAL = 'CONTRACTUAL',
 }
 
 export enum Permission {
-  READ = 'READ',
-  WRITE = 'WRITE',
-  ADMIN = 'ADMIN'
+  GRANTED = 'GRANTED',
+  DENIED = 'DENIED',
 }
 
 export enum Role {
@@ -25,7 +24,7 @@ export interface Course {
   department: string;
   facultyId: string;
   faculty: User;
-  students: User[];
+  students: Student[];
   schedules: CourseSchedule[];
   createdAt: Date;
   updatedAt: Date;
@@ -51,6 +50,16 @@ export interface User {
   workType: WorkType;
   permission: Permission;
   coursesTeaching: Course[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Student {
+  id: string;
+  lastName: string;
+  firstName: string;
+  middleInitial?: string;
+  image?: string;
   coursesEnrolled: Course[];
   createdAt: Date;
   updatedAt: Date;

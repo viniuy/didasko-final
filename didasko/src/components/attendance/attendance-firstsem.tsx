@@ -39,18 +39,17 @@ const CourseCard = ({ schedule }: { schedule: Schedule }) => {
     <Card className='bg-[#124A69] text-white rounded-lg shadow-md p-4 w-full max-w-[400px] flex flex-col justify-between h-full'>
       <div>
         <CardHeader className='flex justify-between items-center'>
-          <CardTitle className='text-lg font-bold'>{schedule.course.title}</CardTitle>
+          <CardTitle className='text-lg font-bold'>
+            {schedule.course.title}
+          </CardTitle>
           <BookOpenText size={50} />
         </CardHeader>
         <CardContent>
-          <p className='text-sm'>
-            {schedule.course.code}
-          </p>
-          <p className='text-sm font-semibold'>
-            {schedule.course.description}
-          </p>
+          <p className='text-sm'>{schedule.course.code}</p>
+          <p className='text-sm font-semibold'>{schedule.course.description}</p>
           <p className='text-xs text-gray-400'>
-            Schedule: {format(new Date(schedule.day), 'EEEE')} {schedule.fromTime} - {schedule.toTime}
+            Schedule: {format(new Date(schedule.day), 'EEEE')}{' '}
+            {schedule.fromTime} - {schedule.toTime}
           </p>
         </CardContent>
       </div>
@@ -60,7 +59,9 @@ const CourseCard = ({ schedule }: { schedule: Schedule }) => {
           variant='secondary'
           className='bg-[#FAEDCB] text-black text-sm'
         >
-          <Link href={`/attendance/${schedule.id}`}>View Details</Link>
+          <Link href={`/attendance/class?courseId=${schedule.courseId}`}>
+            View Details
+          </Link>
         </Button>
       </div>
     </Card>
@@ -114,17 +115,24 @@ export default function FirstSemesterCourses() {
     }
 
     try {
-      const response = await fetch(`/api/courses/schedules?facultyId=${userId}`);
+      const response = await fetch(
+        `/api/courses/schedules?facultyId=${userId}`,
+      );
       const data = await response.json();
       console.log('API Response:', data);
       if (response.ok) {
         // Filter for first semester courses with null checks
         const firstSemesterSchedules = data.filter((schedule: Schedule) => {
           console.log('Schedule semester:', schedule?.course?.semester);
-          return schedule?.course?.semester && 
-                 schedule.course.semester.trim() === '1st Semester';
+          return (
+            schedule?.course?.semester &&
+            schedule.course.semester.trim() === '1st Semester'
+          );
         });
-        console.log('Filtered first semester schedules:', firstSemesterSchedules);
+        console.log(
+          'Filtered first semester schedules:',
+          firstSemesterSchedules,
+        );
         setSchedules(firstSemesterSchedules);
       }
     } catch (error) {
@@ -165,8 +173,12 @@ export default function FirstSemesterCourses() {
       <Card className='p-4 shadow-md rounded-lg'>
         <div className='text-center py-8'>
           <BookOpenText className='mx-auto mb-4' size={50} />
-          <h2 className='text-xl font-semibold mb-2'>No First Semester Courses</h2>
-          <p className='text-gray-500'>You don't have any courses assigned for the first semester.</p>
+          <h2 className='text-xl font-semibold mb-2'>
+            No First Semester Courses
+          </h2>
+          <p className='text-gray-500'>
+            You don't have any courses assigned for the first semester.
+          </p>
         </div>
       </Card>
     );
@@ -191,8 +203,12 @@ export default function FirstSemesterCourses() {
             <PaginationContent>
               <PaginationItem>
                 <PaginationPrevious
-                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                  className={currentPage === 1 ? 'pointer-events-none opacity-50' : ''}
+                  onClick={() =>
+                    setCurrentPage((prev) => Math.max(prev - 1, 1))
+                  }
+                  className={
+                    currentPage === 1 ? 'pointer-events-none opacity-50' : ''
+                  }
                 />
               </PaginationItem>
               {[...Array(totalPages)].map((_, i) => (
@@ -200,7 +216,9 @@ export default function FirstSemesterCourses() {
                   <PaginationLink
                     isActive={currentPage === i + 1}
                     onClick={() => setCurrentPage(i + 1)}
-                    className={currentPage === i + 1 ? 'bg-[#124A69] text-white' : ''}
+                    className={
+                      currentPage === i + 1 ? 'bg-[#124A69] text-white' : ''
+                    }
                   >
                     {i + 1}
                   </PaginationLink>
@@ -208,8 +226,14 @@ export default function FirstSemesterCourses() {
               ))}
               <PaginationItem>
                 <PaginationNext
-                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                  className={currentPage === totalPages ? 'pointer-events-none opacity-50' : ''}
+                  onClick={() =>
+                    setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                  }
+                  className={
+                    currentPage === totalPages
+                      ? 'pointer-events-none opacity-50'
+                      : ''
+                  }
                 />
               </PaginationItem>
             </PaginationContent>

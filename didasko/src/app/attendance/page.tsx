@@ -1,12 +1,11 @@
 'use client';
 import { SidebarProvider } from '@/components/ui/sidebar';
-import { AppSidebar } from '@/components/app-sidebar';
-import Header from '@/components/header';
-import Rightsidebar from '@/components/right-sidebar';
+import { AppSidebar } from '@/components/shared/layout/app-sidebar';
+import Header from '@/components/shared/layout/header';
+import Rightsidebar from '@/components/shared/layout/right-sidebar';
 import React from 'react';
 import Schedule from '@/components/attendance/attendance-schedule';
-import Firstsemlist from '@/components/attendance/attendance-firstsem';
-import Secondsemlist from '@/components/attendance/attendance-secondsem';
+import SemesterCourses from '@/components/shared/semester-courses';
 
 export default function AttendancePage() {
   const [open, setOpen] = React.useState(false);
@@ -32,11 +31,11 @@ export default function AttendancePage() {
             <h2 className='pl-2 pb-1 text-2xl font-bold text-muted-foreground'>
               1st Semester
             </h2>
-            <Firstsemlist />
+            <SemesterCourses semester='1st Semester' type='attendance' />
             <h2 className='pl-2 pb-1 text-2xl font-bold text-muted-foreground'>
               2nd Semester
             </h2>
-            <Secondsemlist />
+            <SemesterCourses semester='2nd Semester' type='attendance' />
           </div>
           <Rightsidebar />
         </main>

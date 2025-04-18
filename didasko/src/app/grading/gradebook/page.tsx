@@ -1,9 +1,9 @@
 'use client';
 import { SidebarProvider } from '@/components/ui/sidebar';
-import { AppSidebar } from '@/components/app-sidebar';
+import { AppSidebar } from '@/components/shared/layout/app-sidebar';
 import { TableDemo } from '@/components/grading/gradebook';
-import Header from '@/components/header';
-import Rightsidebar from '@/components/right-sidebar';
+import Header from '@/components/shared/layout/header';
+import Rightsidebar from '@/components/shared/layout/right-sidebar';
 import React from 'react';
 
 export default function GradebookPage() {

@@ -13,7 +13,7 @@ import {
   PaginationNext,
 } from '@/components/ui/pagination';
 import { useSession } from 'next-auth/react';
-import { format } from 'date-fns';
+import Link from 'next/link';
 
 interface Course {
   id: string;
@@ -40,15 +40,18 @@ const CourseCard = ({ course }: { course: Course }) => {
         <Book size={20} />
       </CardHeader>
       <CardContent>
+        <p className='text-sm'>{course.code}</p>
         <p className='text-sm'>
-          {course.code}
+          {course.description || 'No description available'}
         </p>
-        <p className='text-sm'>{course.description || 'No description available'}</p>
         <Button
+          asChild
           variant='secondary'
           className='mt-2 bg-[#FAEDCB] text-black text-sm'
         >
-          View details
+          <Link href={`/attendance/class?courseId=${course.id}`}>
+            View Details
+          </Link>
         </Button>
       </CardContent>
     </Card>
@@ -105,7 +108,9 @@ export default function Courses() {
     }
 
     try {
-      const response = await fetch(`/api/courses/schedules?facultyId=${userId}`);
+      const response = await fetch(
+        `/api/courses/schedules?facultyId=${userId}`,
+      );
       const data = await response.json();
       if (response.ok) {
         setSchedules(data);
@@ -124,17 +129,17 @@ export default function Courses() {
   }, [status, session?.user?.email]);
 
   // Get all courses from schedules
-  const allCourses = schedules.map(schedule => ({
+  const allCourses = schedules.map((schedule) => ({
     ...schedule.course,
     id: schedule.course.id || schedule.courseId,
-    scheduleId: schedule.id
+    scheduleId: schedule.id,
   }));
 
   // Calculate pagination
   const totalPages = Math.ceil(allCourses.length / itemsPerPage);
   const currentCourses = allCourses.slice(
     (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
+    currentPage * itemsPerPage,
   );
 
   if (status === 'loading' || isLoading) {
@@ -152,7 +157,9 @@ export default function Courses() {
   if (status === 'unauthenticated') {
     return (
       <Card className='p-4 shadow-md rounded-lg'>
-        <p className='text-center text-gray-500'>Please sign in to view courses</p>
+        <p className='text-center text-gray-500'>
+          Please sign in to view courses
+        </p>
       </Card>
     );
   }
@@ -161,10 +168,7 @@ export default function Courses() {
     <Card className='pr-4 pl-4 shadow-md rounded-lg'>
       <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
         {currentCourses.map((course) => (
-          <CourseCard 
-            key={`schedule-${course.scheduleId}`} 
-            course={course} 
-          />
+          <CourseCard key={`schedule-${course.scheduleId}`} course={course} />
         ))}
       </div>
 

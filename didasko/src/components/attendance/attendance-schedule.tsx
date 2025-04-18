@@ -33,13 +33,23 @@ interface Schedule {
 }
 
 // Course Card Component
+// Course Card Component
 const CourseCard = ({ schedule }: { schedule: Schedule }) => {
   const router = useRouter();
-  const dayStr = new Date(schedule.day).toLocaleDateString('en-US', { weekday: 'short' });
+  const dayStr = new Date(schedule.day).toLocaleDateString('en-US', {
+    weekday: 'short',
+  });
   const timeStr = `${schedule.fromTime} - ${schedule.toTime}`;
 
+  const handleClick = () => {
+    router.push(`/attendance/class?courseId=${schedule.courseId}`);
+  };
+
   return (
-    <Card className='bg-[#FAEDCB] text-[#124A69] rounded-lg shadow-md p-4 w-full'>
+    <Card
+      className='bg-[#FAEDCB] text-[#124A69] rounded-lg shadow-md p-4 w-full cursor-pointer hover:bg-[#F5E5B8] transition-colors'
+      onClick={handleClick}
+    >
       <h2 className='text-lg font-bold'>{schedule.course.title}</h2>
       <p className='text-sm font-semibold -mt-3'>{schedule.course.code}</p>
       <div className='flex items-center -mt-2 text-gray-600'>
@@ -99,7 +109,9 @@ export default function AttendanceSchedule() {
     }
 
     try {
-      const response = await fetch(`/api/courses/schedules?facultyId=${userId}`);
+      const response = await fetch(
+        `/api/courses/schedules?facultyId=${userId}`,
+      );
       const data = await response.json();
       if (response.ok) {
         setSchedules(data);
@@ -127,7 +139,7 @@ export default function AttendanceSchedule() {
   const totalPages = Math.ceil(schedules.length / itemsPerPage);
   const currentSchedules = schedules.slice(
     (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
+    currentPage * itemsPerPage,
   );
 
   if (status === 'loading' || isLoading) {
@@ -158,7 +170,9 @@ export default function AttendanceSchedule() {
             <PaginationItem>
               <PaginationPrevious
                 onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                className={currentPage === 1 ? 'pointer-events-none opacity-50' : ''}
+                className={
+                  currentPage === 1 ? 'pointer-events-none opacity-50' : ''
+                }
               />
             </PaginationItem>
             {[...Array(totalPages)].map((_, i) => (
@@ -166,7 +180,9 @@ export default function AttendanceSchedule() {
                 <PaginationLink
                   isActive={currentPage === i + 1}
                   onClick={() => setCurrentPage(i + 1)}
-                  className={currentPage === i + 1 ? 'bg-[#124A69] text-white' : ''}
+                  className={
+                    currentPage === i + 1 ? 'bg-[#124A69] text-white' : ''
+                  }
                 >
                   {i + 1}
                 </PaginationLink>
@@ -174,8 +190,14 @@ export default function AttendanceSchedule() {
             ))}
             <PaginationItem>
               <PaginationNext
-                onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                className={currentPage === totalPages ? 'pointer-events-none opacity-50' : ''}
+                onClick={() =>
+                  setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                }
+                className={
+                  currentPage === totalPages
+                    ? 'pointer-events-none opacity-50'
+                    : ''
+                }
               />
             </PaginationItem>
           </PaginationContent>

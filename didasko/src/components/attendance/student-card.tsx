@@ -50,6 +50,19 @@ export function StudentCard({
   onRemoveImage,
   onStatusChange,
 }: StudentCardProps) {
+  const getImageSrc = () => {
+    if (tempImage?.index === index) {
+      return tempImage.dataUrl;
+    }
+    if (student.image) {
+      if (student.image.startsWith('data:image')) {
+        return student.image;
+      }
+      return student.image;
+    }
+    return '/placeholder.png';
+  };
+
   return (
     <div className='w-full bg-white p-6 rounded-lg shadow-sm border border-gray-100'>
       <div className='flex flex-col items-center gap-3'>
@@ -60,15 +73,16 @@ export function StudentCard({
               (tempImage?.index === index && tempImage.dataUrl) ? (
                 <div className='relative'>
                   <Image
-                    src={
-                      tempImage?.index === index
-                        ? tempImage.dataUrl
-                        : student.image || '/placeholder.png'
-                    }
+                    src={getImageSrc()}
                     alt={student.name}
                     width={64}
                     height={64}
                     className='w-16 h-16 rounded-full object-cover group-hover:opacity-80 transition-opacity'
+                    onError={(e) => {
+                      // If image fails to load, show placeholder
+                      const target = e.target as HTMLImageElement;
+                      target.src = '/placeholder.png';
+                    }}
                   />
                   <div className='absolute inset-0 bg-black bg-opacity-40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity'>
                     <Camera className='text-white w-8 h-8' />
@@ -97,15 +111,16 @@ export function StudentCard({
                   (tempImage?.index === index && tempImage.dataUrl) ? (
                     <div className='relative'>
                       <Image
-                        src={
-                          tempImage?.index === index
-                            ? tempImage.dataUrl
-                            : student.image || '/placeholder.png'
-                        }
+                        src={getImageSrc()}
                         alt={student.name}
                         width={128}
                         height={128}
                         className='w-32 h-32 rounded-full object-cover'
+                        onError={(e) => {
+                          // If image fails to load, show placeholder
+                          const target = e.target as HTMLImageElement;
+                          target.src = '/placeholder.png';
+                        }}
                       />
                       <div className='absolute inset-0 bg-black bg-opacity-40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity'>
                         <Camera className='text-white w-8 h-8' />

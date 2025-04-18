@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,77 +29,18 @@ import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { StudentCard } from './student-card';
 import { FilterSheet } from './filter-sheet';
+import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { AddStudentSheet } from './add-student-sheet';
 
 interface Student {
+  id: string;
   name: string;
   status: string;
   image?: string;
   date?: string;
   semester?: string;
 }
-
-const students: Student[] = [
-  {
-    name: 'Dimero, Lance',
-    status: '',
-    date: '2024-02-20',
-    semester: '1st Semester',
-  },
-  {
-    name: 'Dizon, Vincent',
-    status: 'ABSENT',
-    date: '2024-02-20',
-    semester: '1st Semester',
-  },
-  {
-    name: 'Esplana, Suzanne Alyanna',
-    status: '',
-    date: '2024-02-20',
-    semester: '1st Semester',
-  },
-  {
-    name: 'Gonzales, Ivan',
-    status: '',
-    date: '2024-02-20',
-    semester: '1st Semester',
-  },
-  {
-    name: 'Inso, John Lester',
-    status: '',
-    date: '2024-02-20',
-    semester: '1st Semester',
-  },
-  {
-    name: 'Lazatin, Julius',
-    status: '',
-    date: '2024-02-19',
-    semester: '1st Semester',
-  },
-  {
-    name: 'Lopez, Janrei Marcus',
-    status: '',
-    date: '2024-02-19',
-    semester: '1st Semester',
-  },
-  {
-    name: 'Loresca, Mica Ella',
-    status: '',
-    date: '2024-02-19',
-    semester: '1st Semester',
-  },
-  {
-    name: 'Magante, Keith Izam',
-    status: '',
-    date: '2024-02-19',
-    semester: '1st Semester',
-  },
-  {
-    name: 'Magdadaro, Jovial',
-    status: '',
-    date: '2024-02-19',
-    semester: '1st Semester',
-  },
-];
 
 interface FilterState {
   date: Date | undefined;
@@ -116,7 +57,10 @@ interface ExcelRow {
 }
 
 export default function StudentList() {
-  const [studentList, setStudentList] = useState<Student[]>(students);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const courseId = searchParams.get('courseId');
+  const [studentList, setStudentList] = useState<Student[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedDate] = useState<'newest' | 'oldest' | ''>('');
@@ -137,6 +81,33 @@ export default function StudentList() {
   } | null>(null);
   const [showExportPreview, setShowExportPreview] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStudents = async () => {
+      if (!courseId) return;
+
+      try {
+        const response = await fetch(`/api/courses/${courseId}/students`);
+        if (!response.ok) {
+          if (response.status === 404) {
+            setStudentList([]);
+            return;
+          }
+          throw new Error('Failed to fetch students');
+        }
+        const data = await response.json();
+        setStudentList(data);
+      } catch (error) {
+        console.error('Error fetching students:', error);
+        setStudentList([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchStudents();
+  }, [courseId]);
 
   // Filter students based on all filters
   const filteredStudents = useMemo(() => {
@@ -308,7 +279,8 @@ export default function StudentList() {
         const jsonData = XLSX.utils.sheet_to_json<ExcelRow>(worksheet);
 
         // Process the imported data
-        const importedStudents = jsonData.map((row: ExcelRow) => ({
+        const importedStudents = jsonData.map((row: ExcelRow, index) => ({
+          id: `imported-${index}`,
           name: row.Students || row.Name || '',
           status: row.Status || '',
           date: row.Date || new Date().toISOString().split('T')[0],
@@ -325,12 +297,131 @@ export default function StudentList() {
     reader.readAsBinaryString(file);
   };
 
+  const handleAddStudent = async (student: {
+    lastName: string;
+    firstName: string;
+    middleInitial?: string;
+    image?: string;
+  }) => {
+    try {
+      // Create the student in the database
+      const response = await fetch('/api/students', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...student,
+          courseId,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add student');
+      }
+
+      const newStudent = await response.json();
+
+      // Add the new student to the list
+      setStudentList((prev) => [
+        ...prev,
+        {
+          id: newStudent.id,
+          name: `${student.lastName}, ${student.firstName}${
+            student.middleInitial ? ` ${student.middleInitial}.` : ''
+          }`,
+          status: '',
+          image: student.image,
+          date: new Date().toISOString().split('T')[0],
+          semester: '1st Semester',
+        },
+      ]);
+    } catch (error) {
+      console.error('Error adding student:', error);
+      toast.error('Failed to add student');
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className='flex flex-col h-screen'>
+        <div className='flex items-center gap-4 p-4 border-b bg-white'>
+          <Link href='/attendance'>
+            <Button variant='ghost' size='icon' className='hover:bg-gray-100'>
+              <ChevronLeft className='h-5 w-5' />
+            </Button>
+          </Link>
+          <div className='flex items-center gap-2'>
+            <div>
+              <h1 className='text-[#124A69] font-bold text-xl'>Loading...</h1>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (studentList.length === 0) {
+    return (
+      <div className='flex flex-col h-screen'>
+        <div className='flex items-center gap-4 p-4 border-b bg-white'>
+          <Link href='/attendance'>
+            <Button variant='ghost' size='icon' className='hover:bg-gray-100'>
+              <ChevronLeft className='h-5 w-5' />
+            </Button>
+          </Link>
+          <div className='flex items-center gap-2'>
+            <div>
+              <h1 className='text-[#124A69] font-bold text-xl'>
+                No Students Found
+              </h1>
+              <p className='text-gray-500 text-sm'>
+                There are no students enrolled in this course.
+              </p>
+            </div>
+          </div>
+          <div className='ml-auto'>
+            <AddStudentSheet onAddStudent={handleAddStudent} />
+          </div>
+        </div>
+        <div className='flex-1 flex items-center justify-center bg-gray-50'>
+          <div className='text-center'>
+            <div className='w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4'>
+              <svg
+                xmlns='http://www.w3.org/2000/svg'
+                className='h-12 w-12 text-gray-400'
+                viewBox='0 0 24 24'
+                fill='none'
+                stroke='currentColor'
+                strokeWidth='2'
+                strokeLinecap='round'
+                strokeLinejoin='round'
+              >
+                <path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' />
+                <circle cx='12' cy='7' r='4' />
+              </svg>
+            </div>
+            <h2 className='text-xl font-semibold text-gray-700 mb-2'>
+              No Students Yet
+            </h2>
+            <p className='text-gray-500 mb-4'>
+              Add students to start tracking attendance
+            </p>
+            <AddStudentSheet onAddStudent={handleAddStudent} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className='flex flex-col h-screen'>
       <div className='flex items-center gap-4 p-4 border-b bg-white'>
-        <Button variant='ghost' size='icon' className='hover:bg-gray-100'>
-          <ChevronLeft className='h-5 w-5' />
-        </Button>
+        <Link href='/attendance'>
+          <Button variant='ghost' size='icon' className='hover:bg-gray-100'>
+            <ChevronLeft className='h-5 w-5' />
+          </Button>
+        </Link>
         <div className='flex items-center gap-2'>
           <div>
             <h1 className='text-[#124A69] font-bold text-xl'>MIS</h1>
@@ -373,6 +464,7 @@ export default function StudentList() {
             >
               <Download className='h-4 w-4' /> Import from Excel
             </Button>
+            <AddStudentSheet onAddStudent={handleAddStudent} />
           </div>
         </div>
       </div>

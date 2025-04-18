@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: { courseId: string } },
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -14,7 +14,7 @@ export async function GET(
     }
 
     const course = await prisma.course.findUnique({
-      where: { id: params.id },
+      where: { id: params.courseId },
       include: {
         faculty: {
           select: {
@@ -44,14 +44,14 @@ export async function GET(
     console.error('Error fetching course:', error);
     return NextResponse.json(
       { error: 'Failed to fetch course' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: { courseId: string } },
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -66,7 +66,7 @@ export async function PUT(
     if (!code || !title || !facultyId) {
       return NextResponse.json(
         { error: 'Missing required fields' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -74,19 +74,19 @@ export async function PUT(
     const existingCourse = await prisma.course.findFirst({
       where: {
         code,
-        NOT: { id: params.id },
+        NOT: { id: params.courseId },
       },
     });
 
     if (existingCourse) {
       return NextResponse.json(
         { error: 'Course code already exists' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const course = await prisma.course.update({
-      where: { id: params.id },
+      where: { id: params.courseId },
       data: {
         code,
         title,
@@ -118,14 +118,14 @@ export async function PUT(
     console.error('Error updating course:', error);
     return NextResponse.json(
       { error: 'Failed to update course' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: { courseId: string } },
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -134,7 +134,7 @@ export async function DELETE(
     }
 
     await prisma.course.delete({
-      where: { id: params.id },
+      where: { id: params.courseId },
     });
 
     return NextResponse.json({ message: 'Course deleted successfully' });
@@ -142,7 +142,7 @@ export async function DELETE(
     console.error('Error deleting course:', error);
     return NextResponse.json(
       { error: 'Failed to delete course' },
-      { status: 500 }
+      { status: 500 },
     );
   }
-} 
+}

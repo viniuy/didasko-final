@@ -9,7 +9,6 @@ export default function Rightsidebar() {
       <div className='flex items-center justify-center'></div>
       <div className='flex-grow'>
         <UpcomingEvents />
-
         <Notes />
       </div>
     </div>

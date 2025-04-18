@@ -2,8 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 
 const ChatbotButton = () => {
   const [position, setPosition] = useState({
-    x: window.innerWidth - 100,
-    y: window.innerHeight - 100,
+    x: typeof window !== 'undefined' ? window.innerWidth - 100 : 0,
+    y: typeof window !== 'undefined' ? window.innerHeight - 100 : 0,
   });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -19,7 +19,7 @@ const ChatbotButton = () => {
 
   const handleMouseMove = useCallback(
     (e: MouseEvent) => {
-      if (isDragging && buttonRef.current) {
+      if (isDragging && buttonRef.current && typeof window !== 'undefined') {
         const newX = Math.min(
           Math.max(0, e.clientX - dragStart.x),
           window.innerWidth - buttonRef.current.offsetWidth,
@@ -40,16 +40,23 @@ const ChatbotButton = () => {
   }, []);
 
   useEffect(() => {
-    if (isDragging) {
+    if (isDragging && typeof window !== 'undefined') {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
     }
 
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+      }
     };
   }, [isDragging, handleMouseMove, handleMouseUp]);
+
+  // Don't render anything during server-side rendering
+  if (typeof window === 'undefined') {
+    return null;
+  }
 
   return (
     <div

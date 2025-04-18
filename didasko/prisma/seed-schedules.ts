@@ -8,93 +8,93 @@ const mockSchedules = [
     day: 'Mon',
     course: 'IT CAPSTONE',
     time: '8:00 AM - 10:30 AM',
-    details: 'Room: 101 | Section: A | Students: 30',
-    semester: '1st Semester'
+    details: 'Room: 101',
+    semester: '1st Semester',
   },
   {
     day: 'Mon',
     course: 'OOP',
     time: '11:00 AM - 2:00 PM',
-    details: 'Room: 101 | Section: A | Students: 30',
-    semester: '1st Semester'
+    details: 'Room: 101',
+    semester: '1st Semester',
   },
   {
     day: 'Tue',
     course: 'IAS',
     time: '8:00 AM - 10:30 AM',
-    details: 'Room: 101 | Section: A | Students: 30',
-    semester: '1st Semester'
+    details: 'Room: 101',
+    semester: '1st Semester',
   },
   {
     day: 'Wed',
     course: 'MOBSTECH',
     time: '10:30 AM - 1:30 PM',
-    details: 'Room: 101 | Section: A | Students: 30',
-    semester: '1st Semester'
+    details: 'Room: 101',
+    semester: '1st Semester',
   },
   {
     day: 'Thu',
     course: 'ETHICS',
     time: '8:00 AM - 10:30 AM',
-    details: 'Room: 101 | Section: A | Students: 30',
-    semester: '1st Semester'
+    details: 'Room: 101',
+    semester: '1st Semester',
   },
   {
     day: 'Fri',
     course: 'COMPRO 2',
     time: '9:30 AM - 12:00 PM',
-    details: 'Room: 101 | Section: A | Students: 30',
-    semester: '1st Semester'
+    details: 'Room: 101',
+    semester: '1st Semester',
   },
   // Second Semester Courses
   {
     day: 'Mon',
     course: 'PIIST',
     time: '3:00 PM - 5:30 PM',
-    details: 'Room: 101 | Section: A | Students: 30',
-    semester: '2nd Semester'
+    details: 'Room: 101',
+    semester: '2nd Semester',
   },
   {
     day: 'Tue',
     course: 'EUTHENICS',
     time: '11:00 AM - 2:00 PM',
-    details: 'Room: 101 | Section: A | Students: 30',
-    semester: '2nd Semester'
+    details: 'Room: 101',
+    semester: '2nd Semester',
   },
   {
     day: 'Wed',
     course: 'MIS',
     time: '2:00 PM - 4:30 PM',
-    details: 'Room: 101 | Section: A | Students: 30',
-    semester: '2nd Semester'
+    details: 'Room: 101',
+    semester: '2nd Semester',
   },
   {
     day: 'Thu',
     course: 'GREAT BOOKS',
     time: '11:30 AM - 2:30 PM',
-    details: 'Room: 101 | Section: A | Students: 30',
-    semester: '2nd Semester'
+    details: 'Room: 101',
+    semester: '2nd Semester',
   },
   {
     day: 'Thu',
     course: 'WEBSTECH',
     time: '11:00 AM - 2:00 PM',
-    details: 'Room: 101 | Section: A | Students: 30',
-    semester: '2nd Semester'
+    details: 'Room: 101',
+    semester: '2nd Semester',
   },
   {
     day: 'Fri',
     course: 'PROLANS',
     time: '5:30 PM - 7:30 PM',
-    details: 'Room: 101 | Section: A | Students: 30',
-    semester: '2nd Semester'
-  }
+    details: 'Room: 101',
+    semester: '2nd Semester',
+  },
 ];
 
 async function main() {
   // Get the current user's ID from command line argument
   const userId = process.argv[2];
-  
+
   if (!userId) {
     console.error('Please provide a user ID as a command line argument');
     console.error('Usage: npm run seed-schedules <userId>');
@@ -118,7 +118,7 @@ async function main() {
       return prisma.course.upsert({
         where: { code: courseCode },
         update: {
-          semester: schedule.semester // Update semester if course exists
+          semester: schedule.semester,
         },
         create: {
           code: courseCode,
@@ -128,13 +128,13 @@ async function main() {
           facultyId: userId,
         },
       });
-    })
+    }),
   );
 
   // Then create the schedules
   await Promise.all(
     mockSchedules.map(async (schedule, index) => {
-      const [fromTime, toTime] = schedule.time.split(' - ').map(t => {
+      const [fromTime, toTime] = schedule.time.split(' - ').map((t) => {
         const [time, period] = t.split(' ');
         const [hours, minutes] = time.split(':');
         let hour = parseInt(hours);
@@ -145,7 +145,15 @@ async function main() {
 
       // Get the next occurrence of the day
       const today = new Date();
-      const dayOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(schedule.day);
+      const dayOfWeek = [
+        'Sun',
+        'Mon',
+        'Tue',
+        'Wed',
+        'Thu',
+        'Fri',
+        'Sat',
+      ].indexOf(schedule.day);
       const daysUntilNext = (dayOfWeek - today.getDay() + 7) % 7;
       const nextDay = new Date(today);
       nextDay.setDate(today.getDate() + daysUntilNext);
@@ -158,7 +166,7 @@ async function main() {
           toTime,
         },
       });
-    })
+    }),
   );
 
   console.log('Schedules have been seeded with semester information. 🌱');
@@ -171,4 +179,4 @@ main()
   })
   .finally(async () => {
     await prisma.$disconnect();
-  }); 
+  });

@@ -22,11 +22,16 @@ interface WeeklyScheduleProps {
   onBack: () => void;
 }
 
-export default function WeeklySchedule({ teacherInfo, onBack }: WeeklyScheduleProps) {
+export default function WeeklySchedule({
+  teacherInfo,
+  onBack,
+}: WeeklyScheduleProps) {
   const { data: session } = useSession();
   const [schedules, setSchedules] = useState<ScheduleWithCourse[]>([]);
   const [loading, setLoading] = useState(true);
-  const currentDay = new Date().toLocaleDateString('en-US', { weekday: 'short' });
+  const currentDay = new Date().toLocaleDateString('en-US', {
+    weekday: 'short',
+  });
 
   const fetchUserIdByEmail = async (email: string) => {
     try {
@@ -55,7 +60,9 @@ export default function WeeklySchedule({ teacherInfo, onBack }: WeeklySchedulePr
     }
 
     try {
-      const response = await fetch(`/api/courses/schedules?facultyId=${userId}`);
+      const response = await fetch(
+        `/api/courses/schedules?facultyId=${userId}`,
+      );
       const data = await response.json();
       if (response.ok) {
         setSchedules(data);
@@ -75,12 +82,16 @@ export default function WeeklySchedule({ teacherInfo, onBack }: WeeklySchedulePr
   }, [teacherInfo?.email]);
 
   const getSchedulesForDay = (dayName: string) => {
-    return schedules.filter(schedule => {
-      const scheduleDay = new Date(schedule.day).toLocaleDateString('en-US', { weekday: 'short' });
-      return scheduleDay === dayName;
-    }).sort((a, b) => {
-      return a.fromTime.localeCompare(b.fromTime);
-    });
+    return schedules
+      .filter((schedule) => {
+        const scheduleDay = new Date(schedule.day).toLocaleDateString('en-US', {
+          weekday: 'short',
+        });
+        return scheduleDay === dayName;
+      })
+      .sort((a, b) => {
+        return a.fromTime.localeCompare(b.fromTime);
+      });
   };
 
   const formatTime = (time: string) => {
@@ -93,13 +104,13 @@ export default function WeeklySchedule({ teacherInfo, onBack }: WeeklySchedulePr
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow p-4">
-        <div className="animate-pulse">
-          <div className="h-4 bg-gray-200 rounded w-1/4 mb-4"></div>
-          <div className="space-y-3">
-            <div className="h-4 bg-gray-200 rounded"></div>
-            <div className="h-4 bg-gray-200 rounded"></div>
-            <div className="h-4 bg-gray-200 rounded"></div>
+      <div className='bg-white rounded-lg shadow p-4'>
+        <div className='animate-pulse'>
+          <div className='h-4 bg-gray-200 rounded w-1/4 mb-4'></div>
+          <div className='space-y-3'>
+            <div className='h-4 bg-gray-200 rounded'></div>
+            <div className='h-4 bg-gray-200 rounded'></div>
+            <div className='h-4 bg-gray-200 rounded'></div>
           </div>
         </div>
       </div>
@@ -107,26 +118,37 @@ export default function WeeklySchedule({ teacherInfo, onBack }: WeeklySchedulePr
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm">
-      <div className="p-4 border-b">
-        <h2 className="text-xl font-bold text-center text-[#124A69]">MY WEEKLY COURSE SCHEDULE</h2>
+    <div className='bg-white rounded-lg shadow-sm'>
+      <div className='p-4 border-b'>
+        <h2 className='text-xl font-bold text-center text-[#124A69]'>
+          MY WEEKLY COURSE SCHEDULE
+        </h2>
       </div>
-      <div className="grid grid-cols-7 gap-4 p-4">
-        {days.map(day => (
-          <div key={day} className="flex flex-col">
-            <div className={`text-center font-semibold mb-2 text-[#124A69] ${day === currentDay ? 'text-lg -mt-2' : 'text-sm'}`}>
+      <div className='grid grid-cols-7 gap-4 p-4'>
+        {days.map((day) => (
+          <div key={day} className='flex flex-col'>
+            <div
+              className={`text-center font-semibold mb-2 text-[#124A69] ${
+                day === currentDay ? 'text-lg -mt-2' : 'text-sm'
+              }`}
+            >
               {day}
             </div>
-            <div className="space-y-2">
-              {getSchedulesForDay(day).map(schedule => (
+            <div className='space-y-2'>
+              {getSchedulesForDay(day).map((schedule) => (
                 <div
                   key={schedule.id}
-                  className="bg-[#FAEDCB] rounded-lg p-3 text-[#124A69] shadow-sm"
+                  className='bg-[#FAEDCB] rounded-lg p-3 text-[#124A69] shadow-sm'
                 >
-                  <div className="font-bold text-sm">{schedule.course.title}</div>
-                  <div className="text-xs opacity-75">{schedule.course.code}</div>
-                  <div className="text-xs mt-1">
-                    {formatTime(schedule.fromTime)} - {formatTime(schedule.toTime)}
+                  <div className='font-bold text-sm'>
+                    {schedule.course.title}
+                  </div>
+                  <div className='text-xs opacity-75'>
+                    {schedule.course.code}
+                  </div>
+                  <div className='text-xs mt-1'>
+                    {formatTime(schedule.fromTime)} -{' '}
+                    {formatTime(schedule.toTime)}
                   </div>
                 </div>
               ))}

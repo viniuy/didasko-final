@@ -1,16 +1,21 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
-import { Role } from '@prisma/client';
+import { Role } from '@/lib/types';
 
 // Define public paths that don't require authentication
-const publicPaths = ['/', '/api/auth/signin', '/api/auth/callback'];
+const publicPaths = [
+  '/',
+  '/api/auth/signin',
+  '/api/auth/callback',
+  '/api/auth/session',
+];
 
 // Define role-based access control
-const roleBasedAccess = {
-  [Role.ADMIN]: ['/dashboard/admin'],
-  [Role.FACULTY]: ['/dashboard/faculty'],
-  [Role.ACADEMIC_HEAD]: ['/dashboard/academic-head'],
+const roleBasedAccess: Record<Role, string[]> = {
+  [Role.ADMIN]: ['/dashboard/admin', '/grading'],
+  [Role.FACULTY]: ['/dashboard/faculty', '/grading'],
+  [Role.ACADEMIC_HEAD]: ['/dashboard/academic-head', '/grading'],
 };
 
 export async function middleware(request: NextRequest) {
@@ -24,14 +29,14 @@ export async function middleware(request: NextRequest) {
 
   // Check if user is authenticated
   if (!token) {
-    // Store the attempted URL to redirect back after login
-    const url = new URL('/', request.url);
+    // Redirect to Google sign-in
+    const url = new URL('/api/auth/signin/google', request.url);
     url.searchParams.set('callbackUrl', pathname);
     return NextResponse.redirect(url);
   }
 
-  // For dashboard routes, check role-based access
-  if (pathname.startsWith('/dashboard')) {
+  // For dashboard and grading routes, check role-based access
+  if (pathname.startsWith('/dashboard') || pathname.startsWith('/grading')) {
     const role = token.role as Role;
     const allowedPaths = roleBasedAccess[role] || [];
 

@@ -6,18 +6,18 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
-import { format } from 'date-fns';
-import { CalendarIcon, X } from 'lucide-react';
+import { X } from 'lucide-react';
+
+// Define the AttendanceStatus enum locally until Prisma generates it
+export enum AttendanceStatus {
+  PRESENT = 'PRESENT',
+  LATE = 'LATE',
+  ABSENT = 'ABSENT',
+  EXCUSED = 'EXCUSED',
+}
 
 interface FilterState {
-  date: Date | undefined;
-  status: string[];
+  status: AttendanceStatus[];
 }
 
 interface FilterSheetProps {
@@ -35,20 +35,24 @@ export function FilterSheet({
   onFiltersChange,
   onApplyFilters,
 }: FilterSheetProps) {
-  const getStatusDisplay = (status: string) => {
+  const getStatusDisplay = (status: AttendanceStatus) => {
     switch (status) {
-      case 'PRESENT':
+      case AttendanceStatus.PRESENT:
         return 'Present';
-      case 'LATE':
+      case AttendanceStatus.LATE:
         return 'Late';
-      case 'ABSENT':
+      case AttendanceStatus.ABSENT:
         return 'Absent';
-      case 'EXCUSED':
+      case AttendanceStatus.EXCUSED:
         return 'Excused';
       default:
         return 'Status';
     }
   };
+
+  const statusValues = Object.values(AttendanceStatus).filter(
+    (value): value is AttendanceStatus => typeof value === 'string',
+  );
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
@@ -58,30 +62,14 @@ export function FilterSheet({
             variant='outline'
             className='border border-gray-300 rounded-full px-3 h-8 flex items-center gap-1.5 hover:bg-gray-50 shadow-sm text-sm'
           >
-            Add filter
+            Filter by Status
             <span className='text-base font-normal'>+</span>
           </Button>
         </SheetTrigger>
 
         {/* Active Filters */}
-        {(filters.date || filters.status.length > 0) && (
+        {filters.status.length > 0 && (
           <div className='flex items-center gap-1.5'>
-            {filters.date && (
-              <div className='inline-flex items-center gap-1 px-3 h-8 bg-[#124A69] text-white rounded-full text-xs font-medium'>
-                {format(filters.date, 'MMM dd, yyyy')}
-                <button
-                  onClick={() => {
-                    onFiltersChange({
-                      ...filters,
-                      date: undefined,
-                    });
-                  }}
-                  className='hover:bg-[#0D3A54] rounded-full'
-                >
-                  <X size={12} className='text-white' />
-                </button>
-              </div>
-            )}
             {filters.status.map((status) => (
               <div
                 key={status}
@@ -108,49 +96,19 @@ export function FilterSheet({
         <div className='p-6 border-b'>
           <SheetHeader>
             <SheetTitle className='text-xl font-semibold'>
-              Add filter
+              Filter by Status
             </SheetTitle>
           </SheetHeader>
         </div>
 
         <div className='p-6 space-y-6'>
-          {/* Date Filter */}
-          <div className='space-y-4'>
-            <label className='text-sm font-medium text-gray-700'>Date</label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant='outline'
-                  className={`w-full justify-start text-left font-normal ${
-                    !filters.date && 'text-muted-foreground'
-                  }`}
-                >
-                  {filters.date ? (
-                    format(filters.date, 'MMMM dd, yyyy (EEEE)')
-                  ) : (
-                    <span>Pick a date</span>
-                  )}
-                  <CalendarIcon className='ml-auto h-4 w-4 opacity-50' />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className='w-auto p-0' align='start'>
-                <Calendar
-                  mode='single'
-                  selected={filters.date}
-                  onSelect={(date) => onFiltersChange({ ...filters, date })}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-
           {/* Attendance Status Filter */}
           <div className='space-y-4'>
             <label className='text-sm font-medium text-gray-700'>
               Attendance Status
             </label>
             <div className='space-y-3 border rounded-lg p-4'>
-              {['PRESENT', 'LATE', 'ABSENT', 'EXCUSED'].map((status) => (
+              {statusValues.map((status) => (
                 <label
                   key={status}
                   className='flex items-center gap-2 cursor-pointer'
@@ -180,7 +138,7 @@ export function FilterSheet({
             variant='outline'
             className='flex-1 rounded-lg'
             onClick={() => {
-              onFiltersChange({ date: undefined, status: [] });
+              onFiltersChange({ status: [] });
               onOpenChange(false);
             }}
           >

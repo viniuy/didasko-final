@@ -1,51 +1,53 @@
 import { PrismaClient } from '@prisma/client';
+import { Role, Permission, WorkType } from '../src/lib/types';
+import { hash } from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function main() {
   // Create admin user
-  await prisma.user.upsert({
-    where: { email: 'admin@example.com' },
+  const admin = await prisma.user.upsert({
+    where: { email: 'admin@didasko.com' },
     update: {},
     create: {
       name: 'Admin User',
-      email: 'admin@example.com',
+      email: 'admin@didasko.com',
       department: 'Administration',
-      workType: 'FULL_TIME',
-      role: 'ADMIN',
-      permission: 'GRANTED',
+      workType: WorkType.FULL_TIME,
+      role: Role.ADMIN,
+      permission: Permission.GRANTED,
     },
   });
 
   // Create faculty user
-  await prisma.user.upsert({
-    where: { email: 'faculty@example.com' },
+  const faculty = await prisma.user.upsert({
+    where: { email: 'faculty@didasko.com' },
     update: {},
     create: {
       name: 'Faculty User',
-      email: 'faculty@example.com',
+      email: 'faculty@didasko.com',
       department: 'Computer Science',
-      workType: 'FULL_TIME',
-      role: 'FACULTY',
-      permission: 'GRANTED',
+      workType: WorkType.FULL_TIME,
+      role: Role.FACULTY,
+      permission: Permission.GRANTED,
     },
   });
 
   // Create academic head user
-  await prisma.user.upsert({
-    where: { email: 'academic@example.com' },
+  const academicHead = await prisma.user.upsert({
+    where: { email: 'academic@didasko.com' },
     update: {},
     create: {
-      name: 'Academic Head User',
-      email: 'academic@example.com',
+      name: 'Academic Head',
+      email: 'academic@didasko.com',
       department: 'Computer Science',
-      workType: 'FULL_TIME',
-      role: 'ACADEMIC_HEAD',
-      permission: 'GRANTED',
+      workType: WorkType.FULL_TIME,
+      role: Role.ACADEMIC_HEAD,
+      permission: Permission.GRANTED,
     },
   });
 
-  console.log('Database has been seeded. 🌱');
+  console.log({ admin, faculty, academicHead });
 }
 
 main()

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Table,
   TableBody,
@@ -9,21 +9,10 @@ import {
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight, CalendarIcon } from 'lucide-react';
-import {
-  Sheet,
-  SheetContent,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet';
-import { format } from 'date-fns';
-import { Calendar } from '@/components/ui/calendar';
-import { cn } from '@/lib/utils';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/components/ui/use-toast';
+import { useParams } from 'next/navigation';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -35,402 +24,211 @@ import {
 interface Student {
   id: string;
   name: string;
-  reporting: number | string;
-  recitation: number | string;
-  quiz: number | string;
-  total: number | string;
-  remarks: 'PASSED' | 'FAILED' | 'DROPPED';
+  content: number | null;
+  clarity: number | null;
+  totalGrade: string;
+  remarks: string;
 }
 
-const students: Student[] = [
-  {
-    id: 'BR',
-    name: 'Babagay, Realyn',
-    reporting: 5,
-    recitation: 1,
-    quiz: 5,
-    total: 6,
-    remarks: 'PASSED',
-  },
-  {
-    id: 'BLJ',
-    name: 'Batac, Lean Jared',
-    reporting: 2,
-    recitation: 3,
-    quiz: 2,
-    total: 5,
-    remarks: 'PASSED',
-  },
-  {
-    id: 'BMJ',
-    name: 'Bausa, Mark Jecil',
-    reporting: 5,
-    recitation: 4,
-    quiz: 5,
-    total: 9,
-    remarks: 'PASSED',
-  },
-  {
-    id: 'CJR',
-    name: 'Calinog, Josh Raizen',
-    reporting: 5,
-    recitation: 5,
-    quiz: 5,
-    total: 10,
-    remarks: 'PASSED',
-  },
-  {
-    id: 'CAR',
-    name: 'Cayer, Allyza Rose',
-    reporting: 5,
-    recitation: 5,
-    quiz: 5,
-    total: 10,
-    remarks: 'PASSED',
-  },
-  {
-    id: 'CJF',
-    name: 'Corpuz, Jonathan Francis',
-    reporting: 5,
-    recitation: 5,
-    quiz: 5,
-    total: 10,
-    remarks: 'PASSED',
-  },
-  {
-    id: 'JMEO',
-    name: 'Del Mundo, Elijah Oscar',
-    reporting: '--',
-    recitation: '--',
-    quiz: '--',
-    total: '--',
-    remarks: 'DROPPED',
-  },
-  {
-    id: 'DM',
-    name: 'Despi, Mj',
-    reporting: 5,
-    recitation: 4,
-    quiz: 5,
-    total: 9,
-    remarks: 'PASSED',
-  },
-  {
-    id: 'DBJ',
-    name: 'Diaz, Brandon Jake',
-    reporting: 4,
-    recitation: 4,
-    quiz: 4,
-    total: 8,
-    remarks: 'PASSED',
-  },
-  {
-    id: 'DJK',
-    name: 'Dimaano, John Keith',
-    reporting: 1,
-    recitation: 2,
-    quiz: 1,
-    total: 3,
-    remarks: 'FAILED',
-  },
-];
-
-const ITEMS_PER_PAGE = 8;
-
 export function TableDemo() {
-  const [currentPage, setCurrentPage] = useState(1);
+  const { courseId } = useParams();
+  const { toast } = useToast();
+  const [students, setStudents] = useState<Student[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [date, setDate] = useState<Date>();
-  const [gradeStatus, setGradeStatus] = useState<string>('all');
+  const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
 
-  // Filter students based on all criteria
-  const filteredStudents = students.filter((student) => {
-    const matchesSearch = student.name
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase());
-    const matchesStatus =
-      gradeStatus === 'all' || gradeStatus === student.remarks.toLowerCase();
-    return matchesSearch && matchesStatus;
-  });
+  useEffect(() => {
+    fetchGrades();
+  }, [courseId]);
 
-  const totalPages = Math.ceil(filteredStudents.length / ITEMS_PER_PAGE);
-
-  const getPaginatedStudents = () => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredStudents.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  const fetchGrades = async () => {
+    try {
+      const response = await fetch(`/api/courses/${courseId}/grades`);
+      if (!response.ok) throw new Error('Failed to fetch grades');
+      const data = await response.json();
+      setStudents(data);
+    } catch (error) {
+      console.error('Error fetching grades:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch grades',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const getScoreBackground = (score: number | string) => {
-    if (score === '--') return '';
-    const numScore = Number(score);
-    if (numScore >= 5) return 'bg-green-50';
-    if (numScore >= 3) return 'bg-yellow-50';
-    return 'bg-red-50';
+  const handleGradeChange = async (
+    studentId: string,
+    gradeType: 'CONTENT' | 'CLARITY',
+    value: string,
+  ) => {
+    try {
+      const numericValue = parseFloat(value);
+      if (isNaN(numericValue) || numericValue < 0 || numericValue > 10) {
+        toast({
+          title: 'Invalid grade',
+          description: 'Grade must be between 0 and 10',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const response = await fetch(`/api/courses/${courseId}/grades`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          studentId,
+          gradeType,
+          value: numericValue,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to update grade');
+
+      // Refresh grades after update
+      fetchGrades();
+      toast({
+        title: 'Success',
+        description: 'Grade updated successfully',
+      });
+    } catch (error) {
+      console.error('Error updating grade:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update grade',
+        variant: 'destructive',
+      });
+    }
   };
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-    setCurrentPage(1);
+  const filteredStudents = students.filter((student) =>
+    student.name.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
+
+  const toggleSelectAll = () => {
+    if (selectedStudents.length === students.length) {
+      setSelectedStudents([]);
+    } else {
+      setSelectedStudents(students.map((s) => s.id));
+    }
   };
 
-  const nextPage = () => {
-    if (currentPage < totalPages) setCurrentPage(currentPage + 1);
+  const toggleStudent = (studentId: string) => {
+    setSelectedStudents((prev) =>
+      prev.includes(studentId)
+        ? prev.filter((id) => id !== studentId)
+        : [...prev, studentId],
+    );
   };
 
-  const prevPage = () => {
-    if (currentPage > 1) setCurrentPage(currentPage - 1);
-  };
+  const gradeOptions = Array.from({ length: 11 }, (_, i) => i);
 
   return (
-    <div className='flex flex-col h-full w-322'>
-      <div className='border-b p-4'>
-        <div className='flex items-center gap-4 mb-4'>
-          <Button asChild variant='secondary' className='text-black text-sm'>
-            <a href='/grading'>Back</a>
-          </Button>
-          <div>
-            <h2 className='text-xl font-semibold'>MIS</h2>
-            <p className='text-sm text-muted-foreground'>BSIT 111</p>
-          </div>
-        </div>
-        <div className='flex justify-between items-center'>
-          <div className='relative w-[300px]'>
-            <Input
-              placeholder='Search a name'
-              className='pl-3 h-9'
-              value={searchQuery}
-              onChange={handleSearch}
-            />
-          </div>
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button variant='outline' size='sm'>
-                Add filter +
-              </Button>
-            </SheetTrigger>
-            <SheetContent side='right' className='w-[400px] p-5 sm:w-[400px]'>
-              <div className='flex flex-col h-full'>
-                <div className='flex justify-between items-center border-b pb-4'>
-                  <SheetTitle className='text-lg font-semibold'>
-                    Add filter
-                  </SheetTitle>
-                </div>
-
-                <div className='flex-1 py-6 space-y-8'>
-                  {/* Updated Date Filter */}
-                  <div className='space-y-4'>
-                    <label className='text-sm font-medium'>Date</label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant={'outline'}
-                          className={cn(
-                            'w-full justify-start text-left font-normal',
-                            !date && 'text-muted-foreground',
-                          )}
-                        >
-                          <CalendarIcon className='mr-2 h-4 w-4' />
-                          {date ? format(date, 'PPP') : 'Pick a date'}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className='w-auto p-0' align='start'>
-                        <Calendar
-                          mode='single'
-                          selected={date}
-                          onSelect={setDate}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-
-                  {/* Grade Status Filter */}
-                  <div className='space-y-4'>
-                    <label className='text-sm font-medium'>Grade Status</label>
-                    <Select value={gradeStatus} onValueChange={setGradeStatus}>
-                      <SelectTrigger className='w-full'>
-                        <SelectValue placeholder='Select grade status' />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value='all'>All</SelectItem>
-                        <SelectItem value='passed'>Passed</SelectItem>
-                        <SelectItem value='failed'>Failed</SelectItem>
-                        <SelectItem value='dropped'>Dropped</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className='flex items-center justify-end gap-2 border-t pt-4'>
-                  <SheetTrigger asChild>
-                    <Button variant='outline' className='w-24'>
-                      Cancel
-                    </Button>
-                  </SheetTrigger>
-                  <SheetTrigger asChild>
-                    <Button
-                      className='w-24'
-                      onClick={() => {
-                        setCurrentPage(1);
-                      }}
-                      style={{ backgroundColor: '#124A69', color: 'white' }}
-                    >
-                      Apply
-                    </Button>
-                  </SheetTrigger>
-                </div>
-              </div>
-            </SheetContent>
-          </Sheet>
-        </div>
+    <div className='space-y-4'>
+      <div className='flex items-center justify-between'>
+        <Input
+          placeholder='Search a name'
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className='max-w-sm'
+        />
       </div>
 
-      <div className='flex-1 p-4'>
+      <div className='rounded-md border'>
         <Table>
           <TableHeader>
-            <TableRow className='border-b'>
-              <TableHead
-                className='w-[300px] py-3 text-[#124A69] font-bold'
-                style={{ fontFamily: 'Poppins' }}
-              >
-                Students
+            <TableRow className='bg-muted/50'>
+              <TableHead className='w-12'>
+                <Checkbox
+                  checked={selectedStudents.length === students.length}
+                  onCheckedChange={toggleSelectAll}
+                />
               </TableHead>
-              <TableHead
-                className='text-center py-3 text-[#124A69] font-bold'
-                style={{ fontFamily: 'Poppins' }}
-              >
-                Reporting
+              <TableHead>Students</TableHead>
+              <TableHead className='text-center'>
+                Content
+                <br />
+                (50%)
               </TableHead>
-              <TableHead
-                className='text-center py-3 text-[#124A69] font-bold'
-                style={{ fontFamily: 'Poppins' }}
-              >
-                Recitation
+              <TableHead className='text-center'>
+                Clarity
+                <br />
+                (50%)
               </TableHead>
-              <TableHead
-                className='text-center py-3 text-[#124A69] font-bold'
-                style={{ fontFamily: 'Poppins' }}
-              >
-                Quiz
-              </TableHead>
-              <TableHead
-                className='text-center py-3 text-[#124A69] font-bold'
-                style={{ fontFamily: 'Poppins' }}
-              >
+              <TableHead className='text-center'>
                 Total Grade
+                <br />
+                (100%)
               </TableHead>
-              <TableHead
-                className='py-3 text-[#124A69] font-bold'
-                style={{ fontFamily: 'Poppins' }}
-              >
-                Remarks
-              </TableHead>
+              <TableHead>Remarks</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {getPaginatedStudents().map((student) => (
-              <TableRow key={student.id} className='border-b'>
-                <TableCell className='py-2.5'>
-                  <div className='flex items-center gap-3'>
-                    <div className='bg-gray-100 w-8 h-8 rounded flex items-center justify-center text-xs font-medium'>
-                      {student.id}
-                    </div>
-                    <span
-                      className='font-bold'
-                      style={{ fontFamily: 'Poppins', color: '#124A69' }}
-                    >
-                      {student.name}
-                    </span>
-                  </div>
+            {filteredStudents.map((student) => (
+              <TableRow key={student.id}>
+                <TableCell>
+                  <Checkbox
+                    checked={selectedStudents.includes(student.id)}
+                    onCheckedChange={() => toggleStudent(student.id)}
+                  />
                 </TableCell>
-                <TableCell
-                  className={`text-center py-2.5 font-bold ${getScoreBackground(
-                    student.reporting,
-                  )}`}
-                  style={{ fontFamily: 'Poppins', color: '#124A69' }}
-                >
-                  {student.reporting}
+                <TableCell className='font-medium'>{student.name}</TableCell>
+                <TableCell>
+                  <Select
+                    value={student.content?.toString() || ''}
+                    onValueChange={(value) =>
+                      handleGradeChange(student.id, 'CONTENT', value)
+                    }
+                  >
+                    <SelectTrigger className='w-full'>
+                      <SelectValue placeholder='Select grade' />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {gradeOptions.map((grade) => (
+                        <SelectItem key={grade} value={grade.toString()}>
+                          {grade}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </TableCell>
-                <TableCell
-                  className={`text-center py-2.5 font-bold ${getScoreBackground(
-                    student.recitation,
-                  )}`}
-                  style={{ fontFamily: 'Poppins', color: '#124A69' }}
-                >
-                  {student.recitation}
+                <TableCell>
+                  <Select
+                    value={student.clarity?.toString() || ''}
+                    onValueChange={(value) =>
+                      handleGradeChange(student.id, 'CLARITY', value)
+                    }
+                  >
+                    <SelectTrigger className='w-full'>
+                      <SelectValue placeholder='Select grade' />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {gradeOptions.map((grade) => (
+                        <SelectItem key={grade} value={grade.toString()}>
+                          {grade}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </TableCell>
-                <TableCell
-                  className={`text-center py-2.5 font-bold ${getScoreBackground(
-                    student.quiz,
-                  )}`}
-                  style={{ fontFamily: 'Poppins', color: '#124A69' }}
-                >
-                  {student.quiz}
+                <TableCell className='text-center'>
+                  {student.totalGrade}
                 </TableCell>
-                <TableCell
-                  className='text-center py-2.5 font-bold'
-                  style={{ fontFamily: 'Poppins', color: '#124A69' }}
-                >
-                  {student.total}
-                </TableCell>
-                <TableCell className='py-2.5'>
-                  <span
-                    className={`font-bold ${
-                      student.remarks === 'FAILED'
-                        ? 'text-red-500'
-                        : student.remarks === 'DROPPED'
-                        ? 'text-gray-500'
-                        : 'text-green-500'
-                    }`}
-                    style={{ fontFamily: 'Poppins' }}
+                <TableCell>
+                  <Badge
+                    variant={
+                      student.remarks === 'PASSED' ? 'default' : 'destructive'
+                    }
                   >
                     {student.remarks}
-                  </span>
+                  </Badge>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
-
-        <div className='flex items-center justify-end mt-4 gap-1'>
-          <Button
-            variant='outline'
-            size='icon'
-            className='h-8 w-8 border-gray-200'
-            onClick={prevPage}
-            disabled={currentPage === 1}
-          >
-            <ChevronLeft className='h-4 w-4' />
-          </Button>
-
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-            (pageNum) => (
-              <Button
-                key={pageNum}
-                variant='outline'
-                size='sm'
-                className={`h-8 w-8 ${
-                  pageNum === currentPage
-                    ? 'bg-[#124A69] text-white hover:bg-[#124A69]/90 hover:text-white border-none'
-                    : 'border-gray-200'
-                }`}
-                onClick={() => setCurrentPage(pageNum)}
-              >
-                {pageNum}
-              </Button>
-            ),
-          )}
-
-          <Button
-            variant='outline'
-            size='icon'
-            className='h-8 w-8 border-gray-200'
-            onClick={nextPage}
-            disabled={currentPage === totalPages}
-          >
-            <ChevronRight className='h-4 w-4' />
-          </Button>
-        </div>
       </div>
     </div>
   );

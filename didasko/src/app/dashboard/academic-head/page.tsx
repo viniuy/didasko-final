@@ -1,12 +1,12 @@
 'use client';
 import { SidebarProvider } from '@/components/ui/sidebar';
-import { AppSidebar } from '@/components/app-sidebar';
+import { AppSidebar } from '@/components/shared/layout/app-sidebar';
 import Stats from '@/components/stats';
 import Greet from '@/components/greeting';
 import Courses from '@/components/courses';
 import WeeklySchedule from '@/components/weekly-schedule';
-import Header from '@/components/header';
-import Rightsidebar from '@/components/right-sidebar';
+import Header from '@/components/shared/layout/header';
+import Rightsidebar from '@/components/shared/layout/right-sidebar';
 import React from 'react';
 import { useSession } from 'next-auth/react';
 
@@ -32,7 +32,7 @@ export default function AcademicHeadDashboard() {
             {session?.user?.email && (
               <WeeklySchedule
                 teacherInfo={{
-                  email: session.user.email
+                  email: session.user.email,
                 }}
                 onBack={() => {}}
               />

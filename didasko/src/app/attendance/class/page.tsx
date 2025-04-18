@@ -1,14 +1,25 @@
 'use client';
 import { SidebarProvider } from '@/components/ui/sidebar';
-import { AppSidebar } from '@/components/app-sidebar';
-import Header from '@/components/header';
-import Rightsidebar from '@/components/right-sidebar';
+import { AppSidebar } from '@/components/shared/layout/app-sidebar';
+import Header from '@/components/shared/layout/header';
+import Rightsidebar from '@/components/shared/layout/right-sidebar';
 import React from 'react';
 import Schedule from '@/components/attendance/attendance-schedule';
 import Studentlist from '@/components/attendance/attendance-studentslist';
+import { useSearchParams } from 'next/navigation';
 
-export default function Layout() {
+export default function ClassAttendancePage() {
   const [open, setOpen] = React.useState(false);
+  const searchParams = useSearchParams();
+  const courseId = searchParams.get('courseId');
+
+  if (!courseId) {
+    return (
+      <div className='flex items-center justify-center h-screen'>
+        <p className='text-xl text-gray-500'>No course selected</p>
+      </div>
+    );
+  }
 
   return (
     <SidebarProvider open={open} onOpenChange={setOpen}>

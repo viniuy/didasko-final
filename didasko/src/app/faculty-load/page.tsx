@@ -1,11 +1,15 @@
 'use client';
 import React from 'react';
-import { AppSidebar } from '@/components/app-sidebar';
+import { AppSidebar } from '@/components/shared/layout/app-sidebar';
 import FacultyLoad from '@/components/faculty-load/faculty-load';
 import { SidebarProvider } from '@/components/ui/sidebar';
-import Rightsidebar from '@/components/right-sidebar';
-import Header from '@/components/header';
-import ChatbotButton from '@/components/chatbot-button';
+import Rightsidebar from '@/components/shared/layout/right-sidebar';
+import Header from '@/components/shared/layout/header';
+import dynamic from 'next/dynamic';
+
+const ChatbotButton = dynamic(() => import('@/components/chatbot-button'), {
+  ssr: false,
+});
 
 export default function FacultyLoadPage() {
   const [open, setOpen] = React.useState(false);
