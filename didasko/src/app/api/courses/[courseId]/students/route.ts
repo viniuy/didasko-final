@@ -1,12 +1,19 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+interface StudentRecord {
+  id: string;
+  firstName: string;
+  lastName: string;
+  middleInitial: string | null;
+}
+
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: { courseId: string } },
 ) {
   try {
-    const { courseId } = params;
+    const courseId = params.courseId;
 
     // Fetch students enrolled in the course
     const students = await prisma.student.findMany({
@@ -19,21 +26,21 @@ export async function GET(
       },
       select: {
         id: true,
-        lastName: true,
         firstName: true,
+        lastName: true,
         middleInitial: true,
+      },
+      orderBy: {
+        lastName: 'asc',
       },
     });
 
-    // Transform the data to match the Student interface
-    const formattedStudents = students.map((student) => ({
+    // Format student names
+    const formattedStudents = students.map((student: StudentRecord) => ({
       id: student.id,
       name: `${student.lastName}, ${student.firstName}${
         student.middleInitial ? ` ${student.middleInitial}.` : ''
       }`,
-      status: '', // Default status
-      date: new Date().toISOString().split('T')[0], // Current date
-      semester: '1st Semester', // Default semester, you might want to get this from the course
     }));
 
     return NextResponse.json(formattedStudents);

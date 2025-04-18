@@ -1,15 +1,10 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getToken } from 'next-auth/jwt';
+import { verifyToken } from '@/lib/auth';
 import { Role } from '@/lib/types';
 
 // Define public paths that don't require authentication
-const publicPaths = [
-  '/',
-  '/api/auth/signin',
-  '/api/auth/callback',
-  '/api/auth/session',
-];
+const publicPaths = ['/', '/login', '/api/auth/login'];
 
 // Define role-based access control
 const roleBasedAccess: Record<Role, string[]> = {
@@ -19,7 +14,6 @@ const roleBasedAccess: Record<Role, string[]> = {
 };
 
 export async function middleware(request: NextRequest) {
-  const token = await getToken({ req: request });
   const { pathname } = request.nextUrl;
 
   // Allow access to public paths without authentication
@@ -27,17 +21,24 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Get the token from the cookie
+  const token = request.cookies.get('auth-token')?.value;
+
   // Check if user is authenticated
-  if (!token) {
-    // Redirect to Google sign-in
-    const url = new URL('/api/auth/signin/google', request.url);
-    url.searchParams.set('callbackUrl', pathname);
-    return NextResponse.redirect(url);
+  if (!token || !verifyToken(token)) {
+    // Redirect to login
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
+
+  // For API routes, allow the request to proceed if authenticated
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.next();
   }
 
   // For dashboard and grading routes, check role-based access
   if (pathname.startsWith('/dashboard') || pathname.startsWith('/grading')) {
-    const role = token.role as Role;
+    const userData = verifyToken(token);
+    const role = userData?.role as Role;
     const allowedPaths = roleBasedAccess[role] || [];
 
     if (!allowedPaths.some((path) => pathname.startsWith(path))) {
@@ -55,11 +56,10 @@ export const config = {
   matcher: [
     /*
      * Match all request paths except for the ones starting with:
-     * - api/auth (auth API routes)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      */
-    '/((?!api/auth|_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 };

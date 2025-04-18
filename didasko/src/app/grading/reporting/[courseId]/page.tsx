@@ -87,7 +87,7 @@ export default function ReportingTypePage({
                             Grade students one at a time
                           </p>
                         </div>
-                        <Button className='w-full bg-[#124A69]'>
+                        <Button className='w-full bg-[#124A69] hover:bg-gray-800'>
                           Select student
                         </Button>
                       </div>
@@ -108,7 +108,7 @@ export default function ReportingTypePage({
                             Grade multiple students at once
                           </p>
                         </div>
-                        <Button className='w-full bg-[#124A69]'>
+                        <Button className='w-full bg-[#124A69] hover:bg-gray-800'>
                           Select group
                         </Button>
                       </div>

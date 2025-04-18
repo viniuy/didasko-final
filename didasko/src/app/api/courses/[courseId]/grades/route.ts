@@ -1,60 +1,43 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getAuthCookie, verifyToken } from '@/lib/auth';
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: { courseId: string } },
 ) {
   try {
-    const { courseId } = params;
+    const { searchParams } = new URL(request.url);
+    const date = searchParams.get('date');
+    const criteriaId = searchParams.get('criteriaId');
 
-    // Fetch students enrolled in the course with their grades
-    const students = await prisma.student.findMany({
+    console.log('GET grades request params:', {
+      courseId: params.courseId,
+      date,
+      criteriaId,
+    });
+
+    if (!date || !criteriaId) {
+      console.log('Missing required parameters');
+      return NextResponse.json(
+        { error: 'Date and criteriaId are required' },
+        { status: 400 },
+      );
+    }
+
+    const grades = await prisma.grade.findMany({
       where: {
-        coursesEnrolled: {
-          some: {
-            id: courseId,
-          },
-        },
+        courseId: params.courseId,
+        criteriaId: criteriaId,
+        date: new Date(date),
       },
       include: {
-        grades: {
-          include: {
-            gradeItem: true,
-          },
-        },
+        student: true,
       },
     });
 
-    // Transform the data to match the frontend interface
-    const formattedStudents = students.map((student) => {
-      // Group grades by type
-      const gradesByType = student.grades.reduce((acc, grade) => {
-        acc[grade.gradeItem.type] = grade.value;
-        return acc;
-      }, {} as Record<string, number>);
-
-      // Calculate total (assuming content and clarity are out of 10)
-      const content = gradesByType['CONTENT'] || 0;
-      const clarity = gradesByType['CLARITY'] || 0;
-      const total = ((content + clarity) / 20) * 100; // Convert to percentage
-
-      // Determine remarks based on total
-      const remarks = total >= 75 ? 'PASSED' : 'FAILED';
-
-      return {
-        id: student.id,
-        name: `${student.lastName}, ${student.firstName}${
-          student.middleInitial ? ` ${student.middleInitial}.` : ''
-        }`,
-        content: gradesByType['CONTENT'] || null,
-        clarity: gradesByType['CLARITY'] || null,
-        totalGrade: `${total.toFixed(0)}%`,
-        remarks,
-      };
-    });
-
-    return NextResponse.json(formattedStudents);
+    console.log('Found grades:', grades);
+    return NextResponse.json(grades);
   } catch (error) {
     console.error('Error fetching grades:', error);
     return NextResponse.json(
@@ -65,62 +48,65 @@ export async function GET(
 }
 
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: { courseId: string } },
 ) {
   try {
-    const { courseId } = params;
-    const body = await request.json();
-    const { studentId, gradeType, value } = body;
+    const { date, criteriaId, grades } = await request.json();
+    const authCookie = getAuthCookie();
 
-    // Validate required fields
-    if (!studentId || !gradeType || value === undefined) {
+    console.log('POST grades request:', {
+      courseId: params.courseId,
+      date,
+      criteriaId,
+      gradesCount: grades?.length,
+    });
+
+    if (!authCookie) {
+      console.log('No auth cookie found');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (!date || !criteriaId || !grades || !Array.isArray(grades)) {
+      console.log('Invalid request data');
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Invalid request data' },
         { status: 400 },
       );
     }
 
-    // Find or create grade item
-    const gradeItem = await prisma.gradeItem.upsert({
+    // Delete existing grades for this date and criteria
+    console.log('Deleting existing grades');
+    await prisma.grade.deleteMany({
       where: {
-        courseId_type: {
-          courseId,
-          type: gradeType,
-        },
-      },
-      update: {},
-      create: {
-        courseId,
-        type: gradeType,
-        name: gradeType.toLowerCase(),
-        weight: 50, // Both content and clarity are worth 50%
+        courseId: params.courseId,
+        criteriaId: criteriaId,
+        date: new Date(date),
       },
     });
 
-    // Create or update the grade
-    const grade = await prisma.grade.upsert({
-      where: {
-        studentId_gradeItemId: {
-          studentId,
-          gradeItemId: gradeItem.id,
-        },
-      },
-      update: {
-        value,
-      },
-      create: {
-        value,
-        studentId,
-        gradeItemId: gradeItem.id,
-      },
+    // Create new grades
+    console.log('Creating new grades');
+    const createdGrades = await prisma.grade.createMany({
+      data: grades.map(
+        (grade: { studentId: string; scores: number[]; total: number }) => ({
+          courseId: params.courseId,
+          criteriaId: criteriaId,
+          studentId: grade.studentId,
+          value: grade.total,
+          scores: grade.scores,
+          total: grade.total,
+          date: new Date(date),
+        }),
+      ),
     });
 
-    return NextResponse.json(grade);
+    console.log('Created grades:', createdGrades);
+    return NextResponse.json(createdGrades);
   } catch (error) {
-    console.error('Error updating grade:', error);
+    console.error('Error saving grades:', error);
     return NextResponse.json(
-      { error: 'Failed to update grade' },
+      { error: 'Failed to save grades' },
       { status: 500 },
     );
   }

@@ -32,6 +32,7 @@ import { FilterSheet } from './filter-sheet';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AddStudentSheet } from './add-student-sheet';
+import { AttendanceStatus } from '@/types/attendance';
 
 interface Student {
   id: string;
@@ -44,7 +45,7 @@ interface Student {
 
 interface FilterState {
   date: Date | undefined;
-  status: string[];
+  status: AttendanceStatus[];
 }
 
 // Add interface for Excel data
@@ -303,8 +304,12 @@ export default function StudentList() {
     middleInitial?: string;
     image?: string;
   }) => {
+    if (!courseId) {
+      toast.error('No course ID provided');
+      return;
+    }
+
     try {
-      // Create the student in the database
       const response = await fetch('/api/students', {
         method: 'POST',
         headers: {
@@ -317,28 +322,114 @@ export default function StudentList() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to add student');
+        const errorData = await response.text();
+        console.log('Error response text:', errorData);
+
+        let errorMessage = 'Failed to add student';
+        try {
+          const jsonError = JSON.parse(errorData);
+          errorMessage = jsonError.error || errorMessage;
+        } catch (e) {
+          console.log('Failed to parse error as JSON:', e);
+        }
+
+        toast.error(errorMessage);
+        return;
       }
 
       const newStudent = await response.json();
-
-      // Add the new student to the list
       setStudentList((prev) => [
         ...prev,
         {
           id: newStudent.id,
-          name: `${student.lastName}, ${student.firstName}${
-            student.middleInitial ? ` ${student.middleInitial}.` : ''
+          name: `${newStudent.lastName}, ${newStudent.firstName}${
+            newStudent.middleInitial ? ` ${newStudent.middleInitial}` : ''
           }`,
           status: '',
-          image: student.image,
-          date: new Date().toISOString().split('T')[0],
-          semester: '1st Semester',
+          image: newStudent.image,
         },
       ]);
+      toast.success('Student added successfully');
     } catch (error) {
       console.error('Error adding student:', error);
       toast.error('Failed to add student');
+    }
+  };
+
+  const handleSelectExistingStudent = async (student: {
+    id: string;
+    lastName: string;
+    firstName: string;
+    middleInitial?: string;
+    image?: string;
+  }) => {
+    console.log('Starting handleSelectExistingStudent with:', {
+      student,
+      courseId,
+    });
+
+    if (!courseId) {
+      console.log('No courseId provided');
+      toast.error('No course ID provided');
+      return;
+    }
+
+    try {
+      // Using the enrollment endpoint
+      const response = await fetch('/api/students/enroll', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          studentId: student.id,
+          courseId: courseId,
+        }),
+      });
+
+      console.log('API Response status:', response.status);
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.log('Error response text:', errorData);
+
+        let errorMessage = 'Failed to add student to course';
+        try {
+          const jsonError = JSON.parse(errorData);
+          errorMessage = jsonError.error || errorMessage;
+        } catch (e) {
+          // If parsing fails, use the generic error message
+          console.log('Failed to parse error as JSON:', e);
+        }
+
+        if (response.status === 409) {
+          toast.error('Student is already enrolled in this course');
+          return;
+        }
+
+        toast.error(errorMessage);
+        return;
+      }
+
+      const responseData = await response.json();
+      console.log('Success response:', responseData);
+
+      // Add the student to the list with proper formatting
+      setStudentList((prev) => [
+        ...prev,
+        {
+          id: student.id,
+          name: `${student.lastName}, ${student.firstName}${
+            student.middleInitial ? ` ${student.middleInitial}` : ''
+          }`,
+          status: '',
+          image: student.image,
+        },
+      ]);
+      toast.success('Student added to course successfully');
+    } catch (error) {
+      console.error('Error in handleSelectExistingStudent:', error);
+      toast.error('Failed to add student to course. Please try again.');
     }
   };
 
@@ -381,7 +472,10 @@ export default function StudentList() {
             </div>
           </div>
           <div className='ml-auto'>
-            <AddStudentSheet onAddStudent={handleAddStudent} />
+            <AddStudentSheet
+              onAddStudent={handleAddStudent}
+              onSelectExistingStudent={handleSelectExistingStudent}
+            />
           </div>
         </div>
         <div className='flex-1 flex items-center justify-center bg-gray-50'>
@@ -407,7 +501,10 @@ export default function StudentList() {
             <p className='text-gray-500 mb-4'>
               Add students to start tracking attendance
             </p>
-            <AddStudentSheet onAddStudent={handleAddStudent} />
+            <AddStudentSheet
+              onAddStudent={handleAddStudent}
+              onSelectExistingStudent={handleSelectExistingStudent}
+            />
           </div>
         </div>
       </div>
@@ -464,7 +561,10 @@ export default function StudentList() {
             >
               <Download className='h-4 w-4' /> Import from Excel
             </Button>
-            <AddStudentSheet onAddStudent={handleAddStudent} />
+            <AddStudentSheet
+              onAddStudent={handleAddStudent}
+              onSelectExistingStudent={handleSelectExistingStudent}
+            />
           </div>
         </div>
       </div>

@@ -46,6 +46,7 @@ model User {
   sessions   Session[]
   notes      Note[]
   coursesTeaching Course[]    @relation("FacultyCourses")
+  criteria   Criteria[]
 
   @@map("users")
 }
@@ -101,7 +102,6 @@ model Class {
   sectionId  String
   section    Section     @relation(fields: [sectionId], references: [id])
   gradeItems GradeItem[]
-  criteria   Criteria[]
   createdAt  DateTime    @default(now()) @map("created_at")
   updatedAt  DateTime    @updatedAt @map("updated_at")
 
@@ -124,13 +124,24 @@ model Student {
 }
 
 model Grade {
-  id        String   @id @default(uuid())
-  value     Float
-  studentId String
-  student   Student  @relation(fields: [studentId], references: [id])
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id          String   @id @default(uuid())
+  value       Float
+  scores      Json     // Array of scores for each rubric
+  total       Float    // Total score
+  date        DateTime // Date when the grade was given
+  studentId   String
+  student     Student  @relation(fields: [studentId], references: [id])
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id])
+  criteriaId  String
+  criteria    Criteria @relation(fields: [criteriaId], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
+  @@unique([studentId, courseId, date])
+  @@index([date])
+  @@index([courseId])
+  @@index([criteriaId])
   @@map("grades")
 }
 
@@ -146,12 +157,18 @@ model GradeItem {
 }
 
 model Criteria {
-  id        String   @id @default(uuid())
-  name      String
-  classId   String
-  class     Class    @relation(fields: [classId], references: [id])
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id          String   @id @default(uuid())
+  name        String
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id])
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id])
+  rubrics     Json     // Will store array of {name: string, percentage: number}
+  scoringRange String  // "1-5" or "1-10"
+  passingScore String  // "75" or "80"
+  grades      Grade[]
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("criteria")
 }
@@ -194,6 +211,8 @@ model Course {
   students    Student[]   @relation("StudentCourses")
   schedules   CourseSchedule[]
   attendance  Attendance[]
+  criteria    Criteria[]
+  grades      Grade[]
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
