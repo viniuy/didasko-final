@@ -216,7 +216,7 @@ export function AppSidebar() {
                   <a
                     href={item.url}
                     className={`flex items-center gap-3 p-3 rounded hover:bg-gray-800 w-full ${
-                      pathname === item.url ? 'bg-gray-800' : ''
+                      pathname.startsWith(item.url) ? 'bg-gray-800' : ''
                     }`}
                   >
                     <item.icon className='w-6 h-6 shrink-0' />
@@ -272,7 +272,9 @@ export function AppSidebar() {
                                 <a
                                   href={item.url}
                                   className={`flex items-center gap-3 p-3 rounded hover:bg-gray-800 w-56 h-10 ml-4 ${
-                                    pathname === item.url ? 'bg-gray-800' : ''
+                                    pathname.startsWith(item.url)
+                                      ? 'bg-gray-800'
+                                      : ''
                                   }`}
                                 >
                                   <item.icon className='w-6 h-6 shrink-0' />
@@ -299,7 +301,9 @@ export function AppSidebar() {
                     <a
                       href={settingsItem.url}
                       className={`flex items-center gap-3 p-3 rounded hover:bg-gray-800 w-full ${
-                        pathname === settingsItem.url ? 'bg-gray-800' : ''
+                        pathname.startsWith(settingsItem.url)
+                          ? 'bg-gray-800'
+                          : ''
                       }`}
                     >
                       <settingsItem.icon className='w-6 h-6 shrink-0' />

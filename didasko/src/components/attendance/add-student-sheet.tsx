@@ -73,7 +73,7 @@ export function AddStudentSheet({ onAddStudent }: AddStudentSheetProps) {
           <Plus className='h-4 w-4' /> Add Student
         </Button>
       </SheetTrigger>
-      <SheetContent>
+      <SheetContent className='p-4'>
         <SheetHeader>
           <SheetTitle>Add New Student</SheetTitle>
           <SheetDescription>
@@ -81,9 +81,8 @@ export function AddStudentSheet({ onAddStudent }: AddStudentSheetProps) {
           </SheetDescription>
         </SheetHeader>
         <form onSubmit={handleSubmit} className='space-y-4 mt-4'>
-          <div className='space-y-2'>
-            <label className='text-sm font-medium'>Profile Picture</label>
-            <div className='flex items-center gap-4'>
+          <div className='space-y-2 flex justify-center items-center'>
+            <div className='items-center'>
               {image ? (
                 <div className='relative'>
                   <img
@@ -170,7 +169,10 @@ export function AddStudentSheet({ onAddStudent }: AddStudentSheetProps) {
               maxLength={1}
             />
           </div>
-          <Button type='submit' className='w-full'>
+          <Button
+            type='submit'
+            className='w-full bg-[#124A69] hover:bg-[#0D3A54] text-white rounded-full px-4 h-10 flex items-center gap-2'
+          >
             Add Student
           </Button>
         </form>

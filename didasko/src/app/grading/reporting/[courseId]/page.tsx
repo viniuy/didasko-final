@@ -58,7 +58,7 @@ export default function ReportingTypePage({
               <div className='container mx-auto py-6 max-w-4xl'>
                 <div className='mb-6 flex items-center gap-4'>
                   <Button asChild variant='ghost' size='icon'>
-                    <Link href='/grading'>
+                    <Link href='/grading/reporting'>
                       <ArrowLeft className='h-4 w-4' />
                     </Link>
                   </Button>
@@ -87,7 +87,9 @@ export default function ReportingTypePage({
                             Grade students one at a time
                           </p>
                         </div>
-                        <Button className='w-full'>Select student</Button>
+                        <Button className='w-full bg-[#124A69]'>
+                          Select student
+                        </Button>
                       </div>
                     </Card>
                   </Link>
@@ -106,7 +108,9 @@ export default function ReportingTypePage({
                             Grade multiple students at once
                           </p>
                         </div>
-                        <Button className='w-full'>Select group</Button>
+                        <Button className='w-full bg-[#124A69]'>
+                          Select group
+                        </Button>
                       </div>
                     </Card>
                   </Link>

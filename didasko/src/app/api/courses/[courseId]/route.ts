@@ -3,9 +3,16 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { prisma } from '@/lib/prisma';
 
+interface Student {
+  id: string;
+  lastName: string;
+  firstName: string;
+  middleInitial: string | null;
+}
+
 export async function GET(
   request: Request,
-  { params }: { params: { courseId: string } },
+  context: { params: Promise<{ courseId: string }> },
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -13,8 +20,11 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const course = await prisma.course.findUnique({
-      where: { id: params.courseId },
+    const { courseId } = await context.params;
+
+    // First try to find by code, if not found try by ID
+    let course = await prisma.course.findFirst({
+      where: { code: courseId.toUpperCase() },
       include: {
         faculty: {
           select: {
@@ -27,19 +37,57 @@ export async function GET(
         students: {
           select: {
             id: true,
-            name: true,
-            email: true,
+            lastName: true,
+            firstName: true,
+            middleInitial: true,
           },
         },
         schedules: true,
       },
     });
 
+    // If not found by code, try by ID
+    if (!course) {
+      course = await prisma.course.findUnique({
+        where: { id: courseId },
+        include: {
+          faculty: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              department: true,
+            },
+          },
+          students: {
+            select: {
+              id: true,
+              lastName: true,
+              firstName: true,
+              middleInitial: true,
+            },
+          },
+          schedules: true,
+        },
+      });
+    }
+
     if (!course) {
       return NextResponse.json({ error: 'Course not found' }, { status: 404 });
     }
 
-    return NextResponse.json(course);
+    // Transform student data to include full name
+    const transformedCourse = {
+      ...course,
+      students: course.students.map((student: Student) => ({
+        id: student.id,
+        name: `${student.lastName}, ${student.firstName}${
+          student.middleInitial ? ` ${student.middleInitial}.` : ''
+        }`,
+      })),
+    };
+
+    return NextResponse.json(transformedCourse);
   } catch (error) {
     console.error('Error fetching course:', error);
     return NextResponse.json(
@@ -51,7 +99,7 @@ export async function GET(
 
 export async function PUT(
   request: Request,
-  { params }: { params: { courseId: string } },
+  context: { params: Promise<{ courseId: string }> },
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -59,6 +107,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const { courseId } = await context.params;
     const body = await request.json();
     const { code, title, description, facultyId } = body;
 
@@ -74,7 +123,7 @@ export async function PUT(
     const existingCourse = await prisma.course.findFirst({
       where: {
         code,
-        NOT: { id: params.courseId },
+        NOT: { id: courseId },
       },
     });
 
@@ -86,7 +135,7 @@ export async function PUT(
     }
 
     const course = await prisma.course.update({
-      where: { id: params.courseId },
+      where: { id: courseId },
       data: {
         code,
         title,
@@ -105,8 +154,9 @@ export async function PUT(
         students: {
           select: {
             id: true,
-            name: true,
-            email: true,
+            lastName: true,
+            firstName: true,
+            middleInitial: true,
           },
         },
         schedules: true,
@@ -125,7 +175,7 @@ export async function PUT(
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { courseId: string } },
+  context: { params: Promise<{ courseId: string }> },
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -133,8 +183,10 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const { courseId } = await context.params;
+
     await prisma.course.delete({
-      where: { id: params.courseId },
+      where: { id: courseId },
     });
 
     return NextResponse.json({ message: 'Course deleted successfully' });

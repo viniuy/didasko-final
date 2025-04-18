@@ -87,7 +87,6 @@ export function TableDemo() {
 
       if (!response.ok) throw new Error('Failed to update grade');
 
-      // Refresh grades after update
       fetchGrades();
       toast({
         title: 'Success',
