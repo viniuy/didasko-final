@@ -1,4 +1,6 @@
-import { useState, useMemo, useEffect } from 'react';
+'use client';
+
+import { useState, useMemo, useEffect, Fragment } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -7,7 +9,20 @@ import {
   PaginationItem,
   PaginationLink,
 } from '@/components/ui/pagination';
-import { Download, Search, ChevronLeft } from 'lucide-react';
+import {
+  Download,
+  Upload,
+  Search,
+  ChevronLeft,
+  CalendarIcon,
+} from 'lucide-react';
+import { Calendar } from '@/components/ui/calendar';
+import { format } from 'date-fns';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import {
   Dialog,
   DialogContent,
@@ -32,21 +47,13 @@ import { FilterSheet } from './filter-sheet';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AddStudentSheet } from './add-student-sheet';
-import { AttendanceStatus } from '@/types/attendance';
-
-interface Student {
-  id: string;
-  name: string;
-  status: string;
-  image?: string;
-  date?: string;
-  semester?: string;
-}
-
-interface FilterState {
-  date: Date | undefined;
-  status: AttendanceStatus[];
-}
+import { AttendanceStatus } from '@prisma/client';
+import {
+  Student,
+  FilterState,
+  AttendanceStatusWithNotSet,
+  AttendanceRecord,
+} from '@/types/attendance';
 
 // Add interface for Excel data
 interface ExcelRow {
@@ -54,7 +61,38 @@ interface ExcelRow {
   Name: string;
   Status: string;
   Date: string;
-  Semester: string;
+}
+
+interface StudentCardProps {
+  student: {
+    name: string;
+    status: AttendanceStatusWithNotSet;
+    image?: string;
+    date?: string;
+    semester?: string;
+  };
+  index: number;
+  tempImage: { index: number; dataUrl: string } | null;
+  onImageUpload: (index: number, name: string) => void;
+  onSaveChanges: (index: number) => void;
+  onRemoveImage: (index: number, name: string) => void;
+  onStatusChange: (index: number, status: AttendanceStatus) => void;
+}
+
+interface AddStudentSheetProps {
+  onAddStudent: (student: {
+    lastName: string;
+    firstName: string;
+    middleInitial?: string;
+    image?: string;
+  }) => void;
+  onSelectExistingStudent: (student: {
+    id: string;
+    lastName: string;
+    firstName: string;
+    middleInitial?: string;
+    image?: string;
+  }) => void;
 }
 
 export default function StudentList() {
@@ -62,10 +100,13 @@ export default function StudentList() {
   const searchParams = useSearchParams();
   const courseId = searchParams.get('courseId');
   const [studentList, setStudentList] = useState<Student[]>([]);
+  const [courseInfo, setCourseInfo] = useState<{
+    code: string;
+    section: string;
+  } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedDate] = useState<'newest' | 'oldest' | ''>('');
-  const [selectedSemester] = useState<'1st Semester' | '2nd Semester' | ''>('');
+  const [sortDate] = useState<'newest' | 'oldest' | ''>('');
   const [imageToRemove, setImageToRemove] = useState<{
     index: number;
     name: string;
@@ -73,7 +114,6 @@ export default function StudentList() {
   const itemsPerPage = 10;
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [filters, setFilters] = useState<FilterState>({
-    date: undefined,
     status: [],
   });
   const [tempImage, setTempImage] = useState<{
@@ -82,25 +122,123 @@ export default function StudentList() {
   } | null>(null);
   const [showExportPreview, setShowExportPreview] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>();
   const [isLoading, setIsLoading] = useState(true);
+  const [unsavedChanges, setUnsavedChanges] = useState<{
+    [key: string]: AttendanceStatus;
+  }>({});
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const fetchStudents = async () => {
       if (!courseId) return;
 
       try {
-        const response = await fetch(`/api/courses/${courseId}/students`);
+        console.log('Fetching students for course:', courseId);
+        const response = await fetch(`/api/courses/${courseId}/students`, {
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        console.log('API Response status:', response.status);
+
         if (!response.ok) {
           if (response.status === 404) {
+            console.log('No students found for course');
             setStudentList([]);
             return;
           }
+          const errorData = await response.json();
+          console.error('API Error:', errorData);
           throw new Error('Failed to fetch students');
         }
+
         const data = await response.json();
-        setStudentList(data);
+        console.log('Received student data:', data);
+
+        // If a date is selected, fetch attendance records for that date
+        if (selectedDate) {
+          const dateStr = format(selectedDate, 'yyyy-MM-dd');
+          console.log('Fetching attendance for date:', dateStr);
+          const attendanceResponse = await fetch(
+            `/api/courses/${courseId}/attendance?date=${dateStr}`,
+            {
+              credentials: 'include',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            },
+          );
+
+          if (attendanceResponse.ok) {
+            const attendanceData = await attendanceResponse.json();
+            console.log('Received attendance data:', attendanceData);
+            const attendanceMap = new Map(
+              attendanceData.map((record: AttendanceRecord) => {
+                console.log('Processing attendance record:', record);
+                return [record.studentId, record];
+              }),
+            );
+
+            const studentsWithAttendance: Student[] = data.students.map(
+              (student: any) => {
+                const attendanceRecord = attendanceMap.get(student.id);
+                console.log(
+                  'Student:',
+                  student.name,
+                  'Attendance record:',
+                  attendanceRecord,
+                );
+                return {
+                  id: student.id,
+                  name: student.name,
+                  image: student.image || undefined,
+                  status: attendanceRecord
+                    ? attendanceRecord.status
+                    : 'NOT_SET',
+                  attendanceRecords: attendanceRecord ? [attendanceRecord] : [],
+                };
+              },
+            );
+
+            console.log(
+              'Final students with attendance:',
+              studentsWithAttendance,
+            );
+            setStudentList(studentsWithAttendance);
+          } else {
+            console.log('No attendance records found for date:', dateStr);
+            // If no attendance records found, initialize with empty records
+            const studentsWithEmptyRecords: Student[] = data.students.map(
+              (student: any) => ({
+                id: student.id,
+                name: student.name,
+                image: student.image || undefined,
+                status: 'NOT_SET',
+                attendanceRecords: [],
+              }),
+            );
+            setStudentList(studentsWithEmptyRecords);
+          }
+        } else {
+          console.log('No date selected, initializing with empty records');
+          // If no date selected, initialize with empty records
+          const studentsWithEmptyRecords: Student[] = data.students.map(
+            (student: any) => ({
+              id: student.id,
+              name: student.name,
+              image: student.image || undefined,
+              status: 'NOT_SET',
+              attendanceRecords: [],
+            }),
+          );
+          setStudentList(studentsWithEmptyRecords);
+        }
+
+        setCourseInfo(data.course);
       } catch (error) {
-        console.error('Error fetching students:', error);
+        console.error('Error in fetchStudents:', error);
         setStudentList([]);
       } finally {
         setIsLoading(false);
@@ -108,7 +246,36 @@ export default function StudentList() {
     };
 
     fetchStudents();
-  }, [courseId]);
+  }, [courseId, selectedDate]);
+
+  // Get attendance records for the selected date
+  const getAttendanceForDate = (student: Student, date: Date | undefined) => {
+    if (!date) return null;
+    const dateStr = format(date, 'yyyy-MM-dd');
+    console.log('Looking for attendance on date:', dateStr);
+    console.log('Student attendance records:', student.attendanceRecords);
+    const record = student.attendanceRecords.find((record) => {
+      const recordDate = record.date.split('T')[0];
+      console.log(
+        'Comparing record date:',
+        recordDate,
+        'with selected date:',
+        dateStr,
+      );
+      return recordDate === dateStr;
+    });
+    console.log('Found record:', record);
+    return record;
+  };
+
+  // Get attendance status for the selected date
+  const getStatusForDate = (
+    student: Student,
+    date: Date | undefined,
+  ): AttendanceStatusWithNotSet => {
+    const record = getAttendanceForDate(student, date);
+    return record ? record.status : 'NOT_SET';
+  };
 
   // Filter students based on all filters
   const filteredStudents = useMemo(() => {
@@ -118,26 +285,21 @@ export default function StudentList() {
       )
       .filter((student) => {
         if (filters.status.length === 0) return true;
-        return filters.status.includes(student.status);
-      })
-      .filter((student) => {
-        if (!selectedSemester) return true;
-        return student.semester === selectedSemester;
+        const status = getStatusForDate(student, selectedDate);
+        return filters.status.includes(status);
       })
       .sort((a, b) => {
-        if (!selectedDate) return 0;
-        if (selectedDate === 'newest') {
-          return (b.date || '').localeCompare(a.date || '');
+        if (!sortDate) return 0;
+        const aAttendance = getAttendanceForDate(a, selectedDate);
+        const bAttendance = getAttendanceForDate(b, selectedDate);
+        if (sortDate === 'newest') {
+          return (bAttendance?.date || '').localeCompare(
+            aAttendance?.date || '',
+          );
         }
-        return (a.date || '').localeCompare(b.date || '');
+        return (aAttendance?.date || '').localeCompare(bAttendance?.date || '');
       });
-  }, [
-    studentList,
-    searchQuery,
-    selectedDate,
-    selectedSemester,
-    filters.status,
-  ]);
+  }, [studentList, searchQuery, selectedDate, filters.status]);
 
   const totalPages = Math.ceil(filteredStudents.length / itemsPerPage);
 
@@ -146,11 +308,16 @@ export default function StudentList() {
     setCurrentPage(1);
   };
 
-  const updateStatus = (index: number, status: string) => {
-    setStudentList((prevStudents) =>
-      prevStudents.map((student, i) =>
-        i === index ? { ...student, status } : student,
-      ),
+  const updateStatus = (index: number, newStatus: AttendanceStatus) => {
+    const student = studentList[index];
+    setUnsavedChanges((prev) => ({
+      ...prev,
+      [student.id]: newStatus,
+    }));
+
+    // Update local state for immediate UI feedback
+    setStudentList((prev) =>
+      prev.map((s, i) => (i === index ? { ...s, status: newStatus } : s)),
     );
   };
 
@@ -167,16 +334,14 @@ export default function StudentList() {
     input.onchange = (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) {
-        if (file.size > 5 * 1024 * 1024) {
-          toast.error('Image size should be less than 5MB');
-          return;
-        }
         const reader = new FileReader();
-        reader.onload = (event) => {
-          setTempImage({
-            index: index,
-            dataUrl: event.target?.result as string,
-          });
+        reader.onload = (e) => {
+          if (e.target?.result) {
+            setTempImage({
+              index,
+              dataUrl: e.target.result as string,
+            });
+          }
         };
         reader.readAsDataURL(file);
       }
@@ -184,118 +349,187 @@ export default function StudentList() {
     input.click();
   };
 
-  const handleSaveChanges = (index: number) => {
-    if (tempImage && tempImage.index === index) {
+  const handleSaveChanges = async (index: number) => {
+    if (!tempImage || tempImage.index !== index) return;
+
+    try {
+      const formData = new FormData();
+      const response = await fetch(tempImage.dataUrl);
+      const blob = await response.blob();
+      formData.append('image', blob);
+
+      const uploadResponse = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload image');
+      }
+
+      const { imageUrl } = await uploadResponse.json();
+
       setStudentList((prev) =>
-        prev.map((student, idx) =>
-          idx === index ? { ...student, image: tempImage.dataUrl } : student,
+        prev.map((student, i) =>
+          i === index ? { ...student, image: imageUrl } : student,
         ),
       );
+
       setTempImage(null);
-      toast.success('Profile picture updated successfully');
-    }
-    const dialogTrigger = document.querySelector('[data-state="open"]');
-    if (dialogTrigger instanceof HTMLElement) {
-      dialogTrigger.click();
+    } catch (error) {
+      console.error('Error saving image:', error);
+      toast.error('Failed to save image');
     }
   };
 
   const confirmAndRemoveImage = () => {
-    if (!imageToRemove) return;
-
-    setStudentList((prev) =>
-      prev.map((student, idx) =>
-        idx === imageToRemove.index
-          ? { ...student, image: undefined }
-          : student,
-      ),
-    );
-    toast.success('Profile picture removed successfully');
-    setImageToRemove(null);
+    if (imageToRemove) {
+      setStudentList((prev) =>
+        prev.map((student, idx) =>
+          idx === imageToRemove.index
+            ? { ...student, image: undefined }
+            : student,
+        ),
+      );
+      setImageToRemove(null);
+      toast.success('Profile picture removed successfully');
+    }
   };
 
   const markAllAsPresent = () => {
-    const previousState = [...studentList];
-    setStudentList((prevStudents) =>
-      prevStudents.map((student) => ({
+    if (!selectedDate) {
+      toast.error('Please select a date first');
+      return;
+    }
+
+    const newChanges: Record<string, AttendanceStatus> = {};
+    studentList.forEach((student) => {
+      newChanges[student.id] = 'PRESENT' as AttendanceStatus;
+    });
+    setUnsavedChanges((prev) => ({
+      ...prev,
+      ...newChanges,
+    }));
+
+    // Update local state for immediate UI feedback
+    setStudentList((prev) =>
+      prev.map((student) => ({
         ...student,
-        status: 'PRESENT',
+        status: 'PRESENT' as AttendanceStatus,
       })),
     );
-    toast.success('All students marked as present', {
-      action: {
-        label: 'Undo',
-        onClick: () => {
-          setStudentList(previousState);
-          toast.success('Changes undone successfully');
-        },
-      },
-    });
   };
 
   const handleApplyFilters = () => {
-    if (filters.status.length > 0) {
-      setFilters((prev) => ({
-        ...prev,
-        status: filters.status,
-      }));
-    }
+    setFilters((prev) => ({
+      ...prev,
+      status: filters.status,
+    }));
     setIsFilterSheetOpen(false);
   };
 
   const handleExport = () => {
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(
-      studentList.map((student) => ({
-        Students: student.name,
-        Status: student.status || 'NOT SET',
-      })),
-    );
+    if (!selectedDate) {
+      toast.error('Please select a date before exporting');
+      return;
+    }
 
-    // Set column widths
-    const columnWidths = [
-      { wch: 30 }, // Students column
-      { wch: 15 }, // Status column
+    const formattedDate = format(selectedDate, 'MMMM d, yyyy');
+
+    // Create header rows
+    const header = [
+      ['ATTENDANCE RECORD'],
+      [''],
+      ['Date:', formattedDate],
+      ['Course:', courseInfo?.code || ''],
+      ['Section:', courseInfo?.section || ''],
+      [''],
+      // Column headers
+      ['Student Name', 'Attendance Status'],
     ];
-    worksheet['!cols'] = columnWidths;
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Students');
-    XLSX.writeFile(
-      workbook,
-      'Management Information Systems - Gradebook BSIT 111.xlsx',
-    );
+
+    // Create student data rows
+    const studentRows = studentList.map((student) => {
+      const attendance = getAttendanceForDate(student, selectedDate);
+      return [student.name, attendance?.status || 'NOT SET'];
+    });
+
+    // Combine header and data
+    const ws = XLSX.utils.aoa_to_sheet([...header, ...studentRows]);
+
+    // Style configurations
+    const headerStyle = {
+      font: { bold: true, size: 14 },
+      alignment: { horizontal: 'center' },
+    };
+    const normalStyle = { font: { size: 12 } };
+
+    // Configure column widths
+    ws['!cols'] = [
+      { wch: 30 }, // Student Name
+      { wch: 15 }, // Attendance Status
+    ];
+
+    // Merge cells for title
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }, // Merge first row across all columns
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Attendance');
+
+    // Generate filename with course and date
+    const filename = `attendance_${courseInfo?.code || 'course'}_${format(
+      selectedDate,
+      'yyyy-MM-dd',
+    )}.xlsx`;
+    XLSX.writeFile(wb, filename);
+
+    toast.success('Attendance data exported successfully');
     setShowExportPreview(false);
   };
 
-  const handleImportExcel = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportExcel = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: 'binary' });
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json<ExcelRow>(worksheet);
+        const jsonData = XLSX.utils.sheet_to_json(worksheet) as ExcelRow[];
 
-        // Process the imported data
-        const importedStudents = jsonData.map((row: ExcelRow, index) => ({
-          id: `imported-${index}`,
-          name: row.Students || row.Name || '',
-          status: row.Status || '',
-          date: row.Date || new Date().toISOString().split('T')[0],
-          semester: row.Semester || '1st Semester',
+        const newStudents = jsonData.map((row) => ({
+          id: row.Students,
+          name: row.Name,
+          attendanceRecords: [
+            {
+              id: crypto.randomUUID(),
+              studentId: row.Students,
+              status: row.Status as AttendanceStatus,
+              date: row.Date,
+            },
+          ],
         }));
 
-        setStudentList(importedStudents);
-        toast.success('Students imported successfully');
+        setStudentList(
+          newStudents.map((student) => ({
+            ...student,
+            status: 'NOT SET' as AttendanceStatus,
+          })),
+        );
         setShowImportDialog(false);
-      } catch {
-        toast.error('Error importing file. Please check the file format.');
-      }
-    };
-    reader.readAsBinaryString(file);
+      };
+      reader.readAsArrayBuffer(file);
+    } catch (error) {
+      console.error('Error importing Excel file:', error);
+      toast.error('Failed to import Excel file');
+    }
   };
 
   const handleAddStudent = async (student: {
@@ -304,11 +538,6 @@ export default function StudentList() {
     middleInitial?: string;
     image?: string;
   }) => {
-    if (!courseId) {
-      toast.error('No course ID provided');
-      return;
-    }
-
     try {
       const response = await fetch('/api/students', {
         method: 'POST',
@@ -322,33 +551,26 @@ export default function StudentList() {
       });
 
       if (!response.ok) {
-        const errorData = await response.text();
-        console.log('Error response text:', errorData);
-
-        let errorMessage = 'Failed to add student';
-        try {
-          const jsonError = JSON.parse(errorData);
-          errorMessage = jsonError.error || errorMessage;
-        } catch (e) {
-          console.log('Failed to parse error as JSON:', e);
-        }
-
-        toast.error(errorMessage);
-        return;
+        throw new Error('Failed to add student');
       }
 
       const newStudent = await response.json();
+
+      const fullName = `${newStudent.lastName}, ${newStudent.firstName}${
+        newStudent.middleInitial ? ` ${newStudent.middleInitial}.` : ''
+      }`;
+
       setStudentList((prev) => [
         ...prev,
         {
           id: newStudent.id,
-          name: `${newStudent.lastName}, ${newStudent.firstName}${
-            newStudent.middleInitial ? ` ${newStudent.middleInitial}` : ''
-          }`,
-          status: '',
+          name: fullName,
           image: newStudent.image,
+          status: 'NOT SET' as AttendanceStatus,
+          attendanceRecords: [],
         },
       ]);
+
       toast.success('Student added successfully');
     } catch (error) {
       console.error('Error adding student:', error);
@@ -363,75 +585,121 @@ export default function StudentList() {
     middleInitial?: string;
     image?: string;
   }) => {
-    console.log('Starting handleSelectExistingStudent with:', {
-      student,
-      courseId,
-    });
-
-    if (!courseId) {
-      console.log('No courseId provided');
-      toast.error('No course ID provided');
-      return;
-    }
-
     try {
-      // Using the enrollment endpoint
-      const response = await fetch('/api/students/enroll', {
+      const response = await fetch(`/api/courses/${courseId}/students`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           studentId: student.id,
-          courseId: courseId,
+          courseId,
         }),
       });
 
-      console.log('API Response status:', response.status);
-
       if (!response.ok) {
-        const errorData = await response.text();
-        console.log('Error response text:', errorData);
-
-        let errorMessage = 'Failed to add student to course';
-        try {
-          const jsonError = JSON.parse(errorData);
-          errorMessage = jsonError.error || errorMessage;
-        } catch (e) {
-          // If parsing fails, use the generic error message
-          console.log('Failed to parse error as JSON:', e);
-        }
-
-        if (response.status === 409) {
-          toast.error('Student is already enrolled in this course');
-          return;
-        }
-
-        toast.error(errorMessage);
-        return;
+        throw new Error('Failed to add existing student');
       }
 
-      const responseData = await response.json();
-      console.log('Success response:', responseData);
+      const fullName = `${student.lastName}, ${student.firstName}${
+        student.middleInitial ? ` ${student.middleInitial}.` : ''
+      }`;
 
-      // Add the student to the list with proper formatting
-      setStudentList((prev) => [
-        ...prev,
-        {
-          id: student.id,
-          name: `${student.lastName}, ${student.firstName}${
-            student.middleInitial ? ` ${student.middleInitial}` : ''
-          }`,
-          status: '',
-          image: student.image,
-        },
-      ]);
-      toast.success('Student added to course successfully');
+      const newStudent: Student = {
+        id: student.id,
+        name: fullName,
+        image: student.image,
+        status: 'NOT SET' as AttendanceStatus,
+        attendanceRecords: [],
+      };
+
+      setStudentList((prev) => [...prev, newStudent]);
+      toast.success('Student added successfully');
     } catch (error) {
-      console.error('Error in handleSelectExistingStudent:', error);
-      toast.error('Failed to add student to course. Please try again.');
+      console.error('Error adding existing student:', error);
+      toast.error('Failed to add student');
     }
   };
+
+  const saveAttendanceChanges = async () => {
+    if (!selectedDate || Object.keys(unsavedChanges).length === 0) {
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const response = await fetch(`/api/courses/${courseId}/attendance`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          date: format(selectedDate, 'yyyy-MM-dd'),
+          attendance: Object.entries(unsavedChanges).map(
+            ([studentId, status]) => {
+              const student = studentList.find((s) => s.id === studentId);
+              const existingRecord = student?.attendanceRecords.find(
+                (record) => record.date === format(selectedDate, 'yyyy-MM-dd'),
+              );
+              return {
+                studentId,
+                status,
+                id: existingRecord?.id, // Include the existing record ID if it exists
+              };
+            },
+          ),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save attendance');
+      }
+
+      const updatedRecords = await response.json();
+
+      // Update the local state with the new/updated records
+      setStudentList((prev) =>
+        prev.map((student) => {
+          const updatedRecord = updatedRecords.records.find(
+            (record: any) => record.studentId === student.id,
+          );
+          if (updatedRecord) {
+            return {
+              ...student,
+              status: updatedRecord.status,
+              attendanceRecords: student.attendanceRecords.map((record) =>
+                record.date === updatedRecord.date ? updatedRecord : record,
+              ),
+            };
+          }
+          return student;
+        }),
+      );
+
+      // Clear unsaved changes after successful save
+      setUnsavedChanges({});
+      toast.success('Attendance saved successfully');
+    } catch (error) {
+      console.error('Error saving attendance:', error);
+      toast.error('Failed to save attendance');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const hasUnsavedChanges = Object.keys(unsavedChanges).length > 0;
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
 
   if (isLoading) {
     return (
@@ -445,6 +713,7 @@ export default function StudentList() {
           <div className='flex items-center gap-2'>
             <div>
               <h1 className='text-[#124A69] font-bold text-xl'>Loading...</h1>
+              <p className='text-gray-500 text-sm'>Please wait</p>
             </div>
           </div>
         </div>
@@ -478,35 +747,6 @@ export default function StudentList() {
             />
           </div>
         </div>
-        <div className='flex-1 flex items-center justify-center bg-gray-50'>
-          <div className='text-center'>
-            <div className='w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4'>
-              <svg
-                xmlns='http://www.w3.org/2000/svg'
-                className='h-12 w-12 text-gray-400'
-                viewBox='0 0 24 24'
-                fill='none'
-                stroke='currentColor'
-                strokeWidth='2'
-                strokeLinecap='round'
-                strokeLinejoin='round'
-              >
-                <path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' />
-                <circle cx='12' cy='7' r='4' />
-              </svg>
-            </div>
-            <h2 className='text-xl font-semibold text-gray-700 mb-2'>
-              No Students Yet
-            </h2>
-            <p className='text-gray-500 mb-4'>
-              Add students to start tracking attendance
-            </p>
-            <AddStudentSheet
-              onAddStudent={handleAddStudent}
-              onSelectExistingStudent={handleSelectExistingStudent}
-            />
-          </div>
-        </div>
       </div>
     );
   }
@@ -521,19 +761,46 @@ export default function StudentList() {
         </Link>
         <div className='flex items-center gap-2'>
           <div>
-            <h1 className='text-[#124A69] font-bold text-xl'>MIS</h1>
-            <p className='text-gray-500 text-sm'>BSIT 111</p>
+            <h1 className='text-[#124A69] font-bold text-xl'>
+              {courseInfo?.code || 'Course'}
+            </h1>
+            <p className='text-gray-500 text-sm'>
+              Section {courseInfo?.section || 'N/A'}
+            </p>
           </div>
         </div>
         <div className='flex items-center gap-3 ml-6 flex-grow'>
-          <div className='relative flex-grow max-w-[300px]'>
-            <Search className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400' />
-            <Input
-              placeholder='Search a name'
-              className='w-full pl-9 bg-white border-gray-200 rounded-full h-10'
-              value={searchQuery}
-              onChange={handleSearch}
-            />
+          <div className='flex items-center gap-3'>
+            <div className='relative flex-grow max-w-[300px]'>
+              <Search className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400' />
+              <Input
+                placeholder='Search a name'
+                className='w-full pl-9 bg-white border-gray-200 rounded-full h-10'
+                value={searchQuery}
+                onChange={handleSearch}
+              />
+            </div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant='outline'
+                  className='rounded-full h-10 pl-3 pr-2 flex items-center gap-2 w-[180px] justify-between'
+                >
+                  <span className='truncate'>
+                    {selectedDate ? format(selectedDate, 'PPP') : 'Pick a date'}
+                  </span>
+                  <CalendarIcon className='h-4 w-4 flex-shrink-0' />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className='w-auto p-0' align='start'>
+                <Calendar
+                  mode='single'
+                  selected={selectedDate}
+                  onSelect={setSelectedDate}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
           </div>
           <Button
             className='bg-[#22C55E] hover:bg-[#16A34A] text-white rounded-full px-6 h-10'
@@ -541,6 +808,21 @@ export default function StudentList() {
           >
             MARK ALL AS PRESENT
           </Button>
+          {hasUnsavedChanges && (
+            <Button
+              className='bg-[#124A69] hover:bg-[#0D3A54] text-white rounded-full px-6 h-10'
+              onClick={saveAttendanceChanges}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <>
+                  <span className='mr-2'>Saving...</span>
+                </>
+              ) : (
+                'Save Changes'
+              )}
+            </Button>
+          )}
           <div className='flex items-center gap-2 ml-auto'>
             <FilterSheet
               isOpen={isFilterSheetOpen}
@@ -550,88 +832,64 @@ export default function StudentList() {
               onApplyFilters={handleApplyFilters}
             />
             <Button
-              className='bg-[#124A69] hover:bg-[#0D3A54] text-white rounded-full px-4 h-10 flex items-center gap-2'
+              variant='outline'
+              size='icon'
+              className='rounded-full'
               onClick={() => setShowExportPreview(true)}
+              title='Export to Excel'
             >
-              <Download className='h-4 w-4' /> Export to Excel
+              <Download className='h-4 w-4' />
             </Button>
-            <Button
-              className='bg-[#124A69] hover:bg-[#0D3A54] text-white rounded-full px-4 h-10 flex items-center gap-2'
-              onClick={() => setShowImportDialog(true)}
-            >
-              <Download className='h-4 w-4' /> Import from Excel
-            </Button>
-            <AddStudentSheet
-              onAddStudent={handleAddStudent}
-              onSelectExistingStudent={handleSelectExistingStudent}
+          </div>
+        </div>
+      </div>
+
+      <div className='flex-1 overflow-auto p-4'>
+        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4'>
+          {currentStudents.map((student, index) => (
+            <StudentCard
+              key={student.id}
+              student={{
+                name: student.name,
+                status: student.status,
+                image: student.image,
+              }}
+              index={index}
+              tempImage={tempImage}
+              onImageUpload={(index) => handleImageUpload(index)}
+              onSaveChanges={handleSaveChanges}
+              onRemoveImage={() =>
+                setImageToRemove({ index, name: student.name })
+              }
+              onStatusChange={(index, status: AttendanceStatus) =>
+                updateStatus(index, status)
+              }
             />
-          </div>
+          ))}
         </div>
+
+        {totalPages > 1 && (
+          <div className='mt-6'>
+            <Pagination>
+              <PaginationContent>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                  (page) => (
+                    <PaginationItem key={page}>
+                      <PaginationLink
+                        isActive={page === currentPage}
+                        onClick={() => setCurrentPage(page)}
+                      >
+                        {page}
+                      </PaginationLink>
+                    </PaginationItem>
+                  ),
+                )}
+              </PaginationContent>
+            </Pagination>
+          </div>
+        )}
       </div>
 
-      <div className='flex-1 overflow-auto bg-gray-50'>
-        <div className='max-w-[1600px] mx-auto'>
-          <div className='p-6'>
-            <div className='grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6'>
-              {currentStudents.map((student, index) => (
-                <StudentCard
-                  key={index}
-                  student={student}
-                  index={index}
-                  tempImage={tempImage}
-                  onImageUpload={handleImageUpload}
-                  onSaveChanges={handleSaveChanges}
-                  onRemoveImage={(index, name) =>
-                    setImageToRemove({ index, name })
-                  }
-                  onStatusChange={updateStatus}
-                />
-              ))}
-              {/* Add empty placeholder cards to maintain grid structure */}
-              {currentStudents.length > 0 &&
-                currentStudents.length < 5 &&
-                [...Array(5 - currentStudents.length)].map((_, index) => (
-                  <div
-                    key={`placeholder-${index}`}
-                    className='w-full min-w-[200px] bg-transparent'
-                  ></div>
-                ))}
-            </div>
-
-            <div className='flex justify-between items-center mt-6 px-2'>
-              <p className='text-sm text-gray-500'>
-                {filteredStudents.length > 0
-                  ? `${
-                      currentPage * itemsPerPage - (itemsPerPage - 1)
-                    }-${Math.min(
-                      currentPage * itemsPerPage,
-                      filteredStudents.length,
-                    )} out of ${filteredStudents.length} students`
-                  : 'No students found'}
-              </p>
-              {filteredStudents.length > 0 && (
-                <Pagination>
-                  <PaginationContent>
-                    {[...Array(totalPages)].map((_, i) => (
-                      <PaginationItem key={i}>
-                        <PaginationLink
-                          isActive={currentPage === i + 1}
-                          onClick={() => setCurrentPage(i + 1)}
-                          className='rounded-full'
-                        >
-                          {i + 1}
-                        </PaginationLink>
-                      </PaginationItem>
-                    ))}
-                  </PaginationContent>
-                </Pagination>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Alert Dialog for Image Removal */}
       <AlertDialog
         open={!!imageToRemove}
         onOpenChange={() => setImageToRemove(null)}
@@ -640,143 +898,109 @@ export default function StudentList() {
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Profile Picture</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to remove the profile picture for{' '}
-              {imageToRemove?.name}? This action cannot be undone.
+              Are you sure you want to remove this profile picture? This action
+              cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmAndRemoveImage}
-              className='bg-red-500 hover:bg-red-600'
-            >
+            <AlertDialogAction onClick={confirmAndRemoveImage}>
               Remove
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Export Preview Dialog */}
       <Dialog open={showExportPreview} onOpenChange={setShowExportPreview}>
-        <DialogContent className='sm:max-w-[500px]'>
-          <DialogHeader className='border-b pb-4'>
-            <DialogTitle className='text-xl font-semibold'>
-              Management Information Systems - Gradebook
+        <DialogContent className='max-w-[600px] p-6'>
+          <DialogHeader>
+            <DialogTitle className='text-xl font-semibold text-[#124A69]'>
+              Export to Excel
             </DialogTitle>
-            <DialogDescription className='text-sm text-gray-500'>
-              BSIT 111
+            <DialogDescription>
+              Preview of data to be exported:
             </DialogDescription>
           </DialogHeader>
-
-          <div className='py-4 max-h-[60vh] overflow-auto'>
-            <div className='border rounded-lg overflow-hidden'>
-              <table className='w-full'>
-                <thead className='bg-gray-50'>
-                  <tr>
-                    <th className='sticky top-0 bg-gray-50 px-4 py-3 text-left text-sm font-medium text-gray-900'>
-                      Students
-                    </th>
-                    <th className='sticky top-0 bg-gray-50 px-4 py-3 text-left text-sm font-medium text-gray-900'>
-                      Status
-                    </th>
+          <div className='mt-6 max-h-[400px] overflow-auto'>
+            <table className='w-full border-collapse'>
+              <thead className='bg-gray-50'>
+                <tr>
+                  <th className='px-4 py-2 text-left text-sm font-medium text-gray-500'>
+                    Name
+                  </th>
+                  <th className='px-4 py-2 text-left text-sm font-medium text-gray-500'>
+                    Status
+                  </th>
+                  <th className='px-4 py-2 text-left text-sm font-medium text-gray-500'>
+                    Date
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {studentList.slice(0, 5).map((student) => (
+                  <tr key={student.id}>
+                    <td className='px-4 py-2 text-sm text-gray-900'>
+                      {student.name}
+                    </td>
+                    <td className='px-4 py-2 text-sm text-gray-900'>
+                      {getAttendanceForDate(student, selectedDate)?.status ||
+                        'NOT SET'}
+                    </td>
+                    <td className='px-4 py-2 text-sm text-gray-900'>
+                      {getAttendanceForDate(student, selectedDate)?.date || '-'}
+                    </td>
                   </tr>
-                </thead>
-                <tbody className='divide-y divide-gray-200'>
-                  {studentList.map((student, index) => (
-                    <tr
-                      key={index}
-                      className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                ))}
+                {studentList.length > 5 && (
+                  <tr className='border-t'>
+                    <td
+                      colSpan={3}
+                      className='px-4 py-2 text-sm text-gray-500 text-center'
                     >
-                      <td className='px-4 py-2 text-sm text-gray-900 whitespace-nowrap'>
-                        {student.name}
-                      </td>
-                      <td className='px-4 py-2 text-sm'>
-                        <span
-                          className={`inline-block px-2 py-1 rounded-full text-xs font-medium
-                          ${
-                            student.status === 'PRESENT'
-                              ? 'bg-[#EEFFF3] text-[#62BA7D]'
-                              : student.status === 'LATE'
-                              ? 'bg-[#FFF7E6] text-[#D4A017]'
-                              : student.status === 'ABSENT'
-                              ? 'bg-[#FFEFEF] text-[#BA6262]'
-                              : student.status === 'EXCUSED'
-                              ? 'bg-[#EEF2FF] text-[#8F9FDA]'
-                              : 'bg-gray-100 text-gray-600'
-                          }`}
-                        >
-                          {student.status || 'NOT SET'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className='text-sm text-gray-500 mt-4'>
-              {studentList.length} out of {studentList.length} students
-            </div>
+                      And {studentList.length - 5} more students...
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
-
-          <div className='flex justify-between pt-4 border-t'>
+          <div className='mt-6 flex justify-end gap-4'>
             <Button
               variant='outline'
               onClick={() => setShowExportPreview(false)}
-              className='rounded-lg'
             >
               Cancel
             </Button>
             <Button
+              className='bg-[#124A69] hover:bg-[#0D3A54] text-white'
               onClick={handleExport}
-              className='bg-[#124A69] hover:bg-[#0D3A54] text-white rounded-lg'
             >
-              Export
+              Export to Excel
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Import Dialog */}
       <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
         <DialogContent className='max-w-[400px] p-6'>
           <DialogHeader>
             <DialogTitle className='text-xl font-semibold text-[#124A69]'>
-              Import Students from Excel
+              Import from Excel
             </DialogTitle>
-            <DialogDescription className='text-sm text-gray-500'>
-              Upload an Excel file with student information
+            <DialogDescription>
+              Select an Excel file to import student data.
             </DialogDescription>
           </DialogHeader>
-
-          <div className='py-4'>
-            <div className='border-2 border-dashed border-gray-300 rounded-lg p-6 text-center'>
-              <input
-                type='file'
-                accept='.xlsx, .xls'
-                onChange={handleImportExcel}
-                className='hidden'
-                id='excel-import'
-              />
-              <label
-                htmlFor='excel-import'
-                className='cursor-pointer flex flex-col items-center gap-2'
-              >
-                <Download className='h-8 w-8 text-gray-400' />
-                <span className='text-sm text-gray-600'>
-                  Click to upload Excel file
-                </span>
-                <span className='text-xs text-gray-500'>
-                  (.xlsx or .xls files only)
-                </span>
-              </label>
-            </div>
-          </div>
-
-          <div className='flex justify-between pt-4 border-t'>
+          <div className='mt-6'>
+            <Input
+              type='file'
+              accept='.xlsx, .xls'
+              onChange={handleImportExcel}
+              className='mb-4'
+            />
             <Button
-              variant='outline'
+              className='w-full bg-[#124A69] hover:bg-[#0D3A54] text-white'
               onClick={() => setShowImportDialog(false)}
-              className='rounded-lg'
             >
               Cancel
             </Button>

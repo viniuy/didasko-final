@@ -7,11 +7,11 @@ const prisma = new PrismaClient();
 async function main() {
   // Create admin user
   const admin = await prisma.user.upsert({
-    where: { email: 'admin@didasko.com' },
+    where: { email: 'epickiller312873@gmail.com' },
     update: {},
     create: {
-      name: 'Admin User',
-      email: 'admin@didasko.com',
+      name: 'Vincent Dizon',
+      email: 'epickiller312873@gmail.com',
       department: 'Administration',
       workType: WorkType.FULL_TIME,
       role: Role.ADMIN,
@@ -35,11 +35,11 @@ async function main() {
 
   // Create academic head user
   const academicHead = await prisma.user.upsert({
-    where: { email: 'academic@didasko.com' },
+    where: { email: 'vincent.enolpe@gmail.com' },
     update: {},
     create: {
-      name: 'Academic Head',
-      email: 'academic@didasko.com',
+      name: 'Lauraine Savannah',
+      email: 'vincent.enolpe@gmail.com',
       department: 'Computer Science',
       workType: WorkType.FULL_TIME,
       role: Role.ACADEMIC_HEAD,

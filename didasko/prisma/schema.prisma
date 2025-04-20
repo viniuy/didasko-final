@@ -206,6 +206,7 @@ model Course {
   title       String
   description String?
   semester    String   
+  section     String   
   facultyId   String
   faculty     User     @relation("FacultyCourses", fields: [facultyId], references: [id])
   students    Student[]   @relation("StudentCourses")

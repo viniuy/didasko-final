@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/button';
+import { FilterState, AttendanceStatusWithNotSet } from '@/types/attendance';
 import {
   Sheet,
   SheetContent,
@@ -7,18 +8,6 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { X } from 'lucide-react';
-
-// Define the AttendanceStatus enum locally until Prisma generates it
-export enum AttendanceStatus {
-  PRESENT = 'PRESENT',
-  LATE = 'LATE',
-  ABSENT = 'ABSENT',
-  EXCUSED = 'EXCUSED',
-}
-
-interface FilterState {
-  status: AttendanceStatus[];
-}
 
 interface FilterSheetProps {
   isOpen: boolean;
@@ -35,24 +24,30 @@ export function FilterSheet({
   onFiltersChange,
   onApplyFilters,
 }: FilterSheetProps) {
-  const getStatusDisplay = (status: AttendanceStatus) => {
+  const getStatusDisplay = (status: AttendanceStatusWithNotSet) => {
     switch (status) {
-      case AttendanceStatus.PRESENT:
+      case 'PRESENT':
         return 'Present';
-      case AttendanceStatus.LATE:
+      case 'LATE':
         return 'Late';
-      case AttendanceStatus.ABSENT:
+      case 'ABSENT':
         return 'Absent';
-      case AttendanceStatus.EXCUSED:
+      case 'EXCUSED':
         return 'Excused';
+      case 'NOT_SET':
+        return 'Not Set';
       default:
         return 'Status';
     }
   };
 
-  const statusValues = Object.values(AttendanceStatus).filter(
-    (value): value is AttendanceStatus => typeof value === 'string',
-  );
+  const statusValues: AttendanceStatusWithNotSet[] = [
+    'PRESENT',
+    'LATE',
+    'ABSENT',
+    'EXCUSED',
+    'NOT_SET',
+  ];
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
@@ -96,9 +91,12 @@ export function FilterSheet({
         <div className='p-6 border-b'>
           <SheetHeader>
             <SheetTitle className='text-xl font-semibold'>
-              Filter by Status
+              Filter Options
             </SheetTitle>
           </SheetHeader>
+          <div className='mt-4'>
+            <h3 className='text-sm font-medium mb-2'>Status</h3>
+          </div>
         </div>
 
         <div className='p-6 space-y-6'>
@@ -115,18 +113,28 @@ export function FilterSheet({
                 >
                   <input
                     type='checkbox'
-                    checked={filters.status.includes(status)}
+                    checked={filters.status.includes(
+                      status as AttendanceStatusWithNotSet,
+                    )}
                     onChange={(e) => {
                       onFiltersChange({
                         ...filters,
                         status: e.target.checked
-                          ? [...filters.status, status]
-                          : filters.status.filter((s) => s !== status),
+                          ? [
+                              ...filters.status,
+                              status as AttendanceStatusWithNotSet,
+                            ]
+                          : filters.status.filter(
+                              (s) =>
+                                s !== (status as AttendanceStatusWithNotSet),
+                            ),
                       });
                     }}
                     className='rounded border-gray-300 text-[#124A69] focus:ring-[#124A69]'
                   />
-                  <span className='text-sm'>{getStatusDisplay(status)}</span>
+                  <span className='text-sm'>
+                    {getStatusDisplay(status as AttendanceStatusWithNotSet)}
+                  </span>
                 </label>
               ))}
             </div>

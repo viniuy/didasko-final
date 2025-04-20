@@ -1,4 +1,5 @@
-import Image from 'next/image';
+import { AttendanceStatus } from '@prisma/client';
+import { AttendanceStatusWithNotSet } from '@/types/attendance';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -13,32 +14,31 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import Image from 'next/image';
 import { Camera, X } from 'lucide-react';
 
-interface Student {
-  name: string;
-  status: string;
-  image?: string;
-  date?: string;
-  semester?: string;
-}
-
 interface StudentCardProps {
-  student: Student;
+  student: {
+    name: string;
+    status: AttendanceStatusWithNotSet;
+    image?: string;
+    date?: string;
+    semester?: string;
+  };
   index: number;
   tempImage: { index: number; dataUrl: string } | null;
   onImageUpload: (index: number, name: string) => void;
   onSaveChanges: (index: number) => void;
   onRemoveImage: (index: number, name: string) => void;
-  onStatusChange: (index: number, status: string) => void;
+  onStatusChange: (index: number, status: AttendanceStatus) => void;
 }
 
-const statusStyles: Record<string, string> = {
+const statusStyles: Record<AttendanceStatusWithNotSet, string> = {
   LATE: 'bg-[#FFF7E6] text-[#D4A017] border-[#D4A017]',
   ABSENT: 'bg-[#FFEFEF] text-[#BA6262] border-[#BA6262]',
   PRESENT: 'bg-[#EEFFF3] text-[#62BA7D] border-[#62BA7D]',
   EXCUSED: 'bg-[#EEF2FF] text-[#8F9FDA] border-[#8F9FDA]',
-  DEFAULT: 'bg-white text-gray-500 border-gray-200',
+  NOT_SET: 'bg-white text-gray-500 border-gray-200',
 };
 
 export function StudentCard({
@@ -54,13 +54,7 @@ export function StudentCard({
     if (tempImage?.index === index) {
       return tempImage.dataUrl;
     }
-    if (student.image) {
-      if (student.image.startsWith('data:image')) {
-        return student.image;
-      }
-      return student.image;
-    }
-    return '/placeholder.png';
+    return student.image || '/placeholder.png';
   };
 
   return (
@@ -182,10 +176,12 @@ export function StudentCard({
                 variant='outline'
                 size='sm'
                 className={`w-full rounded-full px-4 py-1.5 text-sm font-medium border ${
-                  statusStyles[student.status] || statusStyles.DEFAULT
+                  statusStyles[student.status]
                 }`}
               >
-                {student.status || 'Select status'}
+                {student.status === 'NOT_SET'
+                  ? 'Select status'
+                  : student.status}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align='center'>
