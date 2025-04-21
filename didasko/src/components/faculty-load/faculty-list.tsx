@@ -63,7 +63,9 @@ const FacultyList: React.FC<FacultyListProps> = ({
         const data = await response.json();
         setFaculty(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch faculty');
+        setError(
+          err instanceof Error ? err.message : 'Failed to fetch faculty',
+        );
       } finally {
         setIsLoading(false);
       }
@@ -74,18 +76,14 @@ const FacultyList: React.FC<FacultyListProps> = ({
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#124A69]"></div>
+      <div className='flex justify-center items-center h-64'>
+        <div className='animate-spin rounded-full h-12 w-12 border-b-2 border-[#124A69]'></div>
       </div>
     );
   }
 
   if (error) {
-    return (
-      <div className="text-center text-red-500 p-4">
-        Error: {error}
-      </div>
-    );
+    return <div className='text-center text-red-500 p-4'>Error: {error}</div>;
   }
 
   const filteredFaculty = faculty
@@ -105,44 +103,41 @@ const FacultyList: React.FC<FacultyListProps> = ({
 
   return (
     <div className='flex flex-col space-y-4'>
-      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
+      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4'>
         {currentFaculty.map((faculty) => (
           <div
             key={faculty.id}
-            className='bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow'
+            className='bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow'
           >
-            <div className='flex items-center space-x-4'>
-              <div className='flex-shrink-0'>
-                <div className='w-12 h-12 rounded-full overflow-hidden bg-[#124A69] flex items-center justify-center text-white'>
-                  <UserCircle2 size={36} />
-                </div>
+            <div className='flex flex-col items-center space-y-4'>
+              {/* Profile Picture */}
+              <div className='w-24 h-24 rounded-full overflow-hidden bg-[#124A69] flex items-center justify-center text-white'>
+                <UserCircle2 size={64} />
               </div>
-              <div className='flex-1 min-w-0'>
-                <div className='flex flex-col items-end space-y-2'>
-                  <p className='text-sm font-medium text-gray-900 w-full truncate'>
-                    {faculty.name}
-                  </p>
-                  <div className='flex flex-col items-end w-full'>
-                    <span className='text-xs text-gray-500'>{faculty.role}</span>
-                    <span className='text-xs text-gray-500'>{faculty.workType}</span>
-                  </div>
-                  <button
-                    onClick={() => onTeacherClick(faculty)}
-                    className='text-xs bg-[#124A69]/80 text-white px-3 py-1.5 rounded hover:bg-[#124A69] transition-colors'
-                  >
-                    View Schedule
-                  </button>
-                </div>
-                <p
-                  className='text-sm text-[#124A69] hover:underline cursor-pointer mt-1'
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDepartmentClick(faculty.department);
-                  }}
-                >
-                  {faculty.department}
-                </p>
-              </div>
+
+              {/* Name */}
+              <h3 className='text-lg font-semibold text-gray-900 text-center'>
+                {faculty.name}
+              </h3>
+
+              {/* Department */}
+              <p
+                className='text-sm text-[#124A69] hover:underline cursor-pointer text-center'
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDepartmentClick(faculty.department);
+                }}
+              >
+                {faculty.department}
+              </p>
+
+              {/* View Schedule Button */}
+              <button
+                onClick={() => onTeacherClick(faculty)}
+                className='w-full bg-[#124A69] text-white px-4 py-2 rounded-full hover:bg-[#0D3A54] transition-colors text-sm font-medium'
+              >
+                View Schedule
+              </button>
             </div>
           </div>
         ))}

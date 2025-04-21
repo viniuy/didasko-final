@@ -15,11 +15,13 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
+    if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const courseId = context.params.courseId;
+    const params = await Promise.resolve(context.params);
+    const { courseId } = params;
+
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
 
@@ -30,47 +32,30 @@ export async function GET(
       );
     }
 
-    // Validate the course exists
-    const course = await prisma.course.findUnique({
-      where: { id: courseId },
-    });
-
-    if (!course) {
-      return NextResponse.json({ error: 'Course not found' }, { status: 404 });
-    }
-
     // Create start and end of day dates to ensure we catch all records for the day
     const startDate = new Date(date);
     startDate.setUTCHours(0, 0, 0, 0);
     const endDate = new Date(date);
     endDate.setUTCHours(23, 59, 59, 999);
 
-    // Fetch attendance records for the specified date
     const attendanceRecords = await prisma.attendance.findMany({
       where: {
-        courseId: courseId,
+        courseId,
         date: {
           gte: startDate,
           lte: endDate,
         },
       },
       include: {
-        student: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            middleInitial: true,
-          },
-        },
+        student: true,
       },
     });
 
     return NextResponse.json(attendanceRecords);
   } catch (error) {
-    console.error('Error fetching attendance:', error);
+    console.error('Error fetching attendance records:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch attendance' },
+      { error: 'Failed to fetch attendance records' },
       { status: 500 },
     );
   }
@@ -86,19 +71,14 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const courseId = context.params.courseId;
-    const { date, attendance } = (await request.json()) as {
-      date: string;
-      attendance: (AttendanceRecord & { id?: string })[];
-    };
+    const params = await Promise.resolve(context.params);
+    const { courseId } = params;
 
-    console.log('POST Attendance - Received data:', { date, attendance });
+    const { date, attendance } = await request.json();
 
     // Create a UTC date at the start of the day
     const utcDate = new Date(date);
     utcDate.setUTCHours(0, 0, 0, 0);
-
-    console.log('Normalized UTC date:', utcDate.toISOString());
 
     // Validate the course exists
     const course = await prisma.course.findUnique({
@@ -113,8 +93,6 @@ export async function POST(
     const result = await prisma.$transaction(async (tx) => {
       const records = [];
       for (const record of attendance) {
-        console.log('Processing record:', record);
-
         // First try to find an existing record for this student on this date
         const existingRecord = await tx.attendance.findFirst({
           where: {
@@ -128,16 +106,13 @@ export async function POST(
         });
 
         if (existingRecord) {
-          console.log('Updating existing record:', existingRecord.id);
           // Update existing record
           const updated = await tx.attendance.update({
             where: { id: existingRecord.id },
             data: { status: record.status },
           });
-          console.log('Updated record:', updated);
           records.push(updated);
         } else {
-          console.log('Creating new record for student:', record.studentId);
           // Create new record only if one doesn't exist
           const created = await tx.attendance.create({
             data: {
@@ -147,14 +122,12 @@ export async function POST(
               status: record.status,
             },
           });
-          console.log('Created record:', created);
           records.push(created);
         }
       }
       return records;
     });
 
-    console.log('Final result:', result);
     return NextResponse.json({
       message: 'Attendance saved successfully',
       records: result,

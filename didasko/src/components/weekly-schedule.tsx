@@ -19,13 +19,9 @@ interface Teacher {
 
 interface WeeklyScheduleProps {
   teacherInfo: Teacher;
-  onBack: () => void;
 }
 
-export default function WeeklySchedule({
-  teacherInfo,
-  onBack,
-}: WeeklyScheduleProps) {
+export default function WeeklySchedule({ teacherInfo }: WeeklyScheduleProps) {
   const { data: session } = useSession();
   const [schedules, setSchedules] = useState<ScheduleWithCourse[]>([]);
   const [loading, setLoading] = useState(true);

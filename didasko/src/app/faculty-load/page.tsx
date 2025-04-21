@@ -21,9 +21,7 @@ export default function FacultyLoadPage() {
         <main className='flex flex-1 h-screen overflow-hidden transition-all'>
           <div className='flex flex-col flex-grow px-4'>
             <Header />
-            <h2 className='px-5 text-3xl font-bold text-[#909090]'>
-              Faculty Load
-            </h2>
+
             <div className='flex-1 p-4'>
               <FacultyLoad />
             </div>

@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import Image from 'next/image';
 import { Camera, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
 interface StudentCardProps {
   student: {
@@ -28,9 +29,10 @@ interface StudentCardProps {
   index: number;
   tempImage: { index: number; dataUrl: string } | null;
   onImageUpload: (index: number, name: string) => void;
-  onSaveChanges: (index: number) => void;
+  onSaveChanges: (index: number) => Promise<void>;
   onRemoveImage: (index: number, name: string) => void;
   onStatusChange: (index: number, status: AttendanceStatus) => void;
+  isSaving?: boolean;
 }
 
 const statusStyles: Record<AttendanceStatusWithNotSet, string> = {
@@ -49,7 +51,46 @@ export function StudentCard({
   onSaveChanges,
   onRemoveImage,
   onStatusChange,
+  isSaving = false,
 }: StudentCardProps) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  const handleSave = async () => {
+    try {
+      await onSaveChanges(index);
+      setIsDialogOpen(false);
+    } catch (error) {
+      console.error('Error saving changes:', error);
+    }
+  };
+
+  const handleRemoveImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // First close the dialog
+    setIsDialogOpen(false);
+    // Then remove the image after a short delay
+    setTimeout(() => {
+      onRemoveImage(index, student.name);
+      // Ensure body styles are cleaned up
+      document.body.style.removeProperty('pointer-events');
+    }, 100);
+  };
+
+  const handleDialogOpenChange = (open: boolean) => {
+    setIsDialogOpen(open);
+    if (!open) {
+      // Clean up body styles when dialog closes
+      document.body.style.removeProperty('pointer-events');
+    }
+  };
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      document.body.style.removeProperty('pointer-events');
+    };
+  }, []);
+
   const getImageSrc = () => {
     if (tempImage?.index === index) {
       return tempImage.dataUrl;
@@ -60,9 +101,15 @@ export function StudentCard({
   return (
     <div className='w-full bg-white p-6 rounded-lg shadow-sm border border-gray-100'>
       <div className='flex flex-col items-center gap-3'>
-        <Dialog>
+        <Dialog open={isDialogOpen} onOpenChange={handleDialogOpenChange}>
           <DialogTrigger asChild>
-            <div className='relative group cursor-pointer'>
+            <button
+              className='relative group cursor-pointer outline-none border-none bg-transparent p-0'
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsDialogOpen(true);
+              }}
+            >
               {student.image ||
               (tempImage?.index === index && tempImage.dataUrl) ? (
                 <div className='relative'>
@@ -87,7 +134,7 @@ export function StudentCard({
                   <Camera className='text-gray-400 w-6 h-6' />
                 </div>
               )}
-            </div>
+            </button>
           </DialogTrigger>
           <DialogContent className='max-w-[400px] p-6'>
             <DialogHeader>
@@ -122,10 +169,7 @@ export function StudentCard({
                       {(student.image || tempImage?.index === index) && (
                         <button
                           className='absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1.5 hover:bg-red-600 transition-colors'
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onRemoveImage(index, student.name);
-                          }}
+                          onClick={handleRemoveImage}
                         >
                           <X size={14} />
                         </button>
@@ -142,23 +186,25 @@ export function StudentCard({
             <div className='flex gap-3 mt-2'>
               <Button
                 variant='outline'
-                className='flex-1 rounded-lg'
-                onClick={() => {
-                  const dialogTrigger = document.querySelector(
-                    '[data-state="open"]',
-                  );
-                  if (dialogTrigger instanceof HTMLElement) {
-                    dialogTrigger.click();
-                  }
-                }}
+                className='flex-1 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 h-8 text-xs'
+                onClick={() => setIsDialogOpen(false)}
+                disabled={isSaving}
               >
                 Cancel
               </Button>
               <Button
-                className='flex-1 rounded-lg bg-[#124A69] hover:bg-[#0D3A54] text-white'
-                onClick={() => onSaveChanges(index)}
+                className='flex-1 rounded-lg bg-[#124A69] hover:bg-[#0a2f42] text-white h-8 text-xs'
+                onClick={handleSave}
+                disabled={isSaving}
               >
-                Save changes
+                {isSaving ? (
+                  <div className='flex items-center gap-2'>
+                    <div className='w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin' />
+                    <span>Saving...</span>
+                  </div>
+                ) : (
+                  'Save'
+                )}
               </Button>
             </div>
           </DialogContent>

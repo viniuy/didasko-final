@@ -5,10 +5,10 @@ import { authOptions } from '@/lib/auth-options';
 
 export async function GET(
   request: Request,
-  { params }: { params: { courseId: string } },
+  context: { params: { courseId: string } },
 ) {
   try {
-    console.log('Starting GET request for course:', params.courseId);
+    console.log('Starting GET request for course');
 
     const session = await getServerSession(authOptions);
     console.log('Session:', session);
@@ -40,6 +40,7 @@ export async function GET(
       );
     }
 
+    const params = await Promise.resolve(context.params);
     const { courseId } = params;
     console.log('Fetching course with ID:', courseId);
 
@@ -48,7 +49,12 @@ export async function GET(
       where: { id: courseId },
       include: {
         students: {
-          include: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            middleInitial: true,
+            image: true,
             attendance: {
               where: {
                 courseId: courseId,
@@ -98,6 +104,70 @@ export async function GET(
     );
     return NextResponse.json(
       { error: 'Failed to fetch students' },
+      { status: 500 },
+    );
+  }
+}
+
+export async function POST(
+  request: Request,
+  { params }: { params: { courseId: string } },
+) {
+  try {
+    const body = await request.json();
+    const { studentId } = body;
+
+    console.log('Adding student to course:', {
+      courseId: params.courseId,
+      studentId: studentId,
+    });
+
+    // Check if student is already enrolled
+    const existingEnrollment = await prisma.course.findFirst({
+      where: {
+        id: params.courseId,
+        students: {
+          some: {
+            id: studentId,
+          },
+        },
+      },
+    });
+
+    if (existingEnrollment) {
+      return NextResponse.json(
+        { error: 'Student is already enrolled in this course' },
+        { status: 400 },
+      );
+    }
+
+    // Add student to course
+    const updatedCourse = await prisma.course.update({
+      where: {
+        id: params.courseId,
+      },
+      data: {
+        students: {
+          connect: {
+            id: studentId,
+          },
+        },
+      },
+      include: {
+        students: true,
+      },
+    });
+
+    console.log('Successfully added student to course');
+
+    return NextResponse.json({
+      message: 'Student added successfully',
+      course: updatedCourse,
+    });
+  } catch (error) {
+    console.error('Error adding student to course:', error);
+    return NextResponse.json(
+      { error: 'Failed to add student to course' },
       { status: 500 },
     );
   }

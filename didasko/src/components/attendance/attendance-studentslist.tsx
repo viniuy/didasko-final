@@ -48,12 +48,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AddStudentSheet } from './add-student-sheet';
 import { AttendanceStatus } from '@prisma/client';
-import {
-  Student,
-  FilterState,
-  AttendanceStatusWithNotSet,
-  AttendanceRecord,
-} from '@/types/attendance';
+import { FilterState } from '@/types/attendance';
 
 // Add interface for Excel data
 interface ExcelRow {
@@ -93,6 +88,32 @@ interface AddStudentSheetProps {
     middleInitial?: string;
     image?: string;
   }) => void;
+  onStudentsRemoved: () => void;
+}
+
+interface ApiStudent {
+  id: string;
+  name: string;
+  image?: string;
+}
+
+interface Student {
+  id: string;
+  name: string;
+  image?: string;
+  status: AttendanceStatusWithNotSet;
+  attendanceRecords: AttendanceRecord[];
+}
+
+type AttendanceStatusWithNotSet = AttendanceStatus | 'NOT_SET';
+
+interface AttendanceRecord {
+  id: string;
+  studentId: string;
+  courseId: string;
+  date: string;
+  status: AttendanceStatus;
+  reason: string | null;
 }
 
 export default function StudentList() {
@@ -128,123 +149,112 @@ export default function StudentList() {
     [key: string]: AttendanceStatus;
   }>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [showSuccessMessage, setShowSuccessMessage] = useState<{
+    [key: number]: boolean;
+  }>({});
+  const [isDateLoading, setIsDateLoading] = useState(false);
 
-  useEffect(() => {
-    const fetchStudents = async () => {
-      if (!courseId) return;
+  const fetchStudents = async () => {
+    if (!courseId) return;
 
-      try {
-        console.log('Fetching students for course:', courseId);
-        const response = await fetch(`/api/courses/${courseId}/students`, {
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-        console.log('API Response status:', response.status);
+    try {
+      setIsLoading(true);
+      setIsDateLoading(true);
+      const response = await fetch(`/api/courses/${courseId}`, {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
-        if (!response.ok) {
-          if (response.status === 404) {
-            console.log('No students found for course');
-            setStudentList([]);
-            return;
-          }
-          const errorData = await response.json();
-          console.error('API Error:', errorData);
-          throw new Error('Failed to fetch students');
-        }
+      if (!response.ok) {
+        throw new Error('Failed to fetch students');
+      }
 
-        const data = await response.json();
-        console.log('Received student data:', data);
+      const data = await response.json();
 
-        // If a date is selected, fetch attendance records for that date
-        if (selectedDate) {
-          const dateStr = format(selectedDate, 'yyyy-MM-dd');
-          console.log('Fetching attendance for date:', dateStr);
-          const attendanceResponse = await fetch(
-            `/api/courses/${courseId}/attendance?date=${dateStr}`,
-            {
-              credentials: 'include',
-              headers: {
-                'Content-Type': 'application/json',
-              },
+      // If a date is selected, fetch attendance records for that date
+      if (selectedDate) {
+        const dateStr = format(selectedDate, 'yyyy-MM-dd');
+        console.log('Fetching attendance for date:', dateStr);
+        const attendanceResponse = await fetch(
+          `/api/courses/${courseId}/attendance?date=${dateStr}`,
+          {
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
             },
+          },
+        );
+
+        if (attendanceResponse.ok) {
+          const attendanceData = await attendanceResponse.json();
+          console.log('Received attendance data:', attendanceData);
+          const attendanceMap = new Map(
+            attendanceData.map((record: AttendanceRecord) => [
+              record.studentId,
+              record,
+            ]),
           );
 
-          if (attendanceResponse.ok) {
-            const attendanceData = await attendanceResponse.json();
-            console.log('Received attendance data:', attendanceData);
-            const attendanceMap = new Map(
-              attendanceData.map((record: AttendanceRecord) => {
-                console.log('Processing attendance record:', record);
-                return [record.studentId, record];
-              }),
-            );
-
-            const studentsWithAttendance: Student[] = data.students.map(
-              (student: any) => {
-                const attendanceRecord = attendanceMap.get(student.id);
-                console.log(
-                  'Student:',
-                  student.name,
-                  'Attendance record:',
-                  attendanceRecord,
-                );
-                return {
-                  id: student.id,
-                  name: student.name,
-                  image: student.image || undefined,
-                  status: attendanceRecord
-                    ? attendanceRecord.status
-                    : 'NOT_SET',
-                  attendanceRecords: attendanceRecord ? [attendanceRecord] : [],
-                };
-              },
-            );
-
-            console.log(
-              'Final students with attendance:',
-              studentsWithAttendance,
-            );
-            setStudentList(studentsWithAttendance);
-          } else {
-            console.log('No attendance records found for date:', dateStr);
-            // If no attendance records found, initialize with empty records
-            const studentsWithEmptyRecords: Student[] = data.students.map(
-              (student: any) => ({
+          const studentsWithAttendance: Student[] = data.students.map(
+            (student: any) => {
+              const attendanceRecord = attendanceMap.get(student.id);
+              return {
                 id: student.id,
                 name: student.name,
                 image: student.image || undefined,
-                status: 'NOT_SET',
-                attendanceRecords: [],
-              }),
-            );
-            setStudentList(studentsWithEmptyRecords);
-          }
+                status: attendanceRecord?.status || 'NOT_SET',
+                attendanceRecords: attendanceRecord ? [attendanceRecord] : [],
+              };
+            },
+          );
+
+          console.log(
+            'Final students with attendance:',
+            studentsWithAttendance,
+          );
+          setStudentList(studentsWithAttendance);
         } else {
-          console.log('No date selected, initializing with empty records');
-          // If no date selected, initialize with empty records
+          console.log('No attendance records found for date:', dateStr);
+          // If no attendance records found, initialize with empty records
           const studentsWithEmptyRecords: Student[] = data.students.map(
-            (student: any) => ({
+            (student: ApiStudent) => ({
               id: student.id,
               name: student.name,
-              image: student.image || undefined,
-              status: 'NOT_SET',
+              image: student.image,
+              status: 'NOT_SET' as const,
               attendanceRecords: [],
             }),
           );
           setStudentList(studentsWithEmptyRecords);
         }
-
-        setCourseInfo(data.course);
-      } catch (error) {
-        console.error('Error in fetchStudents:', error);
-        setStudentList([]);
-      } finally {
-        setIsLoading(false);
+      } else {
+        console.log('No date selected, initializing with empty records');
+        // If no date selected, initialize with empty records
+        const studentsWithEmptyRecords: Student[] = data.students.map(
+          (student: ApiStudent) => ({
+            id: student.id,
+            name: student.name,
+            image: student.image,
+            status: 'NOT_SET' as const,
+            attendanceRecords: [],
+          }),
+        );
+        setStudentList(studentsWithEmptyRecords);
       }
-    };
 
+      setCourseInfo(data.course);
+    } catch (error) {
+      console.error('Error in fetchStudents:', error);
+      setStudentList([]);
+    } finally {
+      setIsLoading(false);
+      setIsDateLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchStudents();
   }, [courseId, selectedDate]);
 
@@ -271,9 +281,11 @@ export default function StudentList() {
   // Get attendance status for the selected date
   const getStatusForDate = (
     student: Student,
-    date: Date | undefined,
+    selectedDate: string,
   ): AttendanceStatusWithNotSet => {
-    const record = getAttendanceForDate(student, date);
+    const record = student.attendanceRecords.find(
+      (record) => record.date === selectedDate,
+    );
     return record ? record.status : 'NOT_SET';
   };
 
@@ -285,8 +297,7 @@ export default function StudentList() {
       )
       .filter((student) => {
         if (filters.status.length === 0) return true;
-        const status = getStatusForDate(student, selectedDate);
-        return filters.status.includes(status);
+        return filters.status.includes(student.status);
       })
       .sort((a, b) => {
         if (!sortDate) return 0;
@@ -353,10 +364,19 @@ export default function StudentList() {
     if (!tempImage || tempImage.index !== index) return;
 
     try {
+      setIsSaving(true);
       const formData = new FormData();
-      const response = await fetch(tempImage.dataUrl);
-      const blob = await response.blob();
-      formData.append('image', blob);
+      // Convert base64 to blob
+      const base64Response = await fetch(tempImage.dataUrl);
+      const blob = await base64Response.blob();
+
+      // Get file extension from data URL
+      const ext = tempImage.dataUrl.split(';')[0].split('/')[1];
+      const fileName = `image.${ext}`;
+
+      // Create file from blob with proper name and type
+      const file = new File([blob], fileName, { type: `image/${ext}` });
+      formData.append('image', file);
 
       const uploadResponse = await fetch('/api/upload', {
         method: 'POST',
@@ -364,35 +384,116 @@ export default function StudentList() {
       });
 
       if (!uploadResponse.ok) {
-        throw new Error('Failed to upload image');
+        const errorData = await uploadResponse.json();
+        throw new Error(errorData.error || 'Failed to upload image');
       }
 
       const { imageUrl } = await uploadResponse.json();
 
+      // Update the student's image in the database
+      const student = studentList[index];
+      const updateResponse = await fetch(`/api/students/${student.id}/image`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imageUrl }),
+      });
+
+      if (!updateResponse.ok) {
+        throw new Error('Failed to update student image in database');
+      }
+
+      // Update student list with new image URL
       setStudentList((prev) =>
         prev.map((student, i) =>
           i === index ? { ...student, image: imageUrl } : student,
         ),
       );
 
+      // Clear temp image
       setTempImage(null);
+
+      // Show success message
+      setShowSuccessMessage((prev) => ({ ...prev, [index]: true }));
+      setTimeout(() => {
+        setShowSuccessMessage((prev) => ({ ...prev, [index]: false }));
+      }, 3000);
     } catch (error) {
       console.error('Error saving image:', error);
-      toast.error('Failed to save image');
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to save image',
+        {
+          duration: 3000,
+          position: 'top-center',
+          style: {
+            background: '#EF4444',
+            color: 'white',
+            fontSize: '14px',
+            padding: '12px',
+            borderRadius: '8px',
+          },
+        },
+      );
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const confirmAndRemoveImage = () => {
+  const confirmAndRemoveImage = async () => {
     if (imageToRemove) {
-      setStudentList((prev) =>
-        prev.map((student, idx) =>
-          idx === imageToRemove.index
-            ? { ...student, image: undefined }
-            : student,
-        ),
-      );
-      setImageToRemove(null);
-      toast.success('Profile picture removed successfully');
+      try {
+        const student = studentList[imageToRemove.index];
+
+        // Delete the image file from public/uploads
+        if (student.image) {
+          const deleteResponse = await fetch('/api/upload', {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ imageUrl: student.image }),
+          });
+
+          if (!deleteResponse.ok) {
+            console.error('Failed to delete image file');
+          }
+        }
+
+        // Update the database
+        const updateResponse = await fetch(
+          `/api/students/${student.id}/image`,
+          {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ imageUrl: null }),
+          },
+        );
+
+        if (!updateResponse.ok) {
+          throw new Error('Failed to remove image from database');
+        }
+
+        // Update local state
+        setStudentList((prev) =>
+          prev.map((student, idx) =>
+            idx === imageToRemove.index
+              ? { ...student, image: undefined }
+              : student,
+          ),
+        );
+        // Clear temp image if it exists for this student
+        if (tempImage?.index === imageToRemove.index) {
+          setTempImage(null);
+        }
+        setImageToRemove(null);
+        toast.success('Profile picture removed successfully');
+      } catch (error) {
+        console.error('Error removing image:', error);
+        toast.error('Failed to remove profile picture');
+      }
     }
   };
 
@@ -520,7 +621,7 @@ export default function StudentList() {
         setStudentList(
           newStudents.map((student) => ({
             ...student,
-            status: 'NOT SET' as AttendanceStatus,
+            status: 'NOT_SET' as AttendanceStatusWithNotSet,
           })),
         );
         setShowImportDialog(false);
@@ -566,7 +667,7 @@ export default function StudentList() {
           id: newStudent.id,
           name: fullName,
           image: newStudent.image,
-          status: 'NOT SET' as AttendanceStatus,
+          status: 'NOT_SET' as AttendanceStatusWithNotSet,
           attendanceRecords: [],
         },
       ]);
@@ -586,6 +687,11 @@ export default function StudentList() {
     image?: string;
   }) => {
     try {
+      console.log('Adding student to course:', {
+        studentId: student.id,
+        courseId: courseId,
+      });
+
       const response = await fetch(`/api/courses/${courseId}/students`, {
         method: 'POST',
         headers: {
@@ -593,12 +699,13 @@ export default function StudentList() {
         },
         body: JSON.stringify({
           studentId: student.id,
-          courseId,
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to add existing student');
+        const errorData = await response.json();
+        console.error('Error response:', errorData);
+        throw new Error(errorData.error || 'Failed to add existing student');
       }
 
       const fullName = `${student.lastName}, ${student.firstName}${
@@ -609,7 +716,7 @@ export default function StudentList() {
         id: student.id,
         name: fullName,
         image: student.image,
-        status: 'NOT SET' as AttendanceStatus,
+        status: 'NOT_SET' as AttendanceStatusWithNotSet,
         attendanceRecords: [],
       };
 
@@ -617,7 +724,9 @@ export default function StudentList() {
       toast.success('Student added successfully');
     } catch (error) {
       console.error('Error adding existing student:', error);
-      toast.error('Failed to add student');
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to add student',
+      );
     }
   };
 
@@ -626,8 +735,8 @@ export default function StudentList() {
       return;
     }
 
-    setIsSaving(true);
     try {
+      setIsSaving(true);
       const response = await fetch(`/api/courses/${courseId}/attendance`, {
         method: 'POST',
         headers: {
@@ -644,7 +753,7 @@ export default function StudentList() {
               return {
                 studentId,
                 status,
-                id: existingRecord?.id, // Include the existing record ID if it exists
+                id: existingRecord?.id,
               };
             },
           ),
@@ -744,6 +853,11 @@ export default function StudentList() {
             <AddStudentSheet
               onAddStudent={handleAddStudent}
               onSelectExistingStudent={handleSelectExistingStudent}
+              onStudentsRemoved={() => {
+                if (courseId) {
+                  fetchStudents();
+                }
+              }}
             />
           </div>
         </div>
@@ -784,12 +898,17 @@ export default function StudentList() {
               <PopoverTrigger asChild>
                 <Button
                   variant='outline'
-                  className='rounded-full h-10 pl-3 pr-2 flex items-center gap-2 w-[180px] justify-between'
+                  className='rounded-full h-10 pl-3 pr-2 flex items-center gap-2 w-[180px] justify-between relative'
+                  disabled={isDateLoading}
                 >
                   <span className='truncate'>
                     {selectedDate ? format(selectedDate, 'PPP') : 'Pick a date'}
                   </span>
-                  <CalendarIcon className='h-4 w-4 flex-shrink-0' />
+                  {isDateLoading ? (
+                    <div className='animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent' />
+                  ) : (
+                    <CalendarIcon className='h-4 w-4 flex-shrink-0' />
+                  )}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className='w-auto p-0' align='start'>
@@ -798,6 +917,7 @@ export default function StudentList() {
                   selected={selectedDate}
                   onSelect={setSelectedDate}
                   initialFocus
+                  disabled={isDateLoading}
                 />
               </PopoverContent>
             </Popover>
@@ -823,7 +943,7 @@ export default function StudentList() {
               )}
             </Button>
           )}
-          <div className='flex items-center gap-2 ml-auto'>
+          <div className='flex items-center gap-3 ml-auto'>
             <FilterSheet
               isOpen={isFilterSheetOpen}
               onOpenChange={setIsFilterSheetOpen}
@@ -840,32 +960,55 @@ export default function StudentList() {
             >
               <Download className='h-4 w-4' />
             </Button>
+            <AddStudentSheet
+              onSelectExistingStudent={handleSelectExistingStudent}
+              onStudentsRemoved={() => {
+                if (courseId) {
+                  fetchStudents();
+                }
+              }}
+            />
           </div>
         </div>
       </div>
 
       <div className='flex-1 overflow-auto p-4'>
         <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4'>
-          {currentStudents.map((student, index) => (
-            <StudentCard
-              key={student.id}
-              student={{
-                name: student.name,
-                status: student.status,
-                image: student.image,
-              }}
-              index={index}
-              tempImage={tempImage}
-              onImageUpload={(index) => handleImageUpload(index)}
-              onSaveChanges={handleSaveChanges}
-              onRemoveImage={() =>
-                setImageToRemove({ index, name: student.name })
-              }
-              onStatusChange={(index, status: AttendanceStatus) =>
-                updateStatus(index, status)
-              }
-            />
-          ))}
+          {isDateLoading
+            ? // Loading skeleton for student cards
+              Array.from({ length: 10 }).map((_, index) => (
+                <div
+                  key={index}
+                  className='w-full bg-white p-6 rounded-lg shadow-sm border border-gray-100 animate-pulse'
+                >
+                  <div className='flex flex-col items-center gap-3'>
+                    <div className='w-16 h-16 bg-gray-200 rounded-full'></div>
+                    <div className='w-2/3 h-4 bg-gray-200 rounded'></div>
+                    <div className='w-full h-8 bg-gray-200 rounded-full'></div>
+                  </div>
+                </div>
+              ))
+            : currentStudents.map((student, index) => (
+                <StudentCard
+                  key={student.id}
+                  student={{
+                    name: student.name,
+                    status: student.status,
+                    image: student.image,
+                  }}
+                  index={index}
+                  tempImage={tempImage}
+                  onImageUpload={(index) => handleImageUpload(index)}
+                  onSaveChanges={handleSaveChanges}
+                  onRemoveImage={() =>
+                    setImageToRemove({ index, name: student.name })
+                  }
+                  onStatusChange={(index, status: AttendanceStatus) =>
+                    updateStatus(index, status)
+                  }
+                  isSaving={isSaving}
+                />
+              ))}
         </div>
 
         {totalPages > 1 && (

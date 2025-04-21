@@ -59,51 +59,71 @@ export default function FacultyLoad() {
   return (
     <div className='h-full flex flex-col'>
       {/* Search and Filter Bar */}
-      {!selectedTeacher && (
-        <div className='bg-[#124A69] p-4 rounded-lg mb-4'>
-          <div className='flex items-center justify-between'>
-            {/* Search Input */}
+      <div className='bg-[#124A69] text-white p-4 rounded-t-lg'>
+        <div className='flex items-center justify-between'>
+          <div className='flex items-center gap-2'>
+            {selectedTeacher && (
+              <button
+                onClick={handleBack}
+                className='flex items-center gap-2 text-white hover:text-gray-300 transition-colors'
+              >
+                <svg
+                  xmlns='http://www.w3.org/2000/svg'
+                  width='24'
+                  height='24'
+                  viewBox='0 0 24 24'
+                  fill='none'
+                  stroke='currentColor'
+                  strokeWidth='2'
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  className='h-5 w-5'
+                >
+                  <path d='m15 18-6-6 6-6' />
+                </svg>
+              </button>
+            )}
+            <h2 className='text-xl font-semibold'>Faculty Load</h2>
+          </div>
+          <div className='flex items-center gap-4'>
             <div className='relative'>
               <input
                 type='text'
-                placeholder='Search by name here'
-                className='w-80 p-2 pl-10 rounded-md bg-white text-gray-600 placeholder-gray-400'
+                placeholder='Search...'
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                className='bg-[#124A69] text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-white/20 w-64'
               />
               <svg
-                className='absolute left-3 top-2.5 text-gray-400 w-5 h-5'
                 xmlns='http://www.w3.org/2000/svg'
-                fill='none'
+                width='24'
+                height='24'
                 viewBox='0 0 24 24'
+                fill='none'
                 stroke='currentColor'
+                strokeWidth='2'
+                strokeLinecap='round'
+                strokeLinejoin='round'
+                className='absolute right-3 top-1/2 transform -translate-y-1/2 text-white/70 h-4 w-4'
               >
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M21 21l-4.35-4.35m0 0A7.5 7.5 0 1010.5 3a7.5 7.5 0 006.15 13.65z'
-                />
+                <circle cx='11' cy='11' r='8' />
+                <path d='m21 21-4.3-4.3' />
               </svg>
             </div>
-
-            {/* Filter Dropdown */}
-            <div>
-              <select
-                className='w-48 p-2 rounded-md bg-white text-gray-600 border-0'
-                value={sortOption}
-                onChange={(e) => handleDepartmentClick(e.target.value)}
-              >
-                <option value=''>All</option>
-                <option value='IT Department'>IT Department</option>
-                <option value='BA Department'>BA Department</option>
-                <option value='TM Department'>TM Department</option>
-                <option value='HM Department'>HM Department</option>
-              </select>
-            </div>
+            <select
+              value={sortOption}
+              onChange={(e) => handleDepartmentClick(e.target.value)}
+              className='bg-[#124A69] text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-white/20'
+            >
+              <option value=''>All Departments</option>
+              <option value='IT Department'>IT Department</option>
+              <option value='BA Department'>BA Department</option>
+              <option value='TM Department'>TM Department</option>
+              <option value='HM Department'>HM Department</option>
+            </select>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Main Content Area */}
       <div className='flex-grow overflow-auto'>
@@ -111,10 +131,7 @@ export default function FacultyLoad() {
           {selectedTeacher ? (
             <div>
               <FacultyDetails faculty={selectedTeacher} />
-              <WeeklySchedule
-                teacherInfo={selectedTeacher}
-                onBack={handleBack}
-              />
+              <WeeklySchedule teacherInfo={selectedTeacher} />
             </div>
           ) : (
             <FacultyList

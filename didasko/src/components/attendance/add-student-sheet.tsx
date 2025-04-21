@@ -4,348 +4,572 @@ import { Input } from '@/components/ui/input';
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
+  SheetFooter,
 } from '@/components/ui/sheet';
-import { Plus, Check, Search } from 'lucide-react';
-import { toast } from 'sonner';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { cn } from '@/lib/utils';
-import { useSearchParams } from 'next/navigation';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Checkbox } from '@/components/ui/checkbox';
+import { UserPlus, Plus, Search } from 'lucide-react';
+import { toast } from 'sonner';
+import { useRouter, useSearchParams } from 'next/navigation';
+import Image from 'next/image';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-interface Student {
+// For available students (from /available-students endpoint)
+interface AvailableStudent {
   id: string;
-  lastName: string;
   firstName: string;
+  lastName: string;
   middleInitial?: string;
   image?: string;
 }
 
+// For enrolled students (from /students endpoint)
+interface EnrolledStudent {
+  id: string;
+  name: string;
+  image?: string;
+  status?: string;
+  attendanceRecords?: any[];
+}
+
+// Combined type for all cases
+type Student = AvailableStudent | EnrolledStudent;
+
+// Helper function to check if student is available student
+const isAvailableStudent = (student: Student): student is AvailableStudent => {
+  return 'firstName' in student && 'lastName' in student;
+};
+
+// Helper function to check if student is enrolled student
+const isEnrolledStudent = (student: Student): student is EnrolledStudent => {
+  return 'name' in student;
+};
+
+// Helper function to format student name
+const formatStudentName = (student: Student): string => {
+  if (isEnrolledStudent(student)) {
+    return student.name;
+  } else {
+    // We know it's an AvailableStudent at this point
+    const availableStudent = student as AvailableStudent;
+    return `${availableStudent.lastName}, ${availableStudent.firstName}${
+      availableStudent.middleInitial
+        ? ` ${availableStudent.middleInitial}.`
+        : ''
+    }`;
+  }
+};
+
 interface AddStudentSheetProps {
-  onAddStudent: (student: {
-    lastName: string;
-    firstName: string;
-    middleInitial?: string;
-    image?: string;
-  }) => void;
   onSelectExistingStudent: (student: Student) => void;
+  onStudentsRemoved?: () => void;
 }
 
 export function AddStudentSheet({
-  onAddStudent,
   onSelectExistingStudent,
+  onStudentsRemoved,
 }: AddStudentSheetProps) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const courseId = searchParams.get('courseId');
   const [isOpen, setIsOpen] = useState(false);
-  const [lastName, setLastName] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [middleInitial, setMiddleInitial] = useState('');
-  const [image, setImage] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [existingStudents, setExistingStudents] = useState<Student[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [studentToAdd, setStudentToAdd] = useState<Student | null>(null);
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [addSearchQuery, setAddSearchQuery] = useState('');
+  const [removeSearchQuery, setRemoveSearchQuery] = useState('');
+  const [allStudents, setAllStudents] = useState<Student[]>([]);
+  const [selectedStudents, setSelectedStudents] = useState<Set<string>>(
+    new Set(),
+  );
+  const [selectedStudentsToRemove, setSelectedStudentsToRemove] = useState<
+    Set<string>
+  >(new Set());
+  const [isLoadingAvailable, setIsLoadingAvailable] = useState(false);
+  const [isLoadingEnrolled, setIsLoadingEnrolled] = useState(false);
+  const [activeTab, setActiveTab] = useState('add');
+  const [enrolledStudents, setEnrolledStudents] = useState<Student[]>([]);
 
-  console.log('Component rendered with courseId:', courseId);
+  const fetchEnrolledStudents = async () => {
+    if (!courseId) return;
 
-  useEffect(() => {
-    console.log('Current students:', existingStudents);
-  }, [existingStudents]);
-
-  useEffect(() => {
-    console.log('useEffect triggered with:', { courseId, isOpen });
-
-    const fetchUnenrolledStudents = async () => {
-      console.log('Starting fetch with courseId:', courseId);
-      if (!courseId) {
-        console.log('No courseId provided, skipping fetch');
-        return;
+    try {
+      setIsLoadingEnrolled(true);
+      const response = await fetch(`/api/courses/${courseId}/students`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch enrolled students');
       }
+      const data = await response.json();
+      setEnrolledStudents(data.students);
+    } catch (error) {
+      console.error('Error fetching enrolled students:', error);
+      toast.error('Failed to fetch enrolled students');
+    } finally {
+      setIsLoadingEnrolled(false);
+    }
+  };
 
-      setIsLoading(true);
+  // Fetch all available students when the sheet is opened
+  useEffect(() => {
+    const fetchAvailableStudents = async () => {
+      if (!isOpen || !courseId) return;
+
+      setIsLoadingAvailable(true);
       try {
-        console.log('Making API request...');
         const response = await fetch(
-          `/api/students/unenrolled?courseId=${courseId}`,
+          `/api/courses/${courseId}/available-students`,
         );
-        console.log('API response status:', response.status);
-        if (response.ok) {
-          const data = await response.json();
-          console.log('Fetched students:', data.students);
-          setExistingStudents(data.students || []);
-        } else {
-          console.error('Failed to fetch students:', response.status);
-          toast.error('Failed to fetch unenrolled students');
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch available students: ${response.status}`,
+          );
         }
+        const data = await response.json();
+        setAllStudents(data);
       } catch (error) {
-        console.error('Error fetching unenrolled students:', error);
-        toast.error('Error fetching unenrolled students');
+        console.error('Error fetching available students:', error);
+        toast.error('Failed to fetch available students');
       } finally {
-        setIsLoading(false);
+        setIsLoadingAvailable(false);
       }
     };
 
-    if (isOpen) {
-      fetchUnenrolledStudents();
-    }
-  }, [courseId, isOpen]);
+    fetchAvailableStudents();
+  }, [isOpen, courseId]);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error('Image size should be less than 5MB');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setImage(event.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+  // Fetch enrolled students when the sheet opens
+  useEffect(() => {
+    if (isOpen) {
+      fetchEnrolledStudents();
     }
+  }, [isOpen, courseId]);
+
+  // Filter available students based on search query
+  const availableSearchResults =
+    addSearchQuery.length >= 2
+      ? allStudents.filter((student) => {
+          const fullName = `${student.lastName}, ${student.firstName}${
+            student.middleInitial ? ` ${student.middleInitial}.` : ''
+          }`.toLowerCase();
+          return fullName.includes(addSearchQuery.toLowerCase());
+        })
+      : allStudents;
+
+  // Filter enrolled students based on search query
+  const enrolledSearchResults =
+    removeSearchQuery.length >= 2
+      ? enrolledStudents.filter((student) => {
+          const fullName = `${student.lastName}, ${student.firstName}${
+            student.middleInitial ? ` ${student.middleInitial}.` : ''
+          }`.toLowerCase();
+          return fullName.includes(removeSearchQuery.toLowerCase());
+        })
+      : enrolledStudents;
+
+  const handleAddSearch = (query: string) => {
+    setAddSearchQuery(query);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!lastName || !firstName) {
-      toast.error('Last name and first name are required');
-      return;
-    }
+  const handleRemoveSearch = (query: string) => {
+    setRemoveSearchQuery(query);
+  };
 
-    onAddStudent({
-      lastName,
-      firstName,
-      middleInitial: middleInitial || undefined,
-      image: image || undefined,
+  const handleSelectStudent = () => {
+    const selectedStudentsArray = allStudents.filter((student) =>
+      selectedStudents.has(student.id),
+    );
+
+    selectedStudentsArray.forEach((student) => {
+      if (isAvailableStudent(student)) {
+        onSelectExistingStudent(student);
+      }
     });
 
-    // Reset form
-    setLastName('');
-    setFirstName('');
-    setMiddleInitial('');
-    setImage(null);
     setIsOpen(false);
-    toast.success('Student added successfully');
+    setAddSearchQuery('');
+    setRemoveSearchQuery('');
+    setSelectedStudents(new Set());
   };
 
-  const filteredStudents = existingStudents.filter((student) => {
-    const fullName = `${student.lastName}, ${student.firstName}`.toLowerCase();
-    return fullName.includes(searchQuery.toLowerCase());
-  });
-
-  const handleSelectStudent = (student: Student) => {
-    console.log('Selecting student:', student);
-    setStudentToAdd(student);
-    setShowConfirmDialog(true);
+  const handleNewStudent = () => {
+    setIsOpen(false);
+    router.push('/students/new');
   };
 
-  const handleConfirmAddStudent = () => {
-    if (studentToAdd) {
-      onSelectExistingStudent(studentToAdd);
-      setShowConfirmDialog(false);
+  const toggleAllStudents = (checked: boolean) => {
+    if (checked) {
+      setSelectedStudents(
+        new Set(availableSearchResults.map((student) => student.id)),
+      );
+    } else {
+      setSelectedStudents(new Set());
+    }
+  };
+
+  const toggleStudent = (studentId: string, checked: boolean) => {
+    const newSelected = new Set(selectedStudents);
+    if (checked) {
+      newSelected.add(studentId);
+    } else {
+      newSelected.delete(studentId);
+    }
+    setSelectedStudents(newSelected);
+  };
+
+  const areAllSelected =
+    availableSearchResults.length > 0 &&
+    availableSearchResults.every((student) => selectedStudents.has(student.id));
+
+  const areSomeSelected = availableSearchResults.some((student) =>
+    selectedStudents.has(student.id),
+  );
+
+  const handleRemoveStudent = async (studentId: string) => {
+    try {
+      const response = await fetch(
+        `/api/courses/${courseId}/students/${studentId}`,
+        {
+          method: 'DELETE',
+        },
+      );
+
+      if (!response.ok) throw new Error('Failed to remove student');
+
+      // Update the local state by removing the student
+      setEnrolledStudents((prev) =>
+        prev.filter((student) => student.id !== studentId),
+      );
+
+      toast.success('Student removed successfully');
+    } catch (error) {
+      console.error('Error removing student:', error);
+      toast.error('Failed to remove student');
+    }
+  };
+
+  const toggleAllStudentsToRemove = (checked: boolean) => {
+    if (checked) {
+      setSelectedStudentsToRemove(
+        new Set(enrolledSearchResults.map((student) => student.id)),
+      );
+    } else {
+      setSelectedStudentsToRemove(new Set());
+    }
+  };
+
+  const toggleStudentToRemove = (studentId: string, checked: boolean) => {
+    const newSelected = new Set(selectedStudentsToRemove);
+    if (checked) {
+      newSelected.add(studentId);
+    } else {
+      newSelected.delete(studentId);
+    }
+    setSelectedStudentsToRemove(newSelected);
+  };
+
+  const handleRemoveSelectedStudents = async () => {
+    if (!courseId) return;
+
+    try {
+      setIsLoadingEnrolled(true);
+
+      // Create an array of promises for each student removal
+      const promises = Array.from(selectedStudentsToRemove).map((studentId) =>
+        fetch(`/api/courses/${courseId}/students/${studentId}`, {
+          method: 'DELETE',
+        }).then(async (response) => {
+          if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to remove student');
+          }
+          return studentId;
+        }),
+      );
+
+      // Wait for all removals to complete
+      await Promise.all(promises);
+
+      // Reset selection
+      setSelectedStudentsToRemove(new Set());
+
+      // Close the sheet
       setIsOpen(false);
-      toast.success('Student added to class successfully');
+
+      // Show success message
+      toast.success('Students removed successfully');
+
+      // Trigger parent component to refresh student list using the proper callback
+      if (onStudentsRemoved) {
+        onStudentsRemoved();
+      }
+    } catch (error) {
+      console.error('Error removing students:', error);
+      toast.error('Failed to remove some students');
+    } finally {
+      setIsLoadingEnrolled(false);
+    }
+  };
+
+  const handleSheetOpen = (open: boolean) => {
+    setIsOpen(open);
+    if (!open) {
+      // Reset states when closing
+      setAddSearchQuery('');
+      setRemoveSearchQuery('');
+      setSelectedStudents(new Set());
+      setSelectedStudentsToRemove(new Set());
     }
   };
 
   return (
-    <>
-      <Sheet open={isOpen} onOpenChange={setIsOpen}>
-        <SheetTrigger asChild>
-          <Button className='bg-[#124A69] hover:bg-[#0D3A54] text-white rounded-full px-4 h-10 flex items-center gap-2'>
-            <Plus className='h-4 w-4' /> Add Student
-          </Button>
-        </SheetTrigger>
-        <SheetContent className='p-4'>
-          <SheetHeader>
-            <SheetTitle>Add Student</SheetTitle>
-            <SheetDescription>
-              Choose how you want to add a student to the class.
-            </SheetDescription>
-          </SheetHeader>
+    <Sheet open={isOpen} onOpenChange={handleSheetOpen}>
+      <SheetTrigger asChild>
+        <Button
+          variant='outline'
+          size='icon'
+          className='rounded-full'
+          title='Add Student'
+        >
+          <UserPlus className='h-4 w-4' />
+        </Button>
+      </SheetTrigger>
+      <SheetContent className='w-full max-w-4xl p-4'>
+        <SheetHeader>
+          <SheetTitle className='text-[#124A69]'>Manage Students</SheetTitle>
+        </SheetHeader>
+        <Tabs
+          defaultValue='add'
+          className='p-2'
+          value={activeTab}
+          onValueChange={setActiveTab}
+        >
+          <TabsList className='grid w-full grid-cols-2'>
+            <TabsTrigger value='add'>Add Student</TabsTrigger>
+            <TabsTrigger value='remove'>Remove Student</TabsTrigger>
+          </TabsList>
 
-          <Tabs defaultValue='existing' className='w-full mt-4'>
-            <TabsList className='grid w-full grid-cols-2'>
-              <TabsTrigger value='existing'>Select Existing</TabsTrigger>
-              <TabsTrigger value='new'>Add New</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value='existing' className='mt-4'>
-              <div className='space-y-4'>
-                <div className='relative'>
+          <TabsContent value='add' className='mt-4'>
+            <div className='flex flex-col h-full'>
+              <div className='flex items-center gap-4 mb-6'>
+                <div className='relative flex-1'>
                   <Search className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400' />
                   <Input
-                    placeholder='Search students...'
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder='Search existing students...'
+                    value={addSearchQuery}
+                    onChange={(e) => handleAddSearch(e.target.value)}
                     className='pl-9'
                   />
                 </div>
+              </div>
 
-                <div className='border rounded-lg max-h-[300px] overflow-y-auto'>
-                  {isLoading ? (
-                    <div className='p-4 text-center text-gray-500'>
-                      Loading students...
-                    </div>
-                  ) : filteredStudents.length === 0 ? (
-                    <div className='p-4 text-center text-gray-500'>
-                      No students found
-                    </div>
-                  ) : (
-                    <div className='divide-y'>
-                      {filteredStudents.map((student) => (
-                        <button
-                          key={student.id}
-                          onClick={() => handleSelectStudent(student)}
-                          className='w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center justify-between'
-                        >
-                          <span>
-                            {student.lastName}, {student.firstName}
-                          </span>
-                          <Plus className='h-4 w-4 text-gray-400' />
-                        </button>
-                      ))}
-                    </div>
-                  )}
+              <div className='flex-1 overflow-auto -mx-6 px-6'>
+                {isLoadingAvailable ? (
+                  <div className='flex justify-center py-8'>
+                    <div className='animate-spin rounded-full h-8 w-8 border-2 border-[#124A69] border-t-transparent'></div>
+                  </div>
+                ) : availableSearchResults.length > 0 ? (
+                  <div className='rounded-md border'>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className='w-[50px]'>
+                            <Checkbox
+                              checked={areAllSelected}
+                              onCheckedChange={toggleAllStudents}
+                              aria-label='Select all students'
+                            />
+                          </TableHead>
+                          <TableHead className='w-[100px]'>Photo</TableHead>
+                          <TableHead>Name</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {availableSearchResults.map((student) => (
+                          <TableRow key={student.id}>
+                            <TableCell>
+                              <Checkbox
+                                checked={selectedStudents.has(student.id)}
+                                onCheckedChange={(checked) =>
+                                  toggleStudent(student.id, checked as boolean)
+                                }
+                                aria-label={`Select ${formatStudentName(
+                                  student,
+                                )}`}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <div className='relative h-10 w-10 rounded-full overflow-hidden bg-gray-100'>
+                                {student.image ? (
+                                  <Image
+                                    src={student.image}
+                                    alt={formatStudentName(student)}
+                                    fill
+                                    className='object-cover'
+                                  />
+                                ) : (
+                                  <div className='h-full w-full flex items-center justify-center text-gray-400'>
+                                    <UserPlus className='h-5 w-5' />
+                                  </div>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <p className='font-medium'>
+                                  {formatStudentName(student)}
+                                </p>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : addSearchQuery.length >= 2 ? (
+                  <p className='text-center text-gray-500 py-8'>
+                    No students found
+                  </p>
+                ) : addSearchQuery.length > 0 ? (
+                  <p className='text-center text-gray-500 py-8'>
+                    Type at least 2 characters to search
+                  </p>
+                ) : (
+                  <p className='text-center text-gray-500 py-8'>
+                    Search for students to add to this course
+                  </p>
+                )}
+              </div>
+
+              <SheetFooter className='mt-6'>
+                <Button
+                  onClick={handleSelectStudent}
+                  className='w-full bg-[#124A69] hover:bg-[#0D3A54] text-white'
+                  disabled={selectedStudents.size === 0}
+                >
+                  Add Selected Students ({selectedStudents.size})
+                </Button>
+              </SheetFooter>
+            </div>
+          </TabsContent>
+
+          <TabsContent value='remove' className='mt-4'>
+            <div className='flex flex-col h-full'>
+              <div className='flex items-center gap-4 mb-6'>
+                <div className='relative flex-1'>
+                  <Search className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400' />
+                  <Input
+                    placeholder='Search enrolled students...'
+                    value={removeSearchQuery}
+                    onChange={(e) => handleRemoveSearch(e.target.value)}
+                    className='pl-9'
+                  />
                 </div>
               </div>
-            </TabsContent>
 
-            <TabsContent value='new' className='mt-4'>
-              <form onSubmit={handleSubmit} className='space-y-4'>
-                <div className='space-y-2 flex justify-center items-center'>
-                  <div className='items-center'>
-                    {image ? (
-                      <div className='relative'>
-                        <img
-                          src={image}
-                          alt='Preview'
-                          className='w-20 h-20 rounded-full object-cover'
-                        />
-                        <button
-                          type='button'
-                          onClick={() => setImage(null)}
-                          className='absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1'
-                        >
-                          <svg
-                            xmlns='http://www.w3.org/2000/svg'
-                            className='h-4 w-4'
-                            viewBox='0 0 24 24'
-                            fill='none'
-                            stroke='currentColor'
-                            strokeWidth='2'
-                            strokeLinecap='round'
-                            strokeLinejoin='round'
-                          >
-                            <line x1='18' y1='6' x2='6' y2='18' />
-                            <line x1='6' y1='6' x2='18' y2='18' />
-                          </svg>
-                        </button>
-                      </div>
-                    ) : (
-                      <div className='w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center'>
-                        <svg
-                          xmlns='http://www.w3.org/2000/svg'
-                          className='h-8 w-8 text-gray-400'
-                          viewBox='0 0 24 24'
-                          fill='none'
-                          stroke='currentColor'
-                          strokeWidth='2'
-                          strokeLinecap='round'
-                          strokeLinejoin='round'
-                        >
-                          <path d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' />
-                          <circle cx='12' cy='7' r='4' />
-                        </svg>
-                      </div>
-                    )}
-                    <input
-                      type='file'
-                      accept='image/*'
-                      onChange={handleImageUpload}
-                      className='hidden'
-                      id='image-upload'
-                    />
-                    <label
-                      htmlFor='image-upload'
-                      className='text-sm text-blue-600 hover:text-blue-800 cursor-pointer'
-                    >
-                      {image ? 'Change' : 'Upload'} photo
-                    </label>
+              <div className='flex-1 overflow-auto -mx-6 px-6'>
+                {isLoadingEnrolled ? (
+                  <div className='flex justify-center py-8'>
+                    <div className='animate-spin rounded-full h-8 w-8 border-2 border-[#124A69] border-t-transparent'></div>
                   </div>
-                </div>
-                <div className='space-y-2'>
-                  <label className='text-sm font-medium'>Last Name</label>
-                  <Input
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    placeholder='Enter last name'
-                    required
-                  />
-                </div>
-                <div className='space-y-2'>
-                  <label className='text-sm font-medium'>First Name</label>
-                  <Input
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    placeholder='Enter first name'
-                    required
-                  />
-                </div>
-                <div className='space-y-2'>
-                  <label className='text-sm font-medium'>Middle Initial</label>
-                  <Input
-                    value={middleInitial}
-                    onChange={(e) => setMiddleInitial(e.target.value)}
-                    placeholder='Enter middle initial'
-                    maxLength={1}
-                  />
-                </div>
-                <Button
-                  type='submit'
-                  className='w-full bg-[#124A69] hover:bg-[#0D3A54] text-white rounded-full px-4 h-10 flex items-center gap-2'
-                >
-                  Add Student
-                </Button>
-              </form>
-            </TabsContent>
-          </Tabs>
-        </SheetContent>
-      </Sheet>
+                ) : enrolledSearchResults.length > 0 ? (
+                  <div className='rounded-md border'>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className='w-[50px]'>
+                            <Checkbox
+                              checked={
+                                enrolledSearchResults.length > 0 &&
+                                selectedStudentsToRemove.size ===
+                                  enrolledSearchResults.length
+                              }
+                              onCheckedChange={toggleAllStudentsToRemove}
+                              aria-label='Select all students'
+                            />
+                          </TableHead>
+                          <TableHead className='w-[100px]'>Photo</TableHead>
+                          <TableHead>Name</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {enrolledSearchResults.map((student) => (
+                          <TableRow key={student.id}>
+                            <TableCell>
+                              <Checkbox
+                                checked={selectedStudentsToRemove.has(
+                                  student.id,
+                                )}
+                                onCheckedChange={(checked) =>
+                                  toggleStudentToRemove(
+                                    student.id,
+                                    checked as boolean,
+                                  )
+                                }
+                                aria-label={`Select ${student.name}`}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <div className='relative h-10 w-10 rounded-full overflow-hidden bg-gray-100'>
+                                {student.image ? (
+                                  <Image
+                                    src={student.image}
+                                    alt={student.name}
+                                    fill
+                                    className='object-cover'
+                                  />
+                                ) : (
+                                  <div className='h-full w-full flex items-center justify-center text-gray-400'>
+                                    <UserPlus className='h-5 w-5' />
+                                  </div>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <p className='font-medium'>{student.name}</p>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : removeSearchQuery.length >= 2 ? (
+                  <p className='text-center text-gray-500 py-8'>
+                    No enrolled students found
+                  </p>
+                ) : removeSearchQuery.length > 0 ? (
+                  <p className='text-center text-gray-500 py-8'>
+                    Type at least 2 characters to search
+                  </p>
+                ) : (
+                  <p className='text-center text-gray-500 py-8'>
+                    No students are currently enrolled in this course
+                  </p>
+                )}
+              </div>
 
-      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Add Student to Class</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to add {studentToAdd?.lastName},{' '}
-              {studentToAdd?.firstName} to this class?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setShowConfirmDialog(false)}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmAddStudent}>
-              Add Student
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+              <SheetFooter className='mt-6'>
+                <Button
+                  onClick={handleRemoveSelectedStudents}
+                  className='w-full bg-red-600 hover:bg-red-700 text-white'
+                  disabled={selectedStudentsToRemove.size === 0}
+                >
+                  Remove Selected Students ({selectedStudentsToRemove.size})
+                </Button>
+              </SheetFooter>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </SheetContent>
+    </Sheet>
   );
 }
