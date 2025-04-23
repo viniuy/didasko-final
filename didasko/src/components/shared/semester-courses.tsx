@@ -57,7 +57,7 @@ const CourseCard = ({
       : `/grading/reporting/${schedule.course.code}`;
 
   return (
-    <Card className='bg-[#124A69] text-white rounded-lg shadow-md w-full max-w-[400px] flex flex-col justify-between h-45 '>
+    <Card className='bg-[#124A69] text-white rounded-lg shadow-md w-full max-w-[440px] flex flex-col justify-between h-45 '>
       <div>
         <CardHeader className='-mt-4 flex justify-between items-center'>
           <CardTitle className='text-2xl font-bold'>
@@ -114,7 +114,7 @@ export default function SemesterCourses({
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 4;
+  const itemsPerPage = 3;
 
   const fetchUserIdByEmail = async (email: string) => {
     try {
@@ -207,7 +207,7 @@ export default function SemesterCourses({
   if (status === 'loading' || isLoading) {
     return (
       <Card className='p-4 shadow-md rounded-lg'>
-        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4'>
+        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3'>
           {[...Array(3)].map((_, index) => (
             <LoadingSkeleton key={index} index={index} />
           ))}
@@ -233,7 +233,7 @@ export default function SemesterCourses({
 
   return (
     <Card className='p-4 shadow-md rounded-lg'>
-      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4'>
+      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 '>
         {currentSchedules.map((schedule) => (
           <CourseCard key={schedule.id} schedule={schedule} type={type} />
         ))}

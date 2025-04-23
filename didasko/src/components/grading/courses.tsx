@@ -17,7 +17,7 @@ interface Course {
   id: string;
   title: string;
   code: string;
-  description: string | null;
+  room: string | null;
 }
 
 interface ScheduleWithCourse {
@@ -40,9 +40,7 @@ const CourseCard = ({ course }: { course: Course }) => {
         </CardHeader>
         <CardContent>
           <p className='text-sm'>{course.code}</p>
-          <p className='text-sm'>
-            {course.description || 'No description available'}
-          </p>
+          <p className='text-sm'>{course.room || 'No room assigned'}</p>
         </CardContent>
       </div>
       <div className='flex justify-end mt-auto p-2'>

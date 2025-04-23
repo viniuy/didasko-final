@@ -132,13 +132,20 @@ export function AdminDataTable({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isValidFile, setIsValidFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importProgress, setImportProgress] = useState<{
+    current: number;
+    total: number;
+    status: string;
+  } | null>(null);
+  const [tableData, setTableData] = useState<User[]>(users);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Filter users based on search query
   const filteredUsers = useMemo(() => {
-    if (!searchQuery.trim()) return users;
+    if (!searchQuery.trim()) return tableData;
 
     const query = searchQuery.toLowerCase();
-    return users.filter(
+    return tableData.filter(
       (user) =>
         user.name.toLowerCase().includes(query) ||
         user.email.toLowerCase().includes(query) ||
@@ -146,7 +153,7 @@ export function AdminDataTable({
         user.workType.toLowerCase().includes(query) ||
         user.role.toLowerCase().includes(query),
     );
-  }, [users, searchQuery]);
+  }, [tableData, searchQuery]);
 
   const handleRoleChange = (userId: string, newRole: Role) => {
     setEditedUsers((prev) => ({
@@ -204,11 +211,15 @@ export function AdminDataTable({
 
       // Clear edited state after successful save
       setEditedUsers({});
+
+      // Refresh the table data
+      await refreshTableData();
+
       toast.success('All changes saved successfully');
 
-      // Refresh the user list
+      // Call onUserAdded callback if provided
       if (onUserAdded) {
-        onUserAdded();
+        await onUserAdded();
       }
     } catch (error) {
       console.error('Error saving changes:', error);
@@ -224,16 +235,28 @@ export function AdminDataTable({
     if (!deletingUser) return;
 
     try {
+      setIsRefreshing(true);
       const result = await deleteUser(deletingUser.id);
+
       if (result.success) {
         console.log('User deleted successfully:', { userId: deletingUser.id });
         toast.success('User deleted successfully');
-        if (onUserAdded) {
-          onUserAdded(); // Refresh the user list
-        }
+
+        // Refresh the table data
+        await refreshTableData();
       } else {
         console.error('Failed to delete user:', result.error);
-        toast.error(result.error || 'Failed to delete user');
+
+        // Show specific error message for user not found
+        if (
+          result.error?.includes('not found') ||
+          result.error?.includes('does not exist')
+        ) {
+          toast.error('User no longer exists. The table will be refreshed.');
+          await refreshTableData();
+        } else {
+          toast.error(result.error || 'Failed to delete user');
+        }
       }
     } catch (error) {
       console.error('Error deleting user:', error);
@@ -718,6 +741,21 @@ export function AdminDataTable({
     return true;
   };
 
+  const refreshTableData = async () => {
+    try {
+      setIsRefreshing(true);
+      const response = await fetch('/api/users');
+      const data = await response.json();
+      if (data.users) {
+        setTableData(data.users);
+      }
+    } catch (error) {
+      console.error('Error refreshing table data:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const handleImport = async () => {
     if (!selectedFile || !isValidFile) {
       toast.error('Please select a valid file first');
@@ -725,18 +763,137 @@ export function AdminDataTable({
     }
 
     try {
-      // Here you would typically send the data to your API
-      toast.success('Users imported successfully');
-      setShowImportPreview(false);
-      setSelectedFile(null);
-      setPreviewData([]);
-      setIsValidFile(false);
-      if (onUserAdded) {
-        onUserAdded();
+      setImportProgress({
+        current: 0,
+        total: 0,
+        status: 'Starting import process...',
+      });
+      console.log('Starting import process...');
+      const formData = new FormData();
+
+      console.log('File details:', {
+        name: selectedFile.name,
+        type: selectedFile.type,
+        size: selectedFile.size,
+      });
+
+      formData.append('file', selectedFile, selectedFile.name);
+
+      console.log('Sending file to server...');
+      setImportProgress((prev) => ({ ...prev!, status: 'Uploading file...' }));
+
+      const response = await fetch('/api/users/import', {
+        method: 'POST',
+        body: formData,
+      });
+
+      console.log('Response status:', response.status);
+      console.log(
+        'Response headers:',
+        Object.fromEntries(response.headers.entries()),
+      );
+
+      const data = await response.json();
+      console.log('Response data:', data);
+
+      if (!response.ok) {
+        console.error('Server error:', data);
+        throw new Error(data.error || 'Failed to import users');
       }
+
+      // Show import summary
+      if (data.success) {
+        // Show individual success notifications
+        data.importedUsers?.forEach(
+          (
+            user: { name: string; email: string; row: number },
+            index: number,
+          ) => {
+            setTimeout(() => {
+              toast.success(
+                <div className='space-y-1'>
+                  <p className='font-medium'>Imported User</p>
+                  <p className='text-sm'>{user.name}</p>
+                  <p className='text-sm text-gray-500'>Row {user.row}</p>
+                </div>,
+                { duration: 3000 },
+              );
+            }, index * 300);
+          },
+        );
+
+        // Update progress as users are imported
+        if (data.importedUsers) {
+          data.importedUsers.forEach((_: unknown, index: number) => {
+            setTimeout(() => {
+              setImportProgress((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      current: index + 1,
+                      total: data.total,
+                      status: `Importing user ${index + 1} of ${data.total}...`,
+                    }
+                  : null,
+              );
+            }, index * 300);
+          });
+        }
+
+        // Final success message after all individual notifications
+        setTimeout(() => {
+          toast.success(
+            <div className='space-y-2'>
+              <p className='font-medium'>Import completed successfully!</p>
+              <p>{data.imported} users imported</p>
+              <p>{data.skipped} entries skipped</p>
+            </div>,
+            { duration: 5000 },
+          );
+
+          // Refresh the table data
+          refreshTableData();
+        }, (data.importedUsers?.length || 0) * 300 + 500);
+
+        // Show detailed errors if any
+        if (data.errors.length > 0) {
+          console.log('Import errors:', data.errors);
+          toast.error(
+            <div className='space-y-2'>
+              <p>Some users were not imported:</p>
+              <ul className='list-disc pl-4'>
+                {data.errors.slice(0, 3).map((error: any, index: number) => (
+                  <li key={index}>
+                    Row {error.row}: {error.email} - {error.message}
+                  </li>
+                ))}
+                {data.errors.length > 3 && (
+                  <li>...and {data.errors.length - 3} more errors</li>
+                )}
+              </ul>
+            </div>,
+            { duration: 5000 },
+          );
+        }
+      } else {
+        console.error('Import failed:', data);
+        toast.error('No users were imported');
+      }
+
+      // Reset states after all notifications
+      setTimeout(() => {
+        setShowImportPreview(false);
+        setSelectedFile(null);
+        setPreviewData([]);
+        setIsValidFile(false);
+        setImportProgress(null);
+      }, (data.importedUsers?.length || 0) * 300 + 1000);
     } catch (error) {
-      console.error('Error importing users:', error);
-      toast.error('Failed to import users');
+      console.error('Error in import process:', error);
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to import users',
+      );
+      setImportProgress(null);
     }
   };
 
@@ -761,7 +918,7 @@ export function AdminDataTable({
             <Download className='h-4 w-4' />
             Export Data
           </Button>
-          <AddUserSheet />
+          <AddUserSheet onSuccess={refreshTableData} />
         </div>
       </div>
 
@@ -791,133 +948,149 @@ export function AdminDataTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredUsers.map((user) => {
-              const isEdited = editedUsers[user.id];
-              const currentRole = isEdited?.role || user.role;
-              const currentPermission = isEdited?.permission || user.permission;
-
-              return (
-                <TableRow
-                  key={user.id}
-                  className={isEdited ? 'bg-yellow-50' : ''}
-                >
-                  <TableCell className='flex items-center gap-3'>
-                    <Avatar className='h-8 w-8'>
-                      <AvatarFallback className='bg-[#124A69] text-white'>
-                        {getInitials(user.name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span>{formatName(user.name)}</span>
-                  </TableCell>
-                  <TableCell>{user.email}</TableCell>
-                  <TableCell>{user.department}</TableCell>
-                  <TableCell>
-                    {user.workType
-                      .split('_')
-                      .map(
-                        (word) =>
-                          word.charAt(0).toUpperCase() +
-                          word.slice(1).toLowerCase(),
-                      )
-                      .join(' ')}
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={currentRole}
-                      onValueChange={(value: Role) =>
-                        handleRoleChange(user.id, value)
-                      }
-                    >
-                      <SelectTrigger className='w-[130px]'>
-                        <SelectValue placeholder='Select role' />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value='ADMIN'>Admin</SelectItem>
-                        <SelectItem value='FACULTY'>Faculty</SelectItem>
-                        <SelectItem value='ACADEMIC_HEAD'>
-                          Academic Head
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={currentPermission}
-                      onValueChange={(value: Permission) =>
-                        handlePermissionChange(user.id, value)
-                      }
-                    >
-                      <SelectTrigger className='w-[130px]'>
-                        <SelectValue placeholder='Select permission'>
-                          <div className='flex items-center gap-2'>
-                            <div
-                              className={`h-2 w-2 rounded-full ${
-                                currentPermission === 'GRANTED'
-                                  ? 'bg-green-500'
-                                  : 'bg-red-500'
-                              }`}
-                            />
-                            <span>
-                              {currentPermission === 'GRANTED'
-                                ? 'Granted'
-                                : 'Denied'}
-                            </span>
-                          </div>
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value='GRANTED'>
-                          <div className='flex items-center gap-2'>
-                            <div className='h-2 w-2 rounded-full bg-green-500' />
-                            <span>Granted</span>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value='DENIED'>
-                          <div className='flex items-center gap-2'>
-                            <div className='h-2 w-2 rounded-full bg-red-500' />
-                            <span>Denied</span>
-                          </div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant='ghost' className='h-8 w-8 p-0'>
-                          <span className='sr-only'>Open menu</span>
-                          <MoreHorizontal className='h-4 w-4' />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align='end'>
-                        <DropdownMenuItem
-                          className='flex items-center gap-2'
-                          onClick={() => setEditingUser(user)}
-                        >
-                          <Pencil className='h-4 w-4' />
-                          Edit User
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className='flex items-center gap-2 text-red-600'
-                          onClick={() =>
-                            setDeletingUser({ id: user.id, name: user.name })
-                          }
-                        >
-                          <Trash2 className='h-4 w-4' />
-                          Delete User
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-            {filteredUsers.length === 0 && (
+            {isRefreshing ? (
               <TableRow>
-                <TableCell colSpan={7} className='h-24 text-center'>
-                  No users found.
+                <TableCell colSpan={7} className='h-24'>
+                  <div className='flex justify-center items-center'>
+                    <div className='animate-spin rounded-full h-6 w-6 border-b-2 border-[#124A69]' />
+                  </div>
                 </TableCell>
               </TableRow>
+            ) : (
+              <>
+                {filteredUsers.map((user) => {
+                  const isEdited = editedUsers[user.id];
+                  const currentRole = isEdited?.role || user.role;
+                  const currentPermission =
+                    isEdited?.permission || user.permission;
+
+                  return (
+                    <TableRow
+                      key={user.id}
+                      className={isEdited ? 'bg-yellow-50' : ''}
+                    >
+                      <TableCell className='flex items-center gap-3'>
+                        <Avatar className='h-8 w-8'>
+                          <AvatarFallback className='bg-[#124A69] text-white'>
+                            {getInitials(user.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span>{formatName(user.name)}</span>
+                      </TableCell>
+                      <TableCell>{user.email}</TableCell>
+                      <TableCell>{user.department}</TableCell>
+                      <TableCell>
+                        {user.workType
+                          .split('_')
+                          .map(
+                            (word) =>
+                              word.charAt(0).toUpperCase() +
+                              word.slice(1).toLowerCase(),
+                          )
+                          .join(' ')}
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={currentRole}
+                          onValueChange={(value: Role) =>
+                            handleRoleChange(user.id, value)
+                          }
+                        >
+                          <SelectTrigger className='w-[130px]'>
+                            <SelectValue placeholder='Select role' />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value='ADMIN'>Admin</SelectItem>
+                            <SelectItem value='FACULTY'>Faculty</SelectItem>
+                            <SelectItem value='ACADEMIC_HEAD'>
+                              Academic Head
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={currentPermission}
+                          onValueChange={(value: Permission) =>
+                            handlePermissionChange(user.id, value)
+                          }
+                        >
+                          <SelectTrigger className='w-[130px]'>
+                            <SelectValue placeholder='Select permission'>
+                              <div className='flex items-center gap-2'>
+                                <div
+                                  className={`h-2 w-2 rounded-full ${
+                                    currentPermission === 'GRANTED'
+                                      ? 'bg-green-500'
+                                      : 'bg-red-500'
+                                  }`}
+                                />
+                                <span>
+                                  {currentPermission === 'GRANTED'
+                                    ? 'Granted'
+                                    : 'Denied'}
+                                </span>
+                              </div>
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value='GRANTED'>
+                              <div className='flex items-center gap-2'>
+                                <div className='h-2 w-2 rounded-full bg-green-500' />
+                                <span>Granted</span>
+                              </div>
+                            </SelectItem>
+                            <SelectItem value='DENIED'>
+                              <div className='flex items-center gap-2'>
+                                <div className='h-2 w-2 rounded-full bg-red-500' />
+                                <span>Denied</span>
+                              </div>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant='ghost' className='h-8 w-8 p-0'>
+                              <span className='sr-only'>Open menu</span>
+                              <MoreHorizontal className='h-4 w-4' />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align='end'>
+                            <DropdownMenuItem
+                              className='flex items-center gap-2'
+                              onClick={() => setEditingUser(user)}
+                            >
+                              <Pencil className='h-4 w-4' />
+                              Edit User
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className='flex items-center gap-2 text-red-600'
+                              onClick={() =>
+                                setDeletingUser({
+                                  id: user.id,
+                                  name: user.name,
+                                })
+                              }
+                            >
+                              <Trash2 className='h-4 w-4' />
+                              Delete User
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {filteredUsers.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={7} className='h-24 text-center'>
+                      No users found.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </>
             )}
           </TableBody>
         </Table>
@@ -1109,7 +1282,7 @@ export function AdminDataTable({
             </div>
 
             {previewData.length > 0 ? (
-              <div className='border rounded-lg overflow-hidden'>
+              <div className='border rounded-lg overflow-hidden max-w-[460px]'>
                 <div className='bg-gray-50 p-4 border-b'>
                   <h3 className='font-medium text-gray-700'>
                     Preview Import Data
@@ -1190,6 +1363,29 @@ export function AdminDataTable({
               </div>
             )}
 
+            {importProgress && (
+              <div className='space-y-2 p-4 border rounded-lg bg-gray-50'>
+                <div className='flex items-center gap-2'>
+                  <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-[#124A69]' />
+                  <p className='text-sm text-gray-600'>
+                    {importProgress.status}
+                  </p>
+                </div>
+                {importProgress.total > 0 && (
+                  <div className='w-full bg-gray-200 rounded-full h-2.5'>
+                    <div
+                      className='bg-[#124A69] h-2.5 rounded-full transition-all duration-300'
+                      style={{
+                        width: `${
+                          (importProgress.current / importProgress.total) * 100
+                        }%`,
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className='flex justify-end gap-4'>
               <Button
                 variant='outline'
@@ -1198,7 +1394,9 @@ export function AdminDataTable({
                   setSelectedFile(null);
                   setPreviewData([]);
                   setIsValidFile(false);
+                  setImportProgress(null);
                 }}
+                disabled={!!importProgress}
               >
                 Cancel
               </Button>
@@ -1206,15 +1404,16 @@ export function AdminDataTable({
                 variant='outline'
                 onClick={handleImportTemplate}
                 className='bg-white hover:bg-gray-50'
+                disabled={!!importProgress}
               >
                 Download Template
               </Button>
               <Button
                 className='bg-[#124A69] hover:bg-[#0D3A54] text-white'
                 onClick={handleImport}
-                disabled={!selectedFile || !isValidFile}
+                disabled={!selectedFile || !isValidFile || !!importProgress}
               >
-                Import Users
+                {importProgress ? 'Importing...' : 'Import Users'}
               </Button>
             </div>
           </div>

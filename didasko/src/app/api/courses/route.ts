@@ -40,7 +40,7 @@ export async function GET(request: Request) {
                   },
                 },
                 {
-                  description: {
+                  room: {
                     contains: search,
                     mode: 'insensitive' as Prisma.QueryMode,
                   },
@@ -107,7 +107,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { code, title, description, facultyId } = body;
+    const { code, title, room, facultyId, semester, section } = body;
 
     // Validate required fields
     if (!code || !title || !facultyId) {
@@ -136,7 +136,9 @@ export async function POST(request: Request) {
       data: {
         code,
         title,
-        description,
+        room,
+        semester,
+        section,
         facultyId,
       },
       include: {
@@ -151,8 +153,9 @@ export async function POST(request: Request) {
         students: {
           select: {
             id: true,
-            name: true,
-            email: true,
+            lastName: true,
+            firstName: true,
+            middleInitial: true,
           },
         },
         schedules: true,

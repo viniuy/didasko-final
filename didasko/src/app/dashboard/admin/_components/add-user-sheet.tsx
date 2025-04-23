@@ -22,409 +22,261 @@ import { Permission, Role, WorkType } from '@prisma/client';
 import { addUser } from '@/lib/actions/users';
 import { toast } from 'sonner';
 import { Plus } from 'lucide-react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 
 // Available departments
 const DEPARTMENTS = ['IT Department', 'BA Department', 'HM Department'];
 
+const userSchema = z.object({
+  lastName: z
+    .string()
+    .min(1, 'Last name is required')
+    .max(30, 'Last name must be at most 30 characters')
+    .refine(
+      (val) => /^[A-Za-z\s-]+$/.test(val),
+      'Last name cannot contain special characters or numbers',
+    ),
+  firstName: z
+    .string()
+    .min(1, 'First name is required')
+    .max(30, 'First name must be at most 30 characters')
+    .refine(
+      (val) => /^[A-Za-z\s-]+$/.test(val),
+      'First name cannot contain special characters or numbers',
+    ),
+  middleInitial: z
+    .string()
+    .max(1, 'Middle initial must be a single character')
+    .refine(
+      (val) => !val || /^[A-Za-z]$/.test(val),
+      'Middle initial must be a single letter',
+    )
+    .optional(),
+  email: z.string().email('Invalid email address'),
+  department: z.string().min(1, 'Department is required'),
+  workType: z.enum(['FULL_TIME', 'PART_TIME', 'CONTRACT']),
+  role: z.enum(['ADMIN', 'FACULTY', 'ACADEMIC_HEAD']),
+  permission: z.enum(['GRANTED', 'DENIED']),
+});
+
 interface AddUserSheetProps {
-  isInline?: boolean;
+  onSuccess?: () => Promise<void> | void;
 }
 
-export function AddUserSheet({ isInline = false }: AddUserSheetProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    firstName: '',
-    middleInitial: '',
-    lastName: '',
-    email: '',
-    department: '',
-    workType: '',
-    permission: '',
-  });
+export function AddUserSheet({ onSuccess }: AddUserSheetProps) {
+  const [open, setOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [nameError, setNameError] = useState<{
+    lastName?: string;
+    firstName?: string;
+    middleInitial?: string;
+  }>({});
 
-  const [isEmailValid, setIsEmailValid] = useState(true);
-  const [nameErrors, setNameErrors] = useState({
-    lastName: false,
-    firstName: false,
-    middleInitial: false,
-  });
+  const validateName = (
+    value: string,
+    field: 'lastName' | 'firstName' | 'middleInitial',
+  ) => {
+    if (field === 'middleInitial') {
+      if (value && !/^[A-Za-z]$/.test(value)) {
+        setNameError((prev) => ({
+          ...prev,
+          [field]: 'Must be a single letter',
+        }));
+        return false;
+      }
+      setNameError((prev) => ({ ...prev, [field]: undefined }));
+      return true;
+    }
 
-  const validateEmail = (email: string) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
-
-  const validateName = (name: string) => {
-    // Only allow letters, spaces, hyphens, and apostrophes
-    const nameRegex = /^[a-zA-Z\s'-]+$/;
-    // Check if the trimmed name is not empty and contains at least one letter
-    return (
-      nameRegex.test(name) && name.trim().length > 0 && /[a-zA-Z]/.test(name)
-    );
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-
-    if (name === 'email') {
-      setIsEmailValid(validateEmail(value) || value === '');
-    } else if (
-      name === 'lastName' ||
-      name === 'firstName' ||
-      name === 'middleInitial'
-    ) {
-      setNameErrors((prev) => ({
+    if (value.startsWith(' ')) {
+      setNameError((prev) => ({
         ...prev,
-        [name]: value !== '' && !validateName(value),
+        [field]: 'Cannot start with a space',
       }));
-    }
-  };
-
-  const handleSelectChange = (name: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    // Validate all fields before submission
-    const hasNameErrors =
-      !validateName(formData.firstName) ||
-      !validateName(formData.lastName) ||
-      (formData.middleInitial && !validateName(formData.middleInitial));
-
-    if (hasNameErrors) {
-      toast.error('Please enter valid names');
-      return;
+      return false;
     }
 
-    setIsLoading(true);
+    if (!/^[A-Za-z\s-]+$/.test(value)) {
+      setNameError((prev) => ({
+        ...prev,
+        [field]: 'Cannot contain special characters or numbers',
+      }));
+      return false;
+    }
+    setNameError((prev) => ({ ...prev, [field]: undefined }));
+    return true;
+  };
 
+  const form = useForm<z.infer<typeof userSchema>>({
+    resolver: zodResolver(userSchema),
+    defaultValues: {
+      lastName: '',
+      firstName: '',
+      middleInitial: '',
+      email: '',
+      department: '',
+      workType: 'FULL_TIME',
+      role: 'FACULTY',
+      permission: 'GRANTED',
+    },
+  });
+
+  const onSubmit = async (values: z.infer<typeof userSchema>) => {
     try {
+      setIsSubmitting(true);
+
+      // Combine name fields into a single name string
+      const fullName = `${values.lastName}, ${values.firstName}${
+        values.middleInitial ? ` ${values.middleInitial}.` : ''
+      }`;
+
       const result = await addUser({
-        name: `${formData.firstName} ${
-          formData.middleInitial ? formData.middleInitial + ' ' : ''
-        }${formData.lastName}`,
-        email: formData.email,
-        department: formData.department,
-        workType: formData.workType as WorkType,
-        permission: formData.permission as Permission,
-        role: Role.FACULTY, // Default role for new users
+        ...values,
+        name: fullName,
       });
 
       if (result.success) {
         toast.success('User added successfully');
-        setFormData({
-          firstName: '',
-          middleInitial: '',
-          lastName: '',
-          email: '',
-          department: '',
-          workType: '',
-          permission: '',
-        });
-        setIsOpen(false);
+        form.reset();
+        setOpen(false);
+        // Call onSuccess callback if provided
+        if (onSuccess) {
+          await onSuccess();
+        }
       } else {
         toast.error(result.error || 'Failed to add user');
       }
     } catch (error) {
-      toast.error('An error occurred while adding user');
-      console.error(error);
+      console.error('Error adding user:', error);
+      toast.error('An error occurred while adding the user');
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
-  // Render the form directly when in inline mode
-  if (isInline) {
-    return (
-      <>
-        <SheetHeader>
-          <SheetTitle>Add User</SheetTitle>
-        </SheetHeader>
-        <form onSubmit={handleSubmit} className='space-y-4 py-4'>
-          <div className='space-y-1'>
-            <Label htmlFor='lastName'>Last Name *</Label>
-            <Input
-              id='lastName'
-              name='lastName'
-              value={formData.lastName}
-              onChange={handleInputChange}
-              required
-              maxLength={30}
-              className={
-                nameErrors.lastName
-                  ? 'border-red-500 focus-visible:ring-red-500'
-                  : ''
-              }
-            />
-            <div className='flex justify-between'>
-              <div className='text-xs text-muted-foreground'>
-                {formData.lastName.length}/30
-              </div>
-              {nameErrors.lastName && (
-                <p className='text-xs text-red-500'>
-                  No special characters allowed
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className='space-y-1'>
-            <Label>First Name *</Label>
-            <div className='flex gap-2'>
-              <div className='flex-1'>
-                <Input
-                  id='firstName'
-                  name='firstName'
-                  value={formData.firstName}
-                  onChange={handleInputChange}
-                  required
-                  maxLength={30}
-                  placeholder='First Name'
-                  className={
-                    nameErrors.firstName
-                      ? 'border-red-500 focus-visible:ring-red-500'
-                      : ''
-                  }
-                />
-                <div className='flex justify-between'>
-                  <div className='text-xs text-muted-foreground'>
-                    {formData.firstName.length}/30
-                  </div>
-                  {nameErrors.firstName && (
-                    <p className='text-xs text-red-500'>
-                      No special characters allowed
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div className='w-16'>
-                <Input
-                  id='middleInitial'
-                  name='middleInitial'
-                  value={formData.middleInitial}
-                  onChange={handleInputChange}
-                  maxLength={1}
-                  placeholder='M.I.'
-                  className={`text-center ${
-                    nameErrors.middleInitial
-                      ? 'border-red-500 focus-visible:ring-red-500'
-                      : ''
-                  }`}
-                />
-                {nameErrors.middleInitial && (
-                  <p className='text-xs text-red-500 text-center'>
-                    No special characters
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className='space-y-1'>
-            <Label htmlFor='email'>Email *</Label>
-            <Input
-              id='email'
-              name='email'
-              type='email'
-              value={formData.email}
-              onChange={handleInputChange}
-              required
-              className={
-                !isEmailValid ? 'border-red-500 focus-visible:ring-red-500' : ''
-              }
-            />
-            {!isEmailValid && (
-              <p className='text-sm text-red-500'>
-                Please enter a valid email address
-              </p>
-            )}
-          </div>
-
-          <div className='space-y-1'>
-            <Label htmlFor='department'>Department *</Label>
-            <Select
-              value={formData.department}
-              onValueChange={(value) => handleSelectChange('department', value)}
-              required
-            >
-              <SelectTrigger>
-                <SelectValue placeholder='All' />
-              </SelectTrigger>
-              <SelectContent>
-                {DEPARTMENTS.map((dept) => (
-                  <SelectItem key={dept} value={dept}>
-                    {dept}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className='space-y-1'>
-            <Label htmlFor='workType'>Work Type *</Label>
-            <Select
-              value={formData.workType}
-              onValueChange={(value) => handleSelectChange('workType', value)}
-              required
-            >
-              <SelectTrigger>
-                <SelectValue placeholder='All' />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={WorkType.FULL_TIME}>Full Time</SelectItem>
-                <SelectItem value={WorkType.PART_TIME}>Part Time</SelectItem>
-                <SelectItem value={WorkType.CONTRACT}>Contract</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className='space-y-1'>
-            <Label htmlFor='permission'>Permission *</Label>
-            <Select
-              value={formData.permission}
-              onValueChange={(value) => handleSelectChange('permission', value)}
-              required
-            >
-              <SelectTrigger>
-                <SelectValue placeholder='All' />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={Permission.GRANTED}>Granted</SelectItem>
-                <SelectItem value={Permission.DENIED}>Denied</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className='flex justify-between pt-4'>
-            <Button
-              type='button'
-              variant='outline'
-              onClick={() => setIsOpen(false)}
-              disabled={isLoading}
-            >
-              Cancel
-            </Button>
-            <Button type='submit' disabled={isLoading}>
-              {isLoading ? 'Adding...' : 'Add'}
-            </Button>
-          </div>
-        </form>
-      </>
-    );
-  }
-
-  // Render with Sheet wrapper when not in inline mode
   return (
-    <Sheet open={isOpen} onOpenChange={setIsOpen}>
+    <Sheet
+      open={open}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) {
+          form.reset({
+            lastName: '',
+            firstName: '',
+            middleInitial: '',
+            email: '',
+            department: '',
+            workType: 'FULL_TIME',
+            role: 'FACULTY',
+            permission: 'GRANTED',
+          });
+          setNameError({});
+        }
+        setOpen(isOpen);
+      }}
+    >
       <SheetTrigger asChild>
-        <Button className='ml-auto'>
+        <Button className='ml-auto bg-[#124A69] text-white hover:bg-gray-700'>
           <Plus className='mr-2 h-4 w-4' /> Add User
         </Button>
       </SheetTrigger>
-      <SheetContent side='right' className='sm:max-w-md p-3 '>
+      <SheetContent side='right' className='sm:max-w-md'>
         <SheetHeader>
           <SheetTitle>Add User</SheetTitle>
         </SheetHeader>
-        <form onSubmit={handleSubmit} className='space-y-4 py-4'>
-          <div className='space-y-1'>
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          className='space-y-4 py-4 p-4'
+        >
+          <div className='space-y-1 w-97'>
             <Label htmlFor='lastName'>Last Name *</Label>
             <Input
               id='lastName'
-              name='lastName'
-              value={formData.lastName}
-              onChange={handleInputChange}
-              required
-              maxLength={30}
+              {...form.register('lastName')}
+              onChange={(e) => {
+                form.setValue('lastName', e.target.value);
+                validateName(e.target.value, 'lastName');
+              }}
               className={
-                nameErrors.lastName
+                nameError.lastName
                   ? 'border-red-500 focus-visible:ring-red-500'
                   : ''
               }
+              maxLength={30}
             />
-            <div className='flex justify-end'>
+            <div className='flex justify-between'>
               <div className='text-xs text-muted-foreground'>
-                {formData.lastName.length}/30
+                {form.watch('lastName').length}/30
               </div>
-              {nameErrors.lastName && (
-                <p className='text-xs text-red-500'>
-                  No special characters allowed
+              {nameError.lastName && (
+                <p className='text-sm text-red-500'>{nameError.lastName}</p>
+              )}
+            </div>
+          </div>
+
+          <div className='flex flex-row gap-2'>
+            <div className='space-y-1'>
+              <Label htmlFor='firstName'>First Name *</Label>
+              <Input
+                id='firstName'
+                {...form.register('firstName')}
+                onChange={(e) => {
+                  form.setValue('firstName', e.target.value);
+                  validateName(e.target.value, 'firstName');
+                }}
+                className={
+                  nameError.firstName
+                    ? 'border-red-500 focus-visible:ring-red-500'
+                    : ''
+                }
+                maxLength={30}
+              />
+              <div className='flex justify-between'>
+                <div className='text-xs text-muted-foreground'>
+                  {form.watch('firstName').length}/30
+                </div>
+                {nameError.firstName && (
+                  <p className='text-sm text-red-500'>{nameError.firstName}</p>
+                )}
+              </div>
+            </div>
+
+            <div className='space-y-1 w-40'>
+              <Label htmlFor='middleInitial'>Middle Initial</Label>
+              <Input
+                id='middleInitial'
+                {...form.register('middleInitial')}
+                onChange={(e) => {
+                  form.setValue('middleInitial', e.target.value);
+                  validateName(e.target.value, 'middleInitial');
+                }}
+                className={
+                  nameError.middleInitial
+                    ? 'border-red-500 focus-visible:ring-red-500'
+                    : ''
+                }
+                maxLength={1}
+              />
+              {nameError.middleInitial && (
+                <p className='text-sm text-red-500'>
+                  {nameError.middleInitial}
                 </p>
               )}
             </div>
           </div>
 
-          <div className='space-y-1'>
-            <Label>First Name *</Label>
-            <div className='flex gap-2'>
-              <div className='flex-1'>
-                <Input
-                  id='firstName'
-                  name='firstName'
-                  value={formData.firstName}
-                  onChange={handleInputChange}
-                  required
-                  maxLength={30}
-                  placeholder='First Name'
-                  className={
-                    nameErrors.firstName
-                      ? 'border-red-500 focus-visible:ring-red-500'
-                      : ''
-                  }
-                />
-                <div className='flex justify-end'>
-                  <div className='text-xs text-muted-foreground'>
-                    {formData.firstName.length}/30
-                  </div>
-                  {nameErrors.firstName && (
-                    <p className='text-xs text-red-500'>
-                      No special characters allowed
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div className='w-16'>
-                <Input
-                  id='middleInitial'
-                  name='middleInitial'
-                  value={formData.middleInitial}
-                  onChange={handleInputChange}
-                  maxLength={1}
-                  placeholder='M.I.'
-                  className={`text-center ${
-                    nameErrors.middleInitial
-                      ? 'border-red-500 focus-visible:ring-red-500'
-                      : ''
-                  }`}
-                />
-                {nameErrors.middleInitial && (
-                  <p className='text-xs text-red-500 text-center'>
-                    No special characters
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className='space-y-1'>
+          <div className='space-y-1 w-97'>
             <Label htmlFor='email'>Email *</Label>
             <Input
               id='email'
-              name='email'
               type='email'
-              value={formData.email}
-              onChange={handleInputChange}
-              required
-              className={
-                !isEmailValid ? 'border-red-500 focus-visible:ring-red-500' : ''
-              }
+              {...form.register('email')}
+              className={form.formState.errors.email ? 'border-red-500' : ''}
             />
-            {!isEmailValid && (
+            {form.formState.errors.email && (
               <p className='text-sm text-red-500'>
-                Please enter a valid email address
+                {form.formState.errors.email.message}
               </p>
             )}
           </div>
@@ -432,12 +284,11 @@ export function AddUserSheet({ isInline = false }: AddUserSheetProps) {
           <div className='space-y-1'>
             <Label htmlFor='department'>Department *</Label>
             <Select
-              value={formData.department}
-              onValueChange={(value) => handleSelectChange('department', value)}
-              required
+              onValueChange={(value) => form.setValue('department', value)}
+              defaultValue={form.getValues('department')}
             >
               <SelectTrigger>
-                <SelectValue placeholder='All' />
+                <SelectValue placeholder='Select department' />
               </SelectTrigger>
               <SelectContent>
                 {DEPARTMENTS.map((dept) => (
@@ -447,17 +298,23 @@ export function AddUserSheet({ isInline = false }: AddUserSheetProps) {
                 ))}
               </SelectContent>
             </Select>
+            {form.formState.errors.department && (
+              <p className='text-sm text-red-500'>
+                {form.formState.errors.department.message}
+              </p>
+            )}
           </div>
 
           <div className='space-y-1'>
             <Label htmlFor='workType'>Work Type *</Label>
             <Select
-              value={formData.workType}
-              onValueChange={(value) => handleSelectChange('workType', value)}
-              required
+              onValueChange={(value) =>
+                form.setValue('workType', value as WorkType)
+              }
+              defaultValue={form.getValues('workType')}
             >
               <SelectTrigger>
-                <SelectValue placeholder='All' />
+                <SelectValue placeholder='Select work type' />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={WorkType.FULL_TIME}>Full Time</SelectItem>
@@ -465,36 +322,88 @@ export function AddUserSheet({ isInline = false }: AddUserSheetProps) {
                 <SelectItem value={WorkType.CONTRACT}>Contract</SelectItem>
               </SelectContent>
             </Select>
+            {form.formState.errors.workType && (
+              <p className='text-sm text-red-500'>
+                {form.formState.errors.workType.message}
+              </p>
+            )}
+          </div>
+
+          <div className='space-y-1'>
+            <Label htmlFor='role'>Role *</Label>
+            <Select
+              onValueChange={(value) => form.setValue('role', value as Role)}
+              defaultValue={form.getValues('role')}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder='Select role' />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={Role.FACULTY}>Faculty</SelectItem>
+                <SelectItem value={Role.ADMIN}>Admin</SelectItem>
+                <SelectItem value={Role.ACADEMIC_HEAD}>
+                  Academic Head
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            {form.formState.errors.role && (
+              <p className='text-sm text-red-500'>
+                {form.formState.errors.role.message}
+              </p>
+            )}
           </div>
 
           <div className='space-y-1'>
             <Label htmlFor='permission'>Permission *</Label>
             <Select
-              value={formData.permission}
-              onValueChange={(value) => handleSelectChange('permission', value)}
-              required
+              onValueChange={(value) =>
+                form.setValue('permission', value as Permission)
+              }
+              defaultValue={form.getValues('permission')}
             >
               <SelectTrigger>
-                <SelectValue placeholder='All' />
+                <SelectValue placeholder='Select permission' />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={Permission.GRANTED}>Granted</SelectItem>
                 <SelectItem value={Permission.DENIED}>Denied</SelectItem>
               </SelectContent>
             </Select>
+            {form.formState.errors.permission && (
+              <p className='text-sm text-red-500'>
+                {form.formState.errors.permission.message}
+              </p>
+            )}
           </div>
 
-          <div className='flex justify-between pt-4'>
+          <div className='flex justify-end pt-4 gap-2'>
             <Button
               type='button'
               variant='outline'
-              onClick={() => setIsOpen(false)}
-              disabled={isLoading}
+              onClick={() => {
+                form.reset({
+                  lastName: '',
+                  firstName: '',
+                  middleInitial: '',
+                  email: '',
+                  department: '',
+                  workType: 'FULL_TIME',
+                  role: 'FACULTY',
+                  permission: 'GRANTED',
+                });
+                setNameError({});
+                setOpen(false);
+              }}
+              disabled={isSubmitting}
             >
               Cancel
             </Button>
-            <Button type='submit' disabled={isLoading}>
-              {isLoading ? 'Adding...' : 'Add'}
+            <Button
+              type='submit'
+              disabled={isSubmitting}
+              className='bg-[#124A69] text-white hover:bg-gray-700'
+            >
+              {isSubmitting ? 'Adding...' : 'Add'}
             </Button>
           </div>
         </form>

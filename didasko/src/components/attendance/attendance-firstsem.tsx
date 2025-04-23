@@ -23,6 +23,7 @@ interface Course {
   code: string;
   description: string | null;
   semester: string;
+  room: string;
 }
 
 interface Schedule {
@@ -46,7 +47,7 @@ const CourseCard = ({ schedule }: { schedule: Schedule }) => {
         </CardHeader>
         <CardContent>
           <p className='text-sm'>{schedule.course.code}</p>
-          <p className='text-sm font-semibold'>{schedule.course.description}</p>
+          <p className='text-sm font-semibold'>{schedule.course.room}</p>
           <p className='text-xs text-gray-400'>
             Schedule: {format(new Date(schedule.day), 'EEEE')}{' '}
             {schedule.fromTime} - {schedule.toTime}
@@ -186,7 +187,7 @@ export default function FirstSemesterCourses() {
 
   return (
     <Card className='p-4 shadow-md rounded-lg'>
-      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4'>
+      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
         {currentSchedules.map((schedule) => (
           <CourseCard key={schedule.id} schedule={schedule} />
         ))}

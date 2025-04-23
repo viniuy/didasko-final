@@ -109,7 +109,7 @@ export async function GET(request: Request) {
         course: {
           code: string;
           title: string;
-          description: string | null;
+          room: string;
         };
       }>
     >`
@@ -123,7 +123,7 @@ export async function GET(request: Request) {
           'id', c.id,
           'code', c.code,
           'title', c.title,
-          'description', c.description,
+          'room', c.room,
           'semester', c.semester,
           'section', c.section
         ) as course

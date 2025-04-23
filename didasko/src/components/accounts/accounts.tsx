@@ -1,42 +1,24 @@
 'use client';
 import React, { useState } from 'react';
-import FacultyList from './faculty-list';
-import WeeklySchedule from '../weekly-schedule';
-import FacultyDetails from './faculty-details';
-import { Role, WorkType } from '@prisma/client';
+import AccountList from './account-list';
+import AccountDetails from './account-details';
+import { Role, WorkType, Permission } from '@prisma/client';
 
-interface Course {
-  id: string;
-  code: string;
-  title: string;
-  description: string | null;
-  semester: string;
-  schedules: {
-    id: string;
-    day: Date;
-    fromTime: string;
-    toTime: string;
-  }[];
-  students: {
-    id: string;
-  }[];
-}
-
-interface Teacher {
+interface Account {
   id: string;
   name: string;
   email: string;
   department: string;
   workType: WorkType;
   role: Role;
-  coursesTeaching: Course[];
+  permission: Permission;
 }
 
-export default function FacultyLoad() {
+export default function Accounts() {
   const [search, setSearch] = useState('');
   const [sortOption, setSortOption] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
+  const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const itemsPerPage = 15;
 
   const handlePageChange = (pageNumber: number) => {
@@ -48,21 +30,21 @@ export default function FacultyLoad() {
     setCurrentPage(1);
   };
 
-  const handleTeacherClick = (teacher: Teacher) => {
-    setSelectedTeacher(teacher);
+  const handleAccountClick = (account: Account) => {
+    setSelectedAccount(account);
   };
 
   const handleBack = () => {
-    setSelectedTeacher(null);
+    setSelectedAccount(null);
   };
 
   return (
     <div className='h-full flex flex-col'>
       {/* Search and Filter Bar */}
-      <div className='bg-[#124A69] text-white p-4 rounded-t-lg '>
+      <div className='bg-[#124A69] text-white p-4 rounded-t-lg'>
         <div className='flex items-center justify-between'>
           <div className='flex items-center gap-2'>
-            {selectedTeacher && (
+            {selectedAccount && (
               <button
                 onClick={handleBack}
                 className='flex items-center gap-2 text-white hover:text-gray-300 transition-colors'
@@ -83,7 +65,7 @@ export default function FacultyLoad() {
                 </svg>
               </button>
             )}
-            <h2 className='text-2xl font-bold'>Faculty Load</h2>
+            <h2 className='text-2xl font-bold'>Accounts</h2>
           </div>
           <div className='flex items-center gap-4'>
             <div className='relative'>
@@ -92,7 +74,7 @@ export default function FacultyLoad() {
                 placeholder='Search...'
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className='bg-white text-black px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-white/20 w-64 '
+                className='bg-white text-black px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-white/20 w-64'
               />
               <svg
                 xmlns='http://www.w3.org/2000/svg'
@@ -128,19 +110,16 @@ export default function FacultyLoad() {
       {/* Main Content Area */}
       <div className='flex-grow overflow-auto'>
         <div className='grid grid-cols-1 gap-4 mb-4'>
-          {selectedTeacher ? (
-            <div>
-              <FacultyDetails faculty={selectedTeacher} />
-              <WeeklySchedule teacherInfo={selectedTeacher} />
-            </div>
+          {selectedAccount ? (
+            <AccountDetails account={selectedAccount} />
           ) : (
-            <FacultyList
+            <AccountList
               search={search}
               sortOption={sortOption}
               currentPage={currentPage}
               itemsPerPage={itemsPerPage}
               onDepartmentClick={handleDepartmentClick}
-              onTeacherClick={handleTeacherClick}
+              onAccountClick={handleAccountClick}
               onPageChange={handlePageChange}
             />
           )}

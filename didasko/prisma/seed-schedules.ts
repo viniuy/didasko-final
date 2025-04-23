@@ -9,7 +9,7 @@ const mockSchedules = [
     course: 'IT CAPSTONE',
     section: 'BSIT-111',
     time: '8:00 AM - 10:30 AM',
-    details: 'Room: 101',
+    room: 'Room: 101',
     semester: '1st Semester',
   },
   {
@@ -17,7 +17,7 @@ const mockSchedules = [
     course: 'OOP',
     section: 'BSIT-112',
     time: '11:00 AM - 2:00 PM',
-    details: 'Room: 101',
+    room: 'Room: 101',
     semester: '1st Semester',
   },
   {
@@ -25,7 +25,7 @@ const mockSchedules = [
     course: 'IAS',
     section: 'BSIT-113',
     time: '8:00 AM - 10:30 AM',
-    details: 'Room: 101',
+    room: 'Room: 101',
     semester: '1st Semester',
   },
   {
@@ -33,7 +33,7 @@ const mockSchedules = [
     course: 'MOBSTECH',
     section: 'BSIT-114',
     time: '10:30 AM - 1:30 PM',
-    details: 'Room: 101',
+    room: 'Room: 101',
     semester: '1st Semester',
   },
   {
@@ -41,7 +41,7 @@ const mockSchedules = [
     course: 'ETHICS',
     section: 'BSIT-115',
     time: '8:00 AM - 10:30 AM',
-    details: 'Room: 101',
+    room: 'Room: 101',
     semester: '1st Semester',
   },
   {
@@ -49,7 +49,7 @@ const mockSchedules = [
     course: 'COMPRO 2',
     section: 'BSIT-116',
     time: '9:30 AM - 12:00 PM',
-    details: 'Room: 101',
+    room: 'Room: 101',
     semester: '1st Semester',
   },
   // Second Semester Courses
@@ -58,7 +58,7 @@ const mockSchedules = [
     course: 'PIIST',
     section: 'BSIT-211',
     time: '3:00 PM - 5:30 PM',
-    details: 'Room: 101',
+    room: 'Room: 101',
     semester: '2nd Semester',
   },
   {
@@ -66,7 +66,7 @@ const mockSchedules = [
     course: 'EUTHENICS',
     section: 'BSIT-212',
     time: '11:00 AM - 2:00 PM',
-    details: 'Room: 101',
+    room: 'Room: 101',
     semester: '2nd Semester',
   },
   {
@@ -74,7 +74,7 @@ const mockSchedules = [
     course: 'MIS',
     section: 'BSIT-213',
     time: '2:00 PM - 4:30 PM',
-    details: 'Room: 101',
+    room: 'Room: 101',
     semester: '2nd Semester',
   },
   {
@@ -82,7 +82,7 @@ const mockSchedules = [
     course: 'GREAT BOOKS',
     section: 'BSIT-214',
     time: '11:30 AM - 2:30 PM',
-    details: 'Room: 101',
+    room: 'Room: 101',
     semester: '2nd Semester',
   },
   {
@@ -90,7 +90,7 @@ const mockSchedules = [
     course: 'WEBSTECH',
     section: 'BSIT-215',
     time: '11:00 AM - 2:00 PM',
-    details: 'Room: 101',
+    room: 'Room: 101',
     semester: '2nd Semester',
   },
   {
@@ -98,7 +98,7 @@ const mockSchedules = [
     course: 'PROLANS',
     section: 'BSIT-216',
     time: '5:30 PM - 7:30 PM',
-    details: 'Room: 101',
+    room: 'Room: 101',
     semester: '2nd Semester',
   },
 ];
@@ -135,7 +135,7 @@ async function main() {
         create: {
           code: courseCode,
           title: schedule.course,
-          description: schedule.details,
+          room: schedule.room,
           semester: schedule.semester,
           section: schedule.section,
           facultyId: userId,

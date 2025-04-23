@@ -23,6 +23,7 @@ interface Course {
   code: string;
   description: string | null;
   semester: string;
+  room: string;
 }
 
 interface Schedule {
@@ -46,7 +47,7 @@ const CourseCard = ({ schedule }: { schedule: Schedule }) => {
         </CardHeader>
         <CardContent>
           <p className='text-sm'>{schedule.course.code}</p>
-          <p className='text-sm font-semibold'>{schedule.course.description}</p>
+          <p className='text-sm font-semibold'>{schedule.course.room}</p>
           <p className='text-xs text-gray-400'>
             Schedule: {format(new Date(schedule.day), 'EEEE')}{' '}
             {schedule.fromTime} - {schedule.toTime}

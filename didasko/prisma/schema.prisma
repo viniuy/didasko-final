@@ -204,7 +204,7 @@ model Course {
   id          String   @id @default(uuid())
   code        String   @unique
   title       String
-  description String?
+  room        String
   semester    String   
   section     String   
   facultyId   String
