@@ -21,6 +21,7 @@ interface Course {
   code: string;
   description: string | null;
   semester: string;
+  section: string;
 }
 
 interface Schedule {
@@ -32,7 +33,6 @@ interface Schedule {
   course: Course;
 }
 
-// Course Card Component
 // Course Card Component
 const CourseCard = ({ schedule }: { schedule: Schedule }) => {
   const router = useRouter();
@@ -51,7 +51,7 @@ const CourseCard = ({ schedule }: { schedule: Schedule }) => {
       onClick={handleClick}
     >
       <h2 className='text-lg font-bold'>{schedule.course.title}</h2>
-      <p className='text-sm font-semibold -mt-3'>{schedule.course.code}</p>
+      <p className='text-sm font-semibold -mt-3'>{schedule.course.section}</p>
       <div className='flex items-center -mt-2 text-gray-600'>
         <CalendarClock size={20} className='mr-2' color='#E1BB56' />
         <p className='text-sm'>
@@ -156,7 +156,7 @@ export default function AttendanceSchedule() {
 
   return (
     <Card className='w-full p-3 shadow-md rounded-lg'>
-      <div className='flex flex-wrap justify-center min-w-0'>
+      <div className='flex flex-wrap justify-center min-w-0 '>
         <div className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 w-full'>
           {currentSchedules.map((schedule) => (
             <CourseCard key={schedule.id} schedule={schedule} />
@@ -165,7 +165,7 @@ export default function AttendanceSchedule() {
       </div>
 
       {schedules.length > itemsPerPage && (
-        <Pagination className='mt-4 flex justify-end'>
+        <Pagination className='-mt-4 flex justify-end'>
           <PaginationContent>
             <PaginationItem>
               <PaginationPrevious

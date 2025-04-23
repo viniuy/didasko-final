@@ -11,10 +11,10 @@ import {
 } from '@/components/ui/pagination';
 import {
   Download,
-  Upload,
   Search,
   ChevronLeft,
   CalendarIcon,
+  MoreHorizontal,
 } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
@@ -49,6 +49,12 @@ import Link from 'next/link';
 import { AddStudentSheet } from './add-student-sheet';
 import { AttendanceStatus } from '@prisma/client';
 import { FilterState } from '@/types/attendance';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 // Add interface for Excel data
 interface ExcelRow {
@@ -80,14 +86,14 @@ interface AddStudentSheetProps {
     firstName: string;
     middleInitial?: string;
     image?: string;
-  }) => void;
+  }) => Promise<void>;
   onSelectExistingStudent: (student: {
     id: string;
     lastName: string;
     firstName: string;
     middleInitial?: string;
     image?: string;
-  }) => void;
+  }) => Promise<void>;
   onStudentsRemoved: () => void;
 }
 
@@ -114,6 +120,13 @@ interface AttendanceRecord {
   date: string;
   status: AttendanceStatus;
   reason: string | null;
+}
+
+interface ImportedAttendanceRecord {
+  id: string;
+  studentId: string;
+  status: AttendanceStatus;
+  date: string;
 }
 
 export default function StudentList() {
@@ -153,14 +166,22 @@ export default function StudentList() {
     [key: number]: boolean;
   }>({});
   const [isDateLoading, setIsDateLoading] = useState(false);
+  const [attendanceStats, setAttendanceStats] = useState<{
+    totalAbsents: number;
+    lastAttendanceDate: string | null;
+  }>({
+    totalAbsents: 0,
+    lastAttendanceDate: null,
+  });
+  const [showMarkAllConfirm, setShowMarkAllConfirm] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const fetchStudents = async () => {
     if (!courseId) return;
 
     try {
       setIsLoading(true);
-      setIsDateLoading(true);
-      const response = await fetch(`/api/courses/${courseId}`, {
+      const response = await fetch(`/api/courses/${courseId}/students`, {
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
@@ -173,108 +194,112 @@ export default function StudentList() {
 
       const data = await response.json();
 
-      // If a date is selected, fetch attendance records for that date
-      if (selectedDate) {
-        const dateStr = format(selectedDate, 'yyyy-MM-dd');
-        console.log('Fetching attendance for date:', dateStr);
-        const attendanceResponse = await fetch(
-          `/api/courses/${courseId}/attendance?date=${dateStr}`,
-          {
-            credentials: 'include',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-          },
-        );
-
-        if (attendanceResponse.ok) {
-          const attendanceData = await attendanceResponse.json();
-          console.log('Received attendance data:', attendanceData);
-          const attendanceMap = new Map(
-            attendanceData.map((record: AttendanceRecord) => [
-              record.studentId,
-              record,
-            ]),
-          );
-
-          const studentsWithAttendance: Student[] = data.students.map(
-            (student: any) => {
-              const attendanceRecord = attendanceMap.get(student.id);
-              return {
-                id: student.id,
-                name: student.name,
-                image: student.image || undefined,
-                status: attendanceRecord?.status || 'NOT_SET',
-                attendanceRecords: attendanceRecord ? [attendanceRecord] : [],
-              };
-            },
-          );
-
-          console.log(
-            'Final students with attendance:',
-            studentsWithAttendance,
-          );
-          setStudentList(studentsWithAttendance);
-        } else {
-          console.log('No attendance records found for date:', dateStr);
-          // If no attendance records found, initialize with empty records
-          const studentsWithEmptyRecords: Student[] = data.students.map(
-            (student: ApiStudent) => ({
-              id: student.id,
-              name: student.name,
-              image: student.image,
-              status: 'NOT_SET' as const,
-              attendanceRecords: [],
-            }),
-          );
-          setStudentList(studentsWithEmptyRecords);
-        }
-      } else {
-        console.log('No date selected, initializing with empty records');
-        // If no date selected, initialize with empty records
-        const studentsWithEmptyRecords: Student[] = data.students.map(
-          (student: ApiStudent) => ({
-            id: student.id,
-            name: student.name,
-            image: student.image,
-            status: 'NOT_SET' as const,
-            attendanceRecords: [],
-          }),
-        );
-        setStudentList(studentsWithEmptyRecords);
-      }
-
+      // Initialize students with empty attendance records
+      const studentsWithEmptyRecords: Student[] = data.students.map(
+        (student: ApiStudent) => ({
+          id: student.id,
+          name: student.name,
+          image: student.image,
+          status: 'NOT_SET' as const,
+          attendanceRecords: [],
+        }),
+      );
+      setStudentList(studentsWithEmptyRecords);
       setCourseInfo(data.course);
     } catch (error) {
       console.error('Error in fetchStudents:', error);
       setStudentList([]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchAttendance = async (date: Date) => {
+    if (!courseId) return;
+
+    try {
+      setIsDateLoading(true);
+      const dateStr = format(date, 'yyyy-MM-dd');
+      const attendanceResponse = await fetch(
+        `/api/courses/${courseId}/attendance?date=${dateStr}`,
+        {
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+
+      if (attendanceResponse.ok) {
+        const attendanceData = await attendanceResponse.json();
+        const attendanceMap = new Map(
+          attendanceData.map((record: AttendanceRecord) => [
+            record.studentId,
+            record,
+          ]),
+        );
+
+        setStudentList((prevStudents) =>
+          prevStudents.map((student) => {
+            const attendanceRecord = attendanceMap.get(student.id) as
+              | AttendanceRecord
+              | undefined;
+            return {
+              ...student,
+              status: attendanceRecord?.status || 'NOT_SET',
+              attendanceRecords: attendanceRecord ? [attendanceRecord] : [],
+            } satisfies Student;
+          }),
+        );
+      } else {
+        // Reset attendance status if no records found
+        setStudentList((prevStudents) =>
+          prevStudents.map((student) => ({
+            ...student,
+            status: 'NOT_SET',
+            attendanceRecords: [],
+          })),
+        );
+      }
+    } catch (error) {
+      console.error('Error fetching attendance:', error);
+    } finally {
       setIsDateLoading(false);
     }
   };
 
+  const fetchAttendanceStats = async () => {
+    try {
+      const response = await fetch(`/api/courses/${courseId}/attendance/stats`);
+      if (!response.ok) throw new Error('Failed to fetch attendance stats');
+      const data = await response.json();
+      setAttendanceStats(data);
+    } catch (error) {
+      console.error('Error fetching attendance stats:', error);
+    }
+  };
+
   useEffect(() => {
-    fetchStudents();
-  }, [courseId, selectedDate]);
+    if (courseId) {
+      fetchStudents();
+      fetchAttendanceStats();
+    }
+  }, [courseId]);
+
+  useEffect(() => {
+    if (selectedDate) {
+      fetchAttendance(selectedDate);
+    }
+  }, [selectedDate]);
 
   // Get attendance records for the selected date
   const getAttendanceForDate = (student: Student, date: Date | undefined) => {
     if (!date) return null;
     const dateStr = format(date, 'yyyy-MM-dd');
-    console.log('Looking for attendance on date:', dateStr);
-    console.log('Student attendance records:', student.attendanceRecords);
     const record = student.attendanceRecords.find((record) => {
       const recordDate = record.date.split('T')[0];
-      console.log(
-        'Comparing record date:',
-        recordDate,
-        'with selected date:',
-        dateStr,
-      );
       return recordDate === dateStr;
     });
-    console.log('Found record:', record);
     return record;
   };
 
@@ -519,6 +544,7 @@ export default function StudentList() {
         status: 'PRESENT' as AttendanceStatus,
       })),
     );
+    setShowMarkAllConfirm(false);
   };
 
   const handleApplyFilters = () => {
@@ -549,11 +575,11 @@ export default function StudentList() {
       ['Student Name', 'Attendance Status'],
     ];
 
-    // Create student data rows
-    const studentRows = studentList.map((student) => {
-      const attendance = getAttendanceForDate(student, selectedDate);
-      return [student.name, attendance?.status || 'NOT SET'];
-    });
+    // Create student data rows using filtered students
+    const studentRows = filteredStudents.map((student) => [
+      student.name,
+      student.status,
+    ]);
 
     // Combine header and data
     const ws = XLSX.utils.aoa_to_sheet([...header, ...studentRows]);
@@ -563,12 +589,11 @@ export default function StudentList() {
       font: { bold: true, size: 14 },
       alignment: { horizontal: 'center' },
     };
-    const normalStyle = { font: { size: 12 } };
 
     // Configure column widths
     ws['!cols'] = [
-      { wch: 30 }, // Student Name
-      { wch: 15 }, // Attendance Status
+      { wch: 40 }, // Student Name
+      { wch: 20 }, // Attendance Status
     ];
 
     // Merge cells for title
@@ -584,8 +609,8 @@ export default function StudentList() {
       selectedDate,
       'yyyy-MM-dd',
     )}.xlsx`;
-    XLSX.writeFile(wb, filename);
 
+    XLSX.writeFile(wb, filename);
     toast.success('Attendance data exported successfully');
     setShowExportPreview(false);
   };
@@ -605,25 +630,26 @@ export default function StudentList() {
         const worksheet = workbook.Sheets[sheetName];
         const jsonData = XLSX.utils.sheet_to_json(worksheet) as ExcelRow[];
 
-        const newStudents = jsonData.map((row) => ({
-          id: row.Students,
-          name: row.Name,
-          attendanceRecords: [
-            {
-              id: crypto.randomUUID(),
-              studentId: row.Students,
-              status: row.Status as AttendanceStatus,
-              date: row.Date,
-            },
-          ],
-        }));
-
-        setStudentList(
-          newStudents.map((student) => ({
-            ...student,
-            status: 'NOT_SET' as AttendanceStatusWithNotSet,
-          })),
+        const newStudents = jsonData.map(
+          (row) =>
+            ({
+              id: row.Students,
+              name: row.Name,
+              status: 'NOT_SET' as AttendanceStatusWithNotSet,
+              attendanceRecords: [
+                {
+                  id: crypto.randomUUID(),
+                  studentId: row.Students,
+                  courseId: courseId || '',
+                  status: row.Status as AttendanceStatus,
+                  date: row.Date,
+                  reason: null,
+                },
+              ] satisfies AttendanceRecord[],
+            } satisfies Student),
         );
+
+        setStudentList(newStudents);
         setShowImportDialog(false);
       };
       reader.readAsArrayBuffer(file);
@@ -810,6 +836,87 @@ export default function StudentList() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasUnsavedChanges]);
 
+  const clearAllAttendance = async () => {
+    if (!selectedDate || !courseId) {
+      toast.error('Please select a date before clearing attendance');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      const dateStr = format(selectedDate, 'yyyy-MM-dd');
+
+      // Get all existing record IDs for this date
+      const existingRecordIds = studentList
+        .map(
+          (student) =>
+            student.attendanceRecords.find(
+              (record) => record.date.split('T')[0] === dateStr,
+            )?.id,
+        )
+        .filter((id) => id) as string[];
+
+      // Prepare the request payload - we'll send the record IDs to delete
+      const payload = {
+        date: dateStr,
+        recordsToDelete: existingRecordIds,
+      };
+
+      const response = await fetch(
+        `/api/courses/${courseId}/attendance/clear`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        },
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const errorMessage =
+          data.error ||
+          `Failed to clear attendance records (${response.status}: ${response.statusText})`;
+        throw new Error(errorMessage);
+      }
+
+      // Update local state - remove all attendance records for this date
+      setStudentList((prev) =>
+        prev.map((student) => ({
+          ...student,
+          status: 'NOT_SET' as AttendanceStatusWithNotSet,
+          attendanceRecords: student.attendanceRecords.filter(
+            (record) => record.date.split('T')[0] !== dateStr,
+          ),
+        })),
+      );
+
+      // Clear any unsaved changes
+      setUnsavedChanges({});
+      setShowClearConfirm(false);
+
+      toast.success(
+        `Successfully cleared attendance for ${format(
+          selectedDate,
+          'MMMM d, yyyy',
+        )}`,
+        { duration: 3000 },
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'An unexpected error occurred while clearing attendance. Please try again.',
+        { duration: 5000 },
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className='flex flex-col h-screen'>
@@ -851,7 +958,6 @@ export default function StudentList() {
           </div>
           <div className='ml-auto'>
             <AddStudentSheet
-              onAddStudent={handleAddStudent}
               onSelectExistingStudent={handleSelectExistingStudent}
               onStudentsRemoved={() => {
                 if (courseId) {
@@ -911,23 +1017,66 @@ export default function StudentList() {
                   )}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className='w-auto p-0' align='start'>
+              <PopoverContent
+                className='w-auto p-0'
+                align='start'
+                onInteractOutside={(e) => {
+                  if (
+                    e.target instanceof HTMLElement &&
+                    e.target.closest('.rdp')
+                  ) {
+                    e.preventDefault();
+                  }
+                }}
+              >
                 <Calendar
                   mode='single'
                   selected={selectedDate}
-                  onSelect={setSelectedDate}
+                  onSelect={(date) => {
+                    setSelectedDate(date);
+                    const popover = document.querySelector('[role="dialog"]');
+                    if (popover) {
+                      (popover as HTMLElement).style.display = 'none';
+                    }
+                  }}
+                  disabled={(date) => {
+                    // Disable future dates
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+
+                    // Set January 2025 as the earliest date
+                    const jan2025 = new Date(2025, 0, 1);
+
+                    // Disable dates before Jan 2025 and after today
+                    return date < jan2025 || date > today;
+                  }}
                   initialFocus
-                  disabled={isDateLoading}
                 />
               </PopoverContent>
             </Popover>
           </div>
-          <Button
-            className='bg-[#22C55E] hover:bg-[#16A34A] text-white rounded-full px-6 h-10'
-            onClick={markAllAsPresent}
-          >
-            MARK ALL AS PRESENT
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant='outline' size='icon' className='rounded-full'>
+                <MoreHorizontal className='h-4 w-4' />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end'>
+              <DropdownMenuItem
+                onClick={() => setShowMarkAllConfirm(true)}
+                className='text-[#22C55E] focus:text-[#22C55E] focus:bg-[#22C55E]/10'
+              >
+                Mark All as Present
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setShowClearConfirm(true)}
+                disabled={isSaving}
+                className='text-[#EF4444] focus:text-[#EF4444] focus:bg-[#EF4444]/10'
+              >
+                {isSaving ? 'Clearing...' : 'Clear Attendance'}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           {hasUnsavedChanges && (
             <Button
               className='bg-[#124A69] hover:bg-[#0D3A54] text-white rounded-full px-6 h-10'
@@ -1061,66 +1210,63 @@ export default function StudentList() {
               Export to Excel
             </DialogTitle>
             <DialogDescription>
-              Preview of data to be exported:
+              {selectedDate
+                ? `Preview of attendance data for ${format(
+                    selectedDate,
+                    'MMMM d, yyyy',
+                  )}:`
+                : 'Please select a date to export attendance data.'}
             </DialogDescription>
           </DialogHeader>
-          <div className='mt-6 max-h-[400px] overflow-auto'>
-            <table className='w-full border-collapse'>
-              <thead className='bg-gray-50'>
-                <tr>
-                  <th className='px-4 py-2 text-left text-sm font-medium text-gray-500'>
-                    Name
-                  </th>
-                  <th className='px-4 py-2 text-left text-sm font-medium text-gray-500'>
-                    Status
-                  </th>
-                  <th className='px-4 py-2 text-left text-sm font-medium text-gray-500'>
-                    Date
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {studentList.slice(0, 5).map((student) => (
-                  <tr key={student.id}>
-                    <td className='px-4 py-2 text-sm text-gray-900'>
-                      {student.name}
-                    </td>
-                    <td className='px-4 py-2 text-sm text-gray-900'>
-                      {getAttendanceForDate(student, selectedDate)?.status ||
-                        'NOT SET'}
-                    </td>
-                    <td className='px-4 py-2 text-sm text-gray-900'>
-                      {getAttendanceForDate(student, selectedDate)?.date || '-'}
-                    </td>
-                  </tr>
-                ))}
-                {studentList.length > 5 && (
-                  <tr className='border-t'>
-                    <td
-                      colSpan={3}
-                      className='px-4 py-2 text-sm text-gray-500 text-center'
-                    >
-                      And {studentList.length - 5} more students...
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <div className='mt-6 flex justify-end gap-4'>
-            <Button
-              variant='outline'
-              onClick={() => setShowExportPreview(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              className='bg-[#124A69] hover:bg-[#0D3A54] text-white'
-              onClick={handleExport}
-            >
-              Export to Excel
-            </Button>
-          </div>
+          {selectedDate ? (
+            <>
+              <div className='mt-6 max-h-[400px] overflow-auto'>
+                <table className='w-full border-collapse'>
+                  <thead className='bg-gray-50 sticky top-0'>
+                    <tr>
+                      <th className='px-4 py-2 text-left text-sm font-medium text-gray-500'>
+                        Student Name
+                      </th>
+                      <th className='px-4 py-2 text-left text-sm font-medium text-gray-500'>
+                        Attendance Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredStudents.map((student) => (
+                      <tr key={student.id} className='border-t'>
+                        <td className='px-4 py-2 text-sm text-gray-900'>
+                          {student.name}
+                        </td>
+                        <td className='px-4 py-2 text-sm text-gray-900'>
+                          {student.status}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className='mt-6 flex justify-end gap-4'>
+                <Button
+                  variant='outline'
+                  onClick={() => setShowExportPreview(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className='bg-[#124A69] hover:bg-[#0D3A54] text-white'
+                  onClick={handleExport}
+                  disabled={!selectedDate}
+                >
+                  Export to Excel
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div className='mt-6 flex justify-center'>
+              <p className='text-gray-500'>Please select a date first</p>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -1150,6 +1296,47 @@ export default function StudentList() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={showMarkAllConfirm}
+        onOpenChange={setShowMarkAllConfirm}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mark All Students as Present</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to mark all students as present for{' '}
+              {selectedDate ? format(selectedDate, 'PPP') : 'this date'}? This
+              action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={markAllAsPresent}>
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear All Attendance</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to clear all attendance records for{' '}
+              {selectedDate ? format(selectedDate, 'PPP') : 'this date'}? This
+              will reset all students' status to "Select Status".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={clearAllAttendance}>
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

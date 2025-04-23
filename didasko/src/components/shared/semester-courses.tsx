@@ -23,6 +23,11 @@ interface Course {
   code: string;
   description: string | null;
   semester: string;
+  section: string;
+  attendanceStats?: {
+    totalAbsents: number;
+    lastAttendanceDate: string | null;
+  };
 }
 
 interface Schedule {
@@ -52,24 +57,30 @@ const CourseCard = ({
       : `/grading/reporting/${schedule.course.code}`;
 
   return (
-    <Card className='bg-[#124A69] text-white rounded-lg shadow-md p-4 w-full max-w-[400px] flex flex-col justify-between h-full'>
+    <Card className='bg-[#124A69] text-white rounded-lg shadow-md w-full max-w-[400px] flex flex-col justify-between h-45 '>
       <div>
-        <CardHeader className='flex justify-between items-center'>
-          <CardTitle className='text-lg font-bold'>
+        <CardHeader className='-mt-4 flex justify-between items-center'>
+          <CardTitle className='text-2xl font-bold'>
             {schedule.course.title}
           </CardTitle>
           <BookOpenText size={50} />
         </CardHeader>
         <CardContent>
-          <p className='text-sm'>{schedule.course.code}</p>
-          <p className='text-sm font-semibold'>{schedule.course.description}</p>
+          <p className='text-sm'>Section {schedule.course.section}</p>
+          <p className='text-sm font-semibold'>
+            Total Number of Absents:{' '}
+            {schedule.course.attendanceStats?.totalAbsents || 0}
+          </p>
           <p className='text-xs text-gray-400'>
-            Schedule: {format(new Date(schedule.day), 'EEEE')}{' '}
-            {schedule.fromTime} - {schedule.toTime}
+            {schedule.course.attendanceStats?.lastAttendanceDate
+              ? `Last attendance: ${new Date(
+                  schedule.course.attendanceStats.lastAttendanceDate,
+                ).toLocaleDateString()}`
+              : 'No attendance yet'}
           </p>
         </CardContent>
       </div>
-      <div className='flex justify-end mt-auto p-2'>
+      <div className='flex justify-end -mt-4 p-2'>
         <Button
           asChild
           variant='secondary'
@@ -137,19 +148,45 @@ export default function SemesterCourses({
       );
       const data = await response.json();
       if (response.ok) {
+        // Fetch attendance stats for each course
+        const schedulesWithStats = await Promise.all(
+          data.map(async (schedule: Schedule) => {
+            const stats = await fetchAttendanceStats(schedule.courseId);
+            return {
+              ...schedule,
+              course: {
+                ...schedule.course,
+                attendanceStats: stats,
+              },
+            };
+          }),
+        );
         // Filter for specified semester courses
-        const semesterSchedules = data.filter((schedule: Schedule) => {
-          return (
-            schedule?.course?.semester &&
-            schedule.course.semester.trim() === semester
-          );
-        });
+        const semesterSchedules = schedulesWithStats.filter(
+          (schedule: Schedule) => {
+            return (
+              schedule?.course?.semester &&
+              schedule.course.semester.trim() === semester
+            );
+          },
+        );
         setSchedules(semesterSchedules);
       }
     } catch (error) {
       console.error('Error in fetchSchedules:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchAttendanceStats = async (courseId: string) => {
+    try {
+      const response = await fetch(`/api/courses/${courseId}/attendance/stats`);
+      if (!response.ok) throw new Error('Failed to fetch attendance stats');
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching attendance stats:', error);
+      return null;
     }
   };
 
@@ -203,8 +240,8 @@ export default function SemesterCourses({
       </div>
 
       {schedules.length > itemsPerPage && (
-        <div className='flex justify-between items-center px-2 mt-4'>
-          <p className='text-sm text-gray-500'>
+        <div className='flex justify-between items-center px-2 -mt-4'>
+          <p className='text-sm text-gray-500 w-40    '>
             {currentPage * itemsPerPage - (itemsPerPage - 1)}-
             {Math.min(currentPage * itemsPerPage, schedules.length)} out of{' '}
             {schedules.length} classes

@@ -97,6 +97,10 @@ export function GradingTable({
     rubrics: '2',
     scoringRange: '5',
     passingScore: '75',
+    rubricDetails: [
+      { name: '', weight: 50 },
+      { name: '', weight: 50 },
+    ],
   });
 
   // Function to handle dialog close
@@ -256,14 +260,33 @@ export function GradingTable({
       const selected = savedCriteria.find((c) => c.id === selectedCriteria);
       if (selected) {
         setActiveCriteria(selected);
-        setRubricDetails(
-          Array(selected.rubrics)
-            .fill(null)
-            .map((_, i) => ({
-              name: `Rubric ${i + 1}`,
+        // Create placeholders for rubrics with default names and evenly distributed percentages
+        const defaultRubrics = Array(selected.rubrics)
+          .fill(null)
+          .map((_, i) => {
+            let defaultName = '';
+            switch (i) {
+              case 0:
+                defaultName = 'Content';
+                break;
+              case 1:
+                defaultName = 'Organization';
+                break;
+              case 2:
+                defaultName = 'Delivery';
+                break;
+              case 3:
+                defaultName = 'Creativity';
+                break;
+              default:
+                defaultName = `Rubric ${i + 1}`;
+            }
+            return {
+              name: defaultName,
               percentage: Math.floor(100 / selected.rubrics),
-            })),
-        );
+            };
+          });
+        setRubricDetails(defaultRubrics);
       }
     }
     setShowCriteriaDialog(false);
@@ -333,6 +356,40 @@ export function GradingTable({
     }
   };
 
+  const handleRubricCountChange = (value: string) => {
+    const count = parseInt(value);
+    const defaultWeight = Math.floor(100 / count);
+    const newRubricDetails = Array(count)
+      .fill(null)
+      .map(() => ({
+        name: '',
+        weight: defaultWeight,
+      }));
+    setNewCriteria((prev) => ({
+      ...prev,
+      rubrics: value,
+      rubricDetails: newRubricDetails,
+    }));
+  };
+
+  const updateRubricDetail = (
+    index: number,
+    field: 'name' | 'weight',
+    value: string | number,
+  ) => {
+    setNewCriteria((prev) => {
+      const newDetails = [...prev.rubricDetails];
+      newDetails[index] = {
+        ...newDetails[index],
+        [field]: value,
+      };
+      return {
+        ...prev,
+        rubricDetails: newDetails,
+      };
+    });
+  };
+
   const filteredStudents = students.filter((student) =>
     student.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
@@ -340,7 +397,7 @@ export function GradingTable({
   return (
     <>
       <Dialog open={showCriteriaDialog} onOpenChange={handleDialogClose}>
-        <DialogContent className='sm:max-w-[600px]'>
+        <DialogContent className='sm:max-w-[450px]'>
           <DialogHeader>
             <DialogTitle>Grading Criteria</DialogTitle>
             <DialogDescription>
@@ -424,9 +481,7 @@ export function GradingTable({
                     <label htmlFor='rubrics'>Number of Rubrics</label>
                     <Select
                       value={newCriteria.rubrics}
-                      onValueChange={(value) =>
-                        setNewCriteria((prev) => ({ ...prev, rubrics: value }))
-                      }
+                      onValueChange={handleRubricCountChange}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -438,6 +493,76 @@ export function GradingTable({
                       </SelectContent>
                     </Select>
                   </div>
+
+                  <div className='grid gap-4 mt-2'>
+                    <label className='text-sm font-medium'>
+                      Rubric Details
+                    </label>
+                    <div className='space-y-4 max-h-[200px] overflow-y-auto pr-2'>
+                      {newCriteria.rubricDetails.map((rubric, index) => (
+                        <div key={index} className='flex items-center gap-2'>
+                          <div className='relative w-[400px]'>
+                            <Input
+                              value={rubric.name}
+                              onChange={(e) =>
+                                updateRubricDetail(
+                                  index,
+                                  'name',
+                                  e.target.value.slice(0, 15),
+                                )
+                              }
+                              placeholder={`Rubric ${index + 1} name`}
+                              className='pr-20'
+                              maxLength={15}
+                            />
+                            <div className='absolute right-1 top-1 bottom-1 flex items-center'>
+                              <span className='text-xs text-gray-400 mr-2'>
+                                {rubric.name.length}/15
+                              </span>
+                              <Input
+                                type='number'
+                                value={rubric.weight}
+                                onChange={(e) =>
+                                  updateRubricDetail(
+                                    index,
+                                    'weight',
+                                    parseInt(e.target.value) || 0,
+                                  )
+                                }
+                                min={0}
+                                max={100}
+                                className='w-14 h-7 px-1 text-right'
+                              />
+                              <span className='text-sm text-gray-500 ml-0.5 mr-2'>
+                                %
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className='text-sm text-gray-500 flex justify-end items-center gap-1.5 w-[400px]'>
+                      <span>Total:</span>
+                      <span
+                        className={cn(
+                          'font-medium',
+                          newCriteria.rubricDetails.reduce(
+                            (sum, r) => sum + r.weight,
+                            0,
+                          ) === 100
+                            ? 'text-green-600'
+                            : 'text-red-600',
+                        )}
+                      >
+                        {newCriteria.rubricDetails.reduce(
+                          (sum, r) => sum + r.weight,
+                          0,
+                        )}
+                        %
+                      </span>
+                    </div>
+                  </div>
+
                   <div className='grid gap-2'>
                     <label htmlFor='scoringRange'>Scoring Range</label>
                     <Select
@@ -485,7 +610,15 @@ export function GradingTable({
                   </Button>
                   <Button
                     onClick={handleCreateCriteria}
-                    disabled={!newCriteria.name || isLoading}
+                    disabled={
+                      !newCriteria.name ||
+                      isLoading ||
+                      newCriteria.rubricDetails.some((r) => !r.name) ||
+                      newCriteria.rubricDetails.reduce(
+                        (sum, r) => sum + r.weight,
+                        0,
+                      ) !== 100
+                    }
                   >
                     {isLoading ? (
                       <>
@@ -527,58 +660,109 @@ export function GradingTable({
             </Button>
           </div>
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                {rubricDetails.map((rubric, i) => (
-                  <TableHead key={i}>
-                    {rubric.name} ({rubric.percentage}%)
-                  </TableHead>
-                ))}
-                <TableHead>Total</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredStudents.map((student) => {
-                const studentScore = scores[student.id] || {
-                  studentId: student.id,
-                  scores: new Array(activeCriteria.rubrics).fill(0),
-                  total: 0,
-                };
+          <div className='relative overflow-x-auto'>
+            <div className='min-w-full inline-block align-middle'>
+              <div className='overflow-x-auto border rounded-lg'>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className='sticky left-0 bg-white z-10 min-w-[200px]'>
+                        Name
+                      </TableHead>
+                      {rubricDetails.map((rubric, i) => (
+                        <TableHead key={i} className='min-w-[150px]'>
+                          <Input
+                            value={rubric.name}
+                            onChange={(e) => {
+                              const newRubrics = [...rubricDetails];
+                              newRubrics[i] = {
+                                ...rubric,
+                                name: e.target.value,
+                              };
+                              setRubricDetails(newRubrics);
+                            }}
+                            className='w-full mb-1'
+                            placeholder={`Rubric ${i + 1}`}
+                          />
+                          <Input
+                            type='number'
+                            value={rubric.percentage}
+                            onChange={(e) => {
+                              const newRubrics = [...rubricDetails];
+                              newRubrics[i] = {
+                                ...rubric,
+                                percentage: parseInt(e.target.value) || 0,
+                              };
+                              setRubricDetails(newRubrics);
+                            }}
+                            className='w-full'
+                            min={0}
+                            max={100}
+                            placeholder='Percentage'
+                          />
+                        </TableHead>
+                      ))}
+                      <TableHead className='min-w-[100px]'>Total</TableHead>
+                      <TableHead className='min-w-[100px]'>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredStudents.map((student) => {
+                      const studentScore = scores[student.id] || {
+                        studentId: student.id,
+                        scores: new Array(activeCriteria.rubrics).fill(0),
+                        total: 0,
+                      };
 
-                return (
-                  <TableRow key={student.id}>
-                    <TableCell>{student.name}</TableCell>
-                    {studentScore.scores.map((score, index) => (
-                      <TableCell key={index}>
-                        <Input
-                          type='number'
-                          min={1}
-                          max={activeCriteria.scoringRange}
-                          value={score}
-                          onChange={(e) =>
-                            handleScoreChange(
-                              student.id,
-                              index,
-                              parseInt(e.target.value) || 0,
-                            )
-                          }
-                        />
-                      </TableCell>
-                    ))}
-                    <TableCell>{studentScore.total.toFixed(2)}%</TableCell>
-                    <TableCell>
-                      {studentScore.total >= Number(activeCriteria.passingScore)
-                        ? 'Pass'
-                        : 'Fail'}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                      return (
+                        <TableRow key={student.id}>
+                          <TableCell className='sticky left-0 bg-white z-10'>
+                            {student.name}
+                          </TableCell>
+                          {studentScore.scores.map((score, index) => (
+                            <TableCell key={index}>
+                              <Input
+                                type='number'
+                                min={1}
+                                max={activeCriteria.scoringRange}
+                                value={score}
+                                onChange={(e) =>
+                                  handleScoreChange(
+                                    student.id,
+                                    index,
+                                    parseInt(e.target.value) || 0,
+                                  )
+                                }
+                              />
+                            </TableCell>
+                          ))}
+                          <TableCell>
+                            {studentScore.total.toFixed(2)}%
+                          </TableCell>
+                          <TableCell>
+                            <span
+                              className={cn(
+                                'px-2 py-1 rounded-full text-xs font-medium',
+                                studentScore.total >=
+                                  Number(activeCriteria.passingScore)
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-red-100 text-red-800',
+                              )}
+                            >
+                              {studentScore.total >=
+                              Number(activeCriteria.passingScore)
+                                ? 'Pass'
+                                : 'Fail'}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </>

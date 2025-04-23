@@ -59,7 +59,7 @@ export default function FacultyLoad() {
   return (
     <div className='h-full flex flex-col'>
       {/* Search and Filter Bar */}
-      <div className='bg-[#124A69] text-white p-4 rounded-t-lg'>
+      <div className='bg-[#124A69] text-white p-4 rounded-t-lg '>
         <div className='flex items-center justify-between'>
           <div className='flex items-center gap-2'>
             {selectedTeacher && (
@@ -92,7 +92,7 @@ export default function FacultyLoad() {
                 placeholder='Search...'
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className='bg-[#124A69] text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-white/20 w-64'
+                className='bg-white text-black px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-white/20 w-64 '
               />
               <svg
                 xmlns='http://www.w3.org/2000/svg'
@@ -104,7 +104,7 @@ export default function FacultyLoad() {
                 strokeWidth='2'
                 strokeLinecap='round'
                 strokeLinejoin='round'
-                className='absolute right-3 top-1/2 transform -translate-y-1/2 text-white/70 h-4 w-4'
+                className='absolute right-3 top-1/2 transform -translate-y-1/2 text-white h-4 w-4'
               >
                 <circle cx='11' cy='11' r='8' />
                 <path d='m21 21-4.3-4.3' />

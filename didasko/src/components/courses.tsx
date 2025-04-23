@@ -1,7 +1,7 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Book } from 'lucide-react';
+import { BookOpenText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState, useEffect } from 'react';
 import {
@@ -20,6 +20,11 @@ interface Course {
   title: string;
   code: string;
   description: string | null;
+  section: string;
+  attendanceStats?: {
+    totalAbsents: number;
+    lastAttendanceDate: string | null;
+  };
 }
 
 interface ScheduleWithCourse {
@@ -34,25 +39,37 @@ interface ScheduleWithCourse {
 // Course Card Component
 const CourseCard = ({ course }: { course: Course }) => {
   return (
-    <Card className='bg-[#124A69] text-white'>
-      <CardHeader className='flex justify-between items-center'>
-        <CardTitle className='text-lg'>{course.title}</CardTitle>
-        <Book size={20} />
+    <Card className='bg-[#124A69] text-white h-46 -mt-3'>
+      <CardHeader className='flex justify-between items-center -mt-2'>
+        <CardTitle className='text-2xl '>{course.title}</CardTitle>
+        <BookOpenText size={40} />
       </CardHeader>
       <CardContent>
-        <p className='text-sm'>{course.code}</p>
-        <p className='text-sm'>
-          {course.description || 'No description available'}
-        </p>
-        <Button
-          asChild
-          variant='secondary'
-          className='mt-2 bg-[#FAEDCB] text-black text-sm'
-        >
-          <Link href={`/attendance/class?courseId=${course.id}`}>
-            View Details
-          </Link>
-        </Button>
+        {' '}
+        <div className='-mt-7'>
+          <p className='text-lg'>{course.section}</p>
+          <p className='text-md '>
+            Total Number of Absents: {course.attendanceStats?.totalAbsents || 0}
+          </p>
+          <p className='text-sm text-gray-300'>
+            {course.attendanceStats?.lastAttendanceDate
+              ? `Last attendance: ${new Date(
+                  course.attendanceStats.lastAttendanceDate,
+                ).toLocaleDateString()}`
+              : 'No attendance yet'}
+          </p>
+        </div>
+        <div className='flex justify-end'>
+          <Button
+            asChild
+            variant='secondary'
+            className='mt-2 bg-[#FAEDCB] text-black text-sm'
+          >
+            <Link href={`/attendance/class?courseId=${course.id}`}>
+              View Details
+            </Link>
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -95,6 +112,17 @@ export default function Courses() {
     }
   };
 
+  const fetchAttendanceStats = async (courseId: string) => {
+    try {
+      const response = await fetch(`/api/courses/${courseId}/attendance/stats`);
+      if (!response.ok) throw new Error('Failed to fetch attendance stats');
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching attendance stats:', error);
+      return null;
+    }
+  };
+
   const fetchSchedules = async () => {
     if (!session?.user?.email) {
       setIsLoading(false);
@@ -113,7 +141,20 @@ export default function Courses() {
       );
       const data = await response.json();
       if (response.ok) {
-        setSchedules(data);
+        // Fetch attendance stats for each course
+        const schedulesWithStats = await Promise.all(
+          data.map(async (schedule: ScheduleWithCourse) => {
+            const stats = await fetchAttendanceStats(schedule.courseId);
+            return {
+              ...schedule,
+              course: {
+                ...schedule.course,
+                attendanceStats: stats,
+              },
+            };
+          }),
+        );
+        setSchedules(schedulesWithStats);
       }
     } catch (error) {
       console.error('Error in fetchSchedules:', error);
@@ -172,8 +213,8 @@ export default function Courses() {
         ))}
       </div>
 
-      <Pagination className='-mt-4 -mb-2 flex justify-end'>
-        <PaginationContent>
+      <Pagination className='-mt-4 -mb-2 flex justify-end '>
+        <PaginationContent className='h-7'>
           {currentPage > 1 && (
             <PaginationItem>
               <PaginationPrevious

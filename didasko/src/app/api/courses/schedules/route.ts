@@ -124,7 +124,8 @@ export async function GET(request: Request) {
           'code', c.code,
           'title', c.title,
           'description', c.description,
-          'semester', c.semester
+          'semester', c.semester,
+          'section', c.section
         ) as course
       FROM course_schedules cs
       JOIN courses c ON cs."courseId" = c.id

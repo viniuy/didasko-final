@@ -74,3 +74,59 @@ export async function addUser(userData: AddUserParams) {
     return { success: false, error: 'Failed to add user' };
   }
 }
+
+export async function editUser(
+  userId: string,
+  data: {
+    name?: string;
+    email?: string;
+    department?: string;
+    workType?: WorkType;
+    role?: Role;
+    permission?: Permission;
+  },
+) {
+  try {
+    // Check if email already exists (if email is being changed)
+    if (data.email) {
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          email: data.email,
+          NOT: {
+            id: userId,
+          },
+        },
+      });
+
+      if (existingUser) {
+        return { success: false, error: 'Email already exists' };
+      }
+    }
+
+    // Update the user
+    await prisma.user.update({
+      where: { id: userId },
+      data: data,
+    });
+
+    revalidatePath('/dashboard/admin');
+    return { success: true };
+  } catch (error) {
+    console.error('Error editing user:', error);
+    return { success: false, error: 'Failed to edit user' };
+  }
+}
+
+export async function deleteUser(userId: string) {
+  try {
+    await prisma.user.delete({
+      where: { id: userId },
+    });
+
+    revalidatePath('/dashboard/admin');
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    return { success: false, error: 'Failed to delete user' };
+  }
+}

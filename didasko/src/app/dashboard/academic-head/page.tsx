@@ -34,7 +34,6 @@ export default function AcademicHeadDashboard() {
                 teacherInfo={{
                   email: session.user.email,
                 }}
-                onBack={() => {}}
               />
             )}
           </div>

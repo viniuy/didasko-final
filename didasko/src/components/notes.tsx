@@ -72,6 +72,8 @@ export default function Notes() {
     description: '',
     date: new Date(),
   });
+  const [openEditDatePicker, setOpenEditDatePicker] = useState(false);
+  const [openAddDatePicker, setOpenAddDatePicker] = useState(false);
 
   const previousStatus = useRef(status);
 
@@ -418,7 +420,9 @@ export default function Notes() {
             ));
           })()
         ) : (
-          <p className='text-gray-500 text-xs text-center'>No notes yet.</p>
+          <div className='flex items-center justify-center h-full min-h-[200px]'>
+            <p className='text-gray-500 text-xs text-center'>No notes yet.</p>
+          </div>
         )}
       </div>
 
@@ -477,7 +481,11 @@ export default function Notes() {
 
             <div>
               <Label className='text-sm font-medium mb-2 block'>Date *</Label>
-              <Popover>
+              <Popover
+                modal
+                open={openEditDatePicker}
+                onOpenChange={setOpenEditDatePicker}
+              >
                 <PopoverTrigger asChild>
                   <Button
                     variant='outline'
@@ -489,7 +497,11 @@ export default function Notes() {
                     <CalendarIcon className='ml-2 h-4 w-4' />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent align='start' className='w-auto p-0'>
+                <PopoverContent
+                  align='start'
+                  className='w-auto p-0'
+                  onOpenAutoFocus={(e) => e.preventDefault()}
+                >
                   <Calendar
                     mode='single'
                     selected={editData.date}
@@ -564,7 +576,11 @@ export default function Notes() {
 
             <div>
               <Label className='text-sm font-medium mb-2 block'>Date *</Label>
-              <Popover>
+              <Popover
+                modal
+                open={openAddDatePicker}
+                onOpenChange={setOpenAddDatePicker}
+              >
                 <PopoverTrigger asChild>
                   <Button
                     variant='outline'
@@ -574,7 +590,11 @@ export default function Notes() {
                     <CalendarIcon className='ml-2 h-4 w-4' />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent align='start' className='w-auto p-0'>
+                <PopoverContent
+                  align='start'
+                  className='w-auto p-0'
+                  onOpenAutoFocus={(e) => e.preventDefault()}
+                >
                   <Calendar
                     mode='single'
                     selected={newNote.date}

@@ -196,7 +196,7 @@ export default function FirstSemesterCourses() {
         <div className='flex justify-between items-center px-2 mt-4'>
           <p className='text-sm text-gray-500'>
             {currentPage * itemsPerPage - (itemsPerPage - 1)}-
-            {Math.min(currentPage * itemsPerPage, schedules.length)} out of{' '}
+            {Math.min(currentPage * itemsPerPage, schedules.length)} of{' '}
             {schedules.length} classes
           </p>
           <Pagination className='flex justify-end'>

@@ -86,9 +86,6 @@ export default async function AdminDashboardPage() {
 
           {/* Users Table */}
           <div className='mb-4'>
-            <h2 className='pl-2 pb-1 text-2xl font-bold text-muted-foreground'>
-              Users Management
-            </h2>
             <AdminDataTable users={users} />
           </div>
         </div>

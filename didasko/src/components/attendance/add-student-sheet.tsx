@@ -18,7 +18,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
-import { UserPlus, Plus, Search } from 'lucide-react';
+import { UserRoundCog, Plus, Search, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
@@ -72,7 +72,13 @@ const formatStudentName = (student: Student): string => {
 };
 
 interface AddStudentSheetProps {
-  onSelectExistingStudent: (student: Student) => void;
+  onSelectExistingStudent: (student: {
+    id: string;
+    lastName: string;
+    firstName: string;
+    middleInitial?: string;
+    image?: string;
+  }) => void;
   onStudentsRemoved?: () => void;
 }
 
@@ -156,9 +162,7 @@ export function AddStudentSheet({
   const availableSearchResults =
     addSearchQuery.length >= 2
       ? allStudents.filter((student) => {
-          const fullName = `${student.lastName}, ${student.firstName}${
-            student.middleInitial ? ` ${student.middleInitial}.` : ''
-          }`.toLowerCase();
+          const fullName = formatStudentName(student).toLowerCase();
           return fullName.includes(addSearchQuery.toLowerCase());
         })
       : allStudents;
@@ -167,9 +171,7 @@ export function AddStudentSheet({
   const enrolledSearchResults =
     removeSearchQuery.length >= 2
       ? enrolledStudents.filter((student) => {
-          const fullName = `${student.lastName}, ${student.firstName}${
-            student.middleInitial ? ` ${student.middleInitial}.` : ''
-          }`.toLowerCase();
+          const fullName = formatStudentName(student).toLowerCase();
           return fullName.includes(removeSearchQuery.toLowerCase());
         })
       : enrolledStudents;
@@ -338,7 +340,7 @@ export function AddStudentSheet({
           className='rounded-full'
           title='Add Student'
         >
-          <UserPlus className='h-4 w-4' />
+          <UserRoundCog className='h-4 w-4' />
         </Button>
       </SheetTrigger>
       <SheetContent className='w-full max-w-4xl p-4'>
@@ -416,7 +418,7 @@ export function AddStudentSheet({
                                   />
                                 ) : (
                                   <div className='h-full w-full flex items-center justify-center text-gray-400'>
-                                    <UserPlus className='h-5 w-5' />
+                                    <UserRound className='h-5 w-5' />
                                   </div>
                                 )}
                               </div>
@@ -513,7 +515,9 @@ export function AddStudentSheet({
                                     checked as boolean,
                                   )
                                 }
-                                aria-label={`Select ${student.name}`}
+                                aria-label={`Select ${formatStudentName(
+                                  student,
+                                )}`}
                               />
                             </TableCell>
                             <TableCell>
@@ -521,20 +525,22 @@ export function AddStudentSheet({
                                 {student.image ? (
                                   <Image
                                     src={student.image}
-                                    alt={student.name}
+                                    alt={formatStudentName(student)}
                                     fill
                                     className='object-cover'
                                   />
                                 ) : (
                                   <div className='h-full w-full flex items-center justify-center text-gray-400'>
-                                    <UserPlus className='h-5 w-5' />
+                                    <UserRound className='h-5 w-5' />
                                   </div>
                                 )}
                               </div>
                             </TableCell>
                             <TableCell>
                               <div>
-                                <p className='font-medium'>{student.name}</p>
+                                <p className='font-medium'>
+                                  {formatStudentName(student)}
+                                </p>
                               </div>
                             </TableCell>
                           </TableRow>
