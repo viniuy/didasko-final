@@ -136,6 +136,8 @@ export function AdminDataTable({
     current: number;
     total: number;
     status: string;
+    error?: string;
+    hasError?: boolean;
   } | null>(null);
   const [tableData, setTableData] = useState<User[]>(users);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -767,6 +769,7 @@ export function AdminDataTable({
         current: 0,
         total: 0,
         status: 'Starting import process...',
+        hasError: false,
       });
       console.log('Starting import process...');
       const formData = new FormData();
@@ -798,102 +801,199 @@ export function AdminDataTable({
 
       if (!response.ok) {
         console.error('Server error:', data);
-        throw new Error(data.error || 'Failed to import users');
+        const errorMessage =
+          data.error || 'Failed to import users. Server returned an error.';
+        console.log('Error details:', {
+          status: response.status,
+          errorMessage,
+          fullResponse: data,
+        });
+        setImportProgress((prev) => ({
+          ...prev!,
+          hasError: true,
+          error: errorMessage,
+          status: 'Import failed',
+        }));
+        throw new Error(errorMessage);
       }
 
-      // Show import summary
+      // Log the exact response structure for debugging
+      console.log('FULL IMPORT RESPONSE:', JSON.stringify(data, null, 2));
+      console.log('Import errors detail:', data.errors);
+
+      // Handle the case where server indicates success
       if (data.success) {
-        // Show individual success notifications
-        data.importedUsers?.forEach(
-          (
-            user: { name: string; email: string; row: number },
-            index: number,
-          ) => {
-            setTimeout(() => {
-              toast.success(
-                <div className='space-y-1'>
-                  <p className='font-medium'>Imported User</p>
-                  <p className='text-sm'>{user.name}</p>
-                  <p className='text-sm text-gray-500'>Row {user.row}</p>
+        // Display immediately what was successful
+        console.log('Successful imports:', data.importedUsers);
+
+        // Create a formatted message showing the import summary
+        const summary = `Imported: ${data.imported} of ${data.total} records`;
+        console.log(summary);
+
+        // Format a complete message for the user
+        let importMessage = '';
+        if (data.imported > 0) {
+          importMessage += `<strong>${data.imported}</strong> record${
+            data.imported !== 1 ? 's' : ''
+          } imported successfully. `;
+        }
+        if (data.errors && data.errors.length > 0) {
+          importMessage += `<strong>${data.errors.length}</strong> record${
+            data.errors.length !== 1 ? 's' : ''
+          } skipped (already exist). `;
+        }
+
+        // Update the progress to show the results
+        setImportProgress((prev) => ({
+          ...prev!,
+          hasError: false,
+          error: importMessage.replace(/<\/?strong>/g, ''),
+          status: 'Import completed',
+        }));
+
+        // Build a more detailed display for the notification
+        if (data.importedUsers && data.importedUsers.length > 0) {
+          // Display imported users in a normal message
+          try {
+            // Directly use a div for the notification without relying on toast.success
+            toast(
+              <div className='space-y-2 p-2 bg-green-50 border border-green-200 rounded'>
+                <p className='font-medium text-green-800'>
+                  {data.imported} record{data.imported !== 1 ? 's' : ''}{' '}
+                  imported successfully:
+                </p>
+                <ul className='list-disc pl-4'>
+                  {data.importedUsers.map((user: any, index: number) => (
+                    <li key={index} className='text-sm text-green-700'>
+                      {user.name} ({user.email})
+                    </li>
+                  ))}
+                </ul>
+              </div>,
+              { duration: 5000 },
+            );
+          } catch (e) {
+            console.error('Error displaying success toast:', e);
+          }
+        }
+
+        // Display duplicate/error messages if needed
+        if (data.errors && data.errors.length > 0) {
+          try {
+            // Get the unique constraint violations (duplicates)
+            const duplicates = data.errors.filter(
+              (err: any) =>
+                err.message &&
+                (err.message.includes('unique constraint failed') ||
+                  err.message.includes('already exists')),
+            );
+
+            if (duplicates.length > 0) {
+              // Display duplicates in an info message
+              toast(
+                <div className='space-y-2 p-2 bg-amber-50 border border-amber-200 rounded'>
+                  <p className='font-medium text-amber-800'>
+                    {duplicates.length} record
+                    {duplicates.length !== 1 ? 's' : ''} skipped (already
+                    exist):
+                  </p>
+                  <ul className='list-disc pl-4'>
+                    {duplicates.slice(0, 3).map((err: any, index: number) => (
+                      <li key={index} className='text-sm text-amber-700'>
+                        {err.email} (Row {err.row})
+                      </li>
+                    ))}
+                    {duplicates.length > 3 && (
+                      <li className='text-sm text-amber-700'>
+                        ...and {duplicates.length - 3} more
+                      </li>
+                    )}
+                  </ul>
                 </div>,
-                { duration: 3000 },
+                { duration: 5000 },
               );
-            }, index * 300);
-          },
-        );
+            }
 
-        // Update progress as users are imported
-        if (data.importedUsers) {
-          data.importedUsers.forEach((_: unknown, index: number) => {
-            setTimeout(() => {
-              setImportProgress((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      current: index + 1,
-                      total: data.total,
-                      status: `Importing user ${index + 1} of ${data.total}...`,
-                    }
-                  : null,
+            // Get other errors
+            const otherErrors = data.errors.filter(
+              (err: any) =>
+                !err.message ||
+                (!err.message.includes('unique constraint failed') &&
+                  !err.message.includes('already exists')),
+            );
+
+            if (otherErrors.length > 0) {
+              // Display other errors in an error message
+              toast(
+                <div className='space-y-2 p-2 bg-red-50 border border-red-200 rounded'>
+                  <p className='font-medium text-red-800'>
+                    {otherErrors.length} error
+                    {otherErrors.length !== 1 ? 's' : ''} occurred:
+                  </p>
+                  <ul className='list-disc pl-4'>
+                    {otherErrors.slice(0, 3).map((err: any, index: number) => (
+                      <li key={index} className='text-sm text-red-700'>
+                        Row {err.row}: {err.message || 'Unknown error'}
+                      </li>
+                    ))}
+                    {otherErrors.length > 3 && (
+                      <li className='text-sm text-red-700'>
+                        ...and {otherErrors.length - 3} more
+                      </li>
+                    )}
+                  </ul>
+                </div>,
+                { duration: 5000 },
               );
-            }, index * 300);
-          });
+            }
+          } catch (e) {
+            console.error('Error displaying error toast:', e);
+          }
         }
 
-        // Final success message after all individual notifications
-        setTimeout(() => {
-          toast.success(
-            <div className='space-y-2'>
-              <p className='font-medium'>Import completed successfully!</p>
-              <p>{data.imported} users imported</p>
-              <p>{data.skipped} entries skipped</p>
-            </div>,
-            { duration: 5000 },
-          );
-
-          // Refresh the table data
-          refreshTableData();
-        }, (data.importedUsers?.length || 0) * 300 + 500);
-
-        // Show detailed errors if any
-        if (data.errors.length > 0) {
-          console.log('Import errors:', data.errors);
-          toast.error(
-            <div className='space-y-2'>
-              <p>Some users were not imported:</p>
-              <ul className='list-disc pl-4'>
-                {data.errors.slice(0, 3).map((error: any, index: number) => (
-                  <li key={index}>
-                    Row {error.row}: {error.email} - {error.message}
-                  </li>
-                ))}
-                {data.errors.length > 3 && (
-                  <li>...and {data.errors.length - 3} more errors</li>
-                )}
-              </ul>
-            </div>,
-            { duration: 5000 },
-          );
-        }
+        // Refresh table data
+        refreshTableData();
       } else {
-        console.error('Import failed:', data);
-        toast.error('No users were imported');
-      }
+        // Server indicated the import was not successful
+        console.error('Import unsuccessful. Data structure:', data);
 
-      // Reset states after all notifications
-      setTimeout(() => {
-        setShowImportPreview(false);
-        setSelectedFile(null);
-        setPreviewData([]);
-        setIsValidFile(false);
-        setImportProgress(null);
-      }, (data.importedUsers?.length || 0) * 300 + 1000);
+        // Update progress to show failure
+        setImportProgress((prev) => ({
+          ...prev!,
+          hasError: true,
+          error: data.error || 'Import failed',
+          status: 'Import failed',
+        }));
+
+        // Display error notification
+        try {
+          toast(
+            <div className='space-y-2 p-2 bg-red-50 border border-red-200 rounded'>
+              <p className='font-medium text-red-800'>Import failed:</p>
+              <p className='text-sm text-red-700'>
+                {data.error || 'Unknown error occurred'}
+              </p>
+            </div>,
+            { duration: 5000 },
+          );
+        } catch (e) {
+          console.error('Error displaying error toast:', e);
+          // Fallback to a simpler notification
+          alert(`Import failed: ${data.error || 'Unknown error'}`);
+        }
+      }
     } catch (error) {
       console.error('Error in import process:', error);
+      setImportProgress((prev) => ({
+        ...prev!,
+        hasError: true,
+        error:
+          error instanceof Error ? error.message : 'Failed to import users',
+        status: 'Import failed',
+      }));
       toast.error(
         error instanceof Error ? error.message : 'Failed to import users',
       );
-      setImportProgress(null);
     }
   };
 
@@ -1364,14 +1464,79 @@ export function AdminDataTable({
             )}
 
             {importProgress && (
-              <div className='space-y-2 p-4 border rounded-lg bg-gray-50'>
+              <div
+                className={`space-y-2 p-4 border rounded-lg ${
+                  importProgress.hasError
+                    ? 'bg-red-50 border-red-200'
+                    : importProgress.error?.includes('already exist')
+                    ? 'bg-amber-50 border-amber-200'
+                    : 'bg-gray-50'
+                }`}
+              >
                 <div className='flex items-center gap-2'>
-                  <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-[#124A69]' />
-                  <p className='text-sm text-gray-600'>
+                  {importProgress.hasError ? (
+                    <svg
+                      xmlns='http://www.w3.org/2000/svg'
+                      width='16'
+                      height='16'
+                      viewBox='0 0 24 24'
+                      fill='none'
+                      stroke='currentColor'
+                      strokeWidth='2'
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      className='text-red-500'
+                    >
+                      <circle cx='12' cy='12' r='10'></circle>
+                      <line x1='12' y1='8' x2='12' y2='12'></line>
+                      <line x1='12' y1='16' x2='12.01' y2='16'></line>
+                    </svg>
+                  ) : importProgress.error?.includes('already exist') ? (
+                    <svg
+                      xmlns='http://www.w3.org/2000/svg'
+                      width='16'
+                      height='16'
+                      viewBox='0 0 24 24'
+                      fill='none'
+                      stroke='currentColor'
+                      strokeWidth='2'
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      className='text-amber-500'
+                    >
+                      <circle cx='12' cy='12' r='10'></circle>
+                      <line x1='12' y1='8' x2='12' y2='12'></line>
+                      <line x1='12' y1='16' x2='12.01' y2='16'></line>
+                    </svg>
+                  ) : (
+                    <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-[#124A69]' />
+                  )}
+                  <p
+                    className={`text-sm ${
+                      importProgress.hasError
+                        ? 'text-red-600 font-medium'
+                        : importProgress.error?.includes('already exist')
+                        ? 'text-amber-600 font-medium'
+                        : 'text-gray-600'
+                    }`}
+                  >
                     {importProgress.status}
                   </p>
                 </div>
-                {importProgress.total > 0 && (
+
+                {importProgress.error && (
+                  <div
+                    className={`mt-2 text-sm p-2 rounded border ${
+                      importProgress.hasError
+                        ? 'text-red-600 bg-red-50 border-red-100'
+                        : 'text-amber-600 bg-amber-50 border-amber-100'
+                    }`}
+                  >
+                    {importProgress.error}
+                  </div>
+                )}
+
+                {importProgress.total > 0 && !importProgress.hasError && (
                   <div className='w-full bg-gray-200 rounded-full h-2.5'>
                     <div
                       className='bg-[#124A69] h-2.5 rounded-full transition-all duration-300'
@@ -1381,6 +1546,19 @@ export function AdminDataTable({
                         }%`,
                       }}
                     />
+                  </div>
+                )}
+
+                {(importProgress.hasError || importProgress.error) && (
+                  <div className='flex justify-end mt-2'>
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      onClick={() => setImportProgress(null)}
+                      className='text-xs'
+                    >
+                      Dismiss
+                    </Button>
                   </div>
                 )}
               </div>
