@@ -17,7 +17,7 @@ interface ScheduleWithCourse extends CourseSchedule {
 }
 
 interface Teacher {
-  email: string;
+  id: string;
 }
 
 interface WeeklyScheduleProps {
@@ -32,35 +32,16 @@ export default function WeeklySchedule({ teacherInfo }: WeeklyScheduleProps) {
     weekday: 'short',
   });
 
-  const fetchUserIdByEmail = async (email: string) => {
-    try {
-      const response = await fetch(`/api/users?email=${email}`);
-      if (!response.ok) throw new Error('Failed to fetch user');
-      const data = await response.json();
-      return data.id;
-    } catch (error) {
-      console.error('Error fetching user:', error);
-      return null;
-    }
-  };
-
   const fetchSchedules = async () => {
-    if (!teacherInfo?.email) {
-      console.log('No teacher email provided');
-      setLoading(false);
-      return;
-    }
-
-    const userId = await fetchUserIdByEmail(teacherInfo.email);
-    if (!userId) {
-      console.log('No user ID found');
+    if (!teacherInfo?.id) {
+      console.log('No teacher ID provided');
       setLoading(false);
       return;
     }
 
     try {
       const response = await fetch(
-        `/api/courses/schedules?facultyId=${userId}`,
+        `/api/courses/schedules?facultyId=${teacherInfo.id}`,
       );
       const data = await response.json();
       if (response.ok) {
@@ -78,7 +59,7 @@ export default function WeeklySchedule({ teacherInfo }: WeeklyScheduleProps) {
   useEffect(() => {
     setLoading(true);
     fetchSchedules();
-  }, [teacherInfo?.email]);
+  }, [teacherInfo?.id]);
 
   const getSchedulesForDay = (dayName: string) => {
     return schedules

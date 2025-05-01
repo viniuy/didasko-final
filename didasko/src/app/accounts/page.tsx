@@ -55,7 +55,7 @@ export default function AccountsPage() {
       <div className='flex h-screen w-screen overflow-hidden relative'>
         <AppSidebar />
 
-        <main className='flex flex-1 h-screen overflow-hidden transition-all overflow-y-auto'>
+        <main className='h-full w-full lg:w-[calc(100%-22.5rem)] pl-[4rem] sm:pl-[5rem] transition-all overflow-y-auto'>
           <div className='flex flex-col flex-grow px-4'>
             <Header />
 

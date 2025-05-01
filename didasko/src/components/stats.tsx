@@ -43,7 +43,10 @@ async function getFacultyCount() {
 }
 
 export default function Dashboard() {
-  const [facultyCount, setFacultyCount] = useState({ fullTime: 0, partTime: 0 });
+  const [facultyCount, setFacultyCount] = useState({
+    fullTime: 0,
+    partTime: 0,
+  });
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {

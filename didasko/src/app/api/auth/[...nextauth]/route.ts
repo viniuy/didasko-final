@@ -28,9 +28,10 @@ const handler = NextAuth({
           return false;
         }
 
-        // Set the user's role from the database
-        (user as any).role = dbUser.role;
-        console.log('SignIn Callback - User with role:', user);
+        // Set the user's role and id from the database
+        user.role = dbUser.role;
+        user.id = dbUser.id;
+        console.log('SignIn Callback - User with role and id:', user);
 
         // If this is a Google account, ensure it's linked
         if (account?.provider === 'google') {
@@ -66,25 +67,55 @@ const handler = NextAuth({
         return false;
       }
     },
-    async session({ session, token }) {
-      console.log('Session Callback - Token:', token);
-      if (token) {
-        session.user.role = token.role as Role;
-      }
-      console.log('Session Callback - Final Session:', session);
-      return session;
-    },
-    async jwt({ token, account, user }) {
+    async jwt({ token, user, account, trigger }) {
+      console.log('JWT Callback - Incoming token:', token);
       console.log('JWT Callback - User:', user);
-      console.log('JWT Callback - Account:', account);
-      if (account) {
-        token.role = account.role as Role;
-      }
+
       if (user) {
-        token.role = (user as any).role as Role;
+        token.id = user.id;
+        token.role = user.role;
+        token.email = user.email;
+      } else if (token) {
+        // If we have a token but no user, ensure the ID is preserved
+        const dbUser = await prisma.user.findUnique({
+          where: { email: token.email as string },
+          select: { id: true, role: true },
+        });
+
+        if (dbUser) {
+          token.id = dbUser.id;
+          token.role = dbUser.role;
+        }
       }
+
       console.log('JWT Callback - Final Token:', token);
       return token;
+    },
+    async session({ session, token }) {
+      console.log('Session Callback - Incoming Token:', token);
+
+      if (session.user && session.user.email) {
+        try {
+          // Query the user from database using email
+          const dbUser = await prisma.user.findUnique({
+            where: { email: session.user.email },
+            select: { id: true, role: true },
+          });
+
+          if (dbUser) {
+            session.user.id = dbUser.id;
+            session.user.role = dbUser.role;
+            console.log('Found user in database:', dbUser);
+          } else {
+            console.log('User not found in database');
+          }
+        } catch (error) {
+          console.error('Error fetching user in session callback:', error);
+        }
+      }
+
+      console.log('Session Callback - Final Session:', session);
+      return session;
     },
     async redirect({ url, baseUrl }: { url: string; baseUrl: string }) {
       console.log('Redirect Callback - URL:', url);

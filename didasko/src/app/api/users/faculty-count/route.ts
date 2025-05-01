@@ -15,15 +15,19 @@ export async function GET() {
     });
 
     // Count faculty by work type
-    const fullTime = facultyMembers.filter(user => user.workType === 'FULL_TIME').length;
-    const partTime = facultyMembers.filter(user => user.workType === 'PART_TIME').length;
+    const fullTime = facultyMembers.filter(
+      (user) => user.workType === 'FULL_TIME',
+    ).length;
+    const partTime = facultyMembers.filter(
+      (user) => user.workType === 'PART_TIME',
+    ).length;
 
     return NextResponse.json({ fullTime, partTime });
   } catch (error) {
     console.error('Error fetching faculty count:', error);
     return NextResponse.json(
       { error: 'Failed to fetch faculty count' },
-      { status: 500 }
+      { status: 500 },
     );
   }
-} 
+}

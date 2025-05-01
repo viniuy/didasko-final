@@ -116,27 +116,8 @@ export default function SemesterCourses({
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 3;
 
-  const fetchUserIdByEmail = async (email: string) => {
-    try {
-      const response = await fetch(`/api/users?email=${email}`);
-      if (!response.ok) throw new Error('Failed to fetch user');
-      const data = await response.json();
-      return data.id;
-    } catch (error) {
-      console.error('Error fetching user:', error);
-      return null;
-    }
-  };
-
   const fetchSchedules = async () => {
-    if (!session?.user?.email) {
-      setIsLoading(false);
-      router.push('/');
-      return;
-    }
-
-    const userId = await fetchUserIdByEmail(session.user.email);
-    if (!userId) {
+    if (!session?.user?.id) {
       setIsLoading(false);
       router.push('/');
       return;
@@ -144,7 +125,7 @@ export default function SemesterCourses({
 
     try {
       const response = await fetch(
-        `/api/courses/schedules?facultyId=${userId}`,
+        `/api/courses/schedules?facultyId=${session.user.id}`,
       );
       const data = await response.json();
       if (response.ok) {
@@ -196,7 +177,7 @@ export default function SemesterCourses({
     } else if (status === 'unauthenticated') {
       router.push('/');
     }
-  }, [status, session?.user?.email, router]);
+  }, [status, session?.user?.id, router]);
 
   const totalPages = Math.ceil(schedules.length / itemsPerPage);
   const currentSchedules = schedules.slice(

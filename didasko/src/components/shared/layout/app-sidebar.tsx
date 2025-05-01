@@ -11,6 +11,7 @@ import {
   NotebookPen,
   BookCheck,
   CalendarClock,
+  BookUser,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -60,6 +61,7 @@ const academicHeadItems = [
 ];
 
 const gradingSubItems = [
+  { title: 'Gradebook', url: '/grading/gradebook', icon: BookUser },
   { title: 'Reporting', url: '/grading/reporting', icon: Presentation },
   { title: 'Recitation', url: '/grading/recitation', icon: BookCheck },
   { title: 'Quiz', url: '/grading/quiz', icon: NotebookPen },
@@ -129,11 +131,11 @@ export function AppSidebar() {
 
   useEffect(() => {
     const fetchUserData = async () => {
-      if (session?.user?.email) {
+      if (session?.user?.id) {
         setIsLoading(true);
         try {
           const response = await fetch(
-            `/api/users/by-email?email=${session.user.email}`,
+            `/api/users/by-id?id=${session.user.id}`,
           );
           if (response.ok) {
             const data = await response.json();
@@ -154,12 +156,12 @@ export function AppSidebar() {
       }
     };
 
-    if (session?.user?.email) {
+    if (session?.user?.id) {
       fetchUserData();
     } else {
       setIsLoading(false);
     }
-  }, [session?.user?.email, isAdmin]);
+  }, [session?.user?.id, isAdmin]);
 
   useEffect(() => {
     if (!open) setIsGradingOpen(false);
@@ -179,7 +181,7 @@ export function AppSidebar() {
       collapsible='icon'
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
-      className='h-screen flex flex-col bg-[#124A69] text-white'
+      className='fixed top-0 left-0 z-50 h-screen bg-[#124A69] text-white'
     >
       <SidebarContent className='flex-1'>
         {/* User Profile */}

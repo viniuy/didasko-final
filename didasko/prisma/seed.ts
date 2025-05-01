@@ -26,7 +26,7 @@ async function main() {
     create: {
       name: 'Faculty User',
       email: 'faculty@didasko.com',
-      department: 'Computer Science',
+      department: 'BA Department',
       workType: WorkType.FULL_TIME,
       role: Role.FACULTY,
       permission: Permission.GRANTED,
@@ -40,7 +40,7 @@ async function main() {
     create: {
       name: 'Lauraine Savannah',
       email: 'vincent.enolpe@gmail.com',
-      department: 'Computer Science',
+      department: 'IT Department',
       workType: WorkType.FULL_TIME,
       role: Role.ACADEMIC_HEAD,
       permission: Permission.GRANTED,

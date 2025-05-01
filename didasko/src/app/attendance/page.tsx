@@ -12,30 +12,49 @@ export default function AttendancePage() {
 
   return (
     <SidebarProvider open={open} onOpenChange={setOpen}>
-      <div className='flex h-screen w-screen overflow-hidden relative'>
+      <div className='relative h-screen w-screen overflow-hidden'>
         <AppSidebar />
 
-        <main
-          className={`flex flex-1 h-screen overflow-hidden transition-all overflow-y-auto`}
-        >
-          <div className='flex flex-col flex-grow px-4'>
+        <main className='h-full w-full lg:w-[calc(100%-22.5rem)] pl-[4rem] sm:pl-[5rem] transition-all overflow-y-auto'>
+          <div className='flex flex-col flex-grow px-2 sm:px-4 md:px-6 lg:px-8'>
             <Header />
 
-            <h2 className='pl-2 pb-1 text-2xl font-bold text-muted-foreground'>
-              Your Schedule
-            </h2>
-            <Schedule />
-            <h2 className='pl-2 pb-1 text-2xl font-bold text-muted-foreground'>
-              List of Students:
-            </h2>
-            <h2 className='pl-2 pb-1 text-2xl font-bold text-muted-foreground'>
-              1st Semester
-            </h2>
-            <SemesterCourses semester='1st Semester' type='attendance' />
-            <h2 className='pl-2 pb-1 text-2xl font-bold text-muted-foreground'>
-              2nd Semester
-            </h2>
-            <SemesterCourses semester='2nd Semester' type='attendance' />
+            <div className='space-y-4 md:space-y-6 lg:space-y-8'>
+              <div className='space-y-2'>
+                <h2 className='pl-2 pb-1 text-xl sm:text-2xl font-bold text-muted-foreground'>
+                  Your Schedule
+                </h2>
+                <Schedule />
+              </div>
+
+              <div className='space-y-2'>
+                <h2 className='pl-2 pb-1 text-xl sm:text-2xl font-bold text-muted-foreground'>
+                  List of Students
+                </h2>
+
+                <div className='grid gap-4 md:gap-6 lg:gap-8'>
+                  <div className='space-y-2'>
+                    <h2 className='pl-2 pb-1 text-lg sm:text-xl font-bold text-muted-foreground'>
+                      1st Semester
+                    </h2>
+                    <SemesterCourses
+                      semester='1st Semester'
+                      type='attendance'
+                    />
+                  </div>
+
+                  <div className='space-y-2'>
+                    <h2 className='pl-2 pb-1 text-lg sm:text-xl font-bold text-muted-foreground'>
+                      2nd Semester
+                    </h2>
+                    <SemesterCourses
+                      semester='2nd Semester'
+                      type='attendance'
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
           <Rightsidebar />
         </main>

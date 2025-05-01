@@ -208,13 +208,18 @@ export default function Notes() {
       return;
     }
 
+    if (!session?.user?.id) {
+      showAlert('Error', 'User ID not found. Please sign in again.', 'error');
+      return;
+    }
+
     const result = await handleSaveNewNote(
       {
         title: newNote.title,
         description: newNote.description || '',
         date: newNote.date,
       },
-      session?.user?.id || '',
+      session.user.id,
       () => {
         setOpenAdd(false);
         setNewNote({
@@ -284,6 +289,11 @@ export default function Notes() {
       return;
     }
 
+    if (!session?.user?.id) {
+      showAlert('Error', 'User ID not found. Please sign in again.', 'error');
+      return;
+    }
+
     const result = await handleUpdateNote(
       {
         id: editData.id,
@@ -291,7 +301,7 @@ export default function Notes() {
         description: editData.description || '',
         date: editData.date,
       },
-      session?.user?.id || '',
+      session.user.id,
       () => {
         setOpenEdit(false);
         refreshNotes();

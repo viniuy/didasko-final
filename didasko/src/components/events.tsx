@@ -25,7 +25,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useEffect, useState } from 'react';
 import { Textarea } from './ui/textarea';
-import { format } from 'date-fns';
+import { format, isSameDay, isBefore, isAfter } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { useSession } from 'next-auth/react';
@@ -109,6 +109,7 @@ export default function UpcomingEvents() {
     dates: [],
   });
 
+  const [dateError, setDateError] = useState<string>('');
   const [timeError, setTimeError] = useState<string>('');
 
   // Function to show alert notifications
@@ -153,77 +154,42 @@ export default function UpcomingEvents() {
     fetchEvents();
   }, []);
 
-  // Skeleton UI for loading state
-  if (status === 'loading' || isLoading) {
-    return (
-      <div className='mb-2'>
-        <h2 className='text-lg font-semibold text-[#FAEDCB] mb-1'>
-          Upcoming Events
-        </h2>
-        <div className='bg-white rounded-lg p-2 shadow-md h-120 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#124A69] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#0a2f42]'>
-          <div className='absolute right-7'>
-            <div className='w-6 h-6 rounded-full bg-gray-200 animate-pulse'></div>
-          </div>
+  function validateDateTime(
+    date: Date | null,
+    fromTime: string,
+    toTime: string,
+  ): boolean {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-          <div className='space-y-4 mt-1'>
-            {/* Just two date groups */}
-            {Array.from({ length: 2 }).map((_, dayIndex) => (
-              <div key={dayIndex} className='mb-4'>
-                {/* Date header skeleton */}
-                <div className='h-4 w-40 bg-gray-200 rounded animate-pulse mb-2'></div>
+    if (!date) return true;
 
-                {/* Just one event per day */}
-                <div className='mb-3 border-l-[8px] border-gray-200 rounded-lg p-3'>
-                  <div className='flex justify-between'>
-                    <div className='w-full'>
-                      {/* Event title skeleton */}
-                      <div className='h-4 w-40 bg-gray-200 rounded animate-pulse mb-2'></div>
-
-                      {/* Event time skeleton */}
-                      <div className='flex items-center gap-1 mb-2'>
-                        <div className='w-4 h-4 rounded-full bg-gray-200 animate-pulse'></div>
-                        <div className='h-3 w-24 bg-gray-200 rounded animate-pulse'></div>
-                      </div>
-
-                      {/* Simpler description */}
-                      <div className='h-2 w-full bg-gray-100 rounded animate-pulse'></div>
-                    </div>
-
-                    {/* Action buttons skeleton */}
-                    <div className='flex gap-1'>
-                      <div className='w-5 h-5 rounded-full bg-gray-200 animate-pulse'></div>
-                      <div className='w-5 h-5 rounded-full bg-gray-200 animate-pulse'></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  function handleAddClick() {
-    if (!canManageEvents) {
-      showAlert(
-        'Unauthorized',
-        'Only Admin and Academic Head can add events',
-        'error',
-      );
-      return;
+    // Check if date is in the past
+    if (isBefore(date, today)) {
+      setDateError('Cannot select a past date');
+      return false;
     }
 
-    setOpenAdd(true);
+    // If date is today, check if time is in the past
+    if (isSameDay(date, today) && fromTime) {
+      const [hours, minutes] = fromTime.split(':').map(Number);
+      const selectedTime = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        hours,
+        minutes,
+      );
+
+      if (isBefore(selectedTime, now)) {
+        setTimeError('Cannot select a past time for today');
+        return false;
+      }
+    }
+
+    setDateError('');
     setTimeError('');
-    setNewEvent({
-      title: '',
-      description: '',
-      date: null,
-      fromTime: '',
-      toTime: '',
-      dates: [],
-    });
+    return true;
   }
 
   function handleTimeChange(
@@ -236,6 +202,10 @@ export default function UpcomingEvents() {
 
     if (!validateTime(currentFromTime, currentToTime)) {
       setTimeError('End time cannot be earlier than start time');
+    } else if (
+      !validateDateTime(newEvent.date, currentFromTime, currentToTime)
+    ) {
+      // Error message already set by validateDateTime
     } else {
       setTimeError('');
     }
@@ -256,6 +226,10 @@ export default function UpcomingEvents() {
 
     if (!validateTime(currentFromTime, currentToTime)) {
       setTimeError('End time cannot be earlier than start time');
+    } else if (
+      !validateDateTime(editData.date, currentFromTime, currentToTime)
+    ) {
+      // Error message already set by validateDateTime
     } else {
       setTimeError('');
     }
@@ -267,6 +241,10 @@ export default function UpcomingEvents() {
   }
 
   async function saveNewEvent() {
+    if (!validateDateTime(newEvent.date, newEvent.fromTime, newEvent.toTime)) {
+      return;
+    }
+
     const result = await handleSaveNewEvent({
       newEvent,
       userRole,
@@ -334,6 +312,10 @@ export default function UpcomingEvents() {
   }
 
   async function saveEdit() {
+    if (!validateDateTime(editData.date, editData.fromTime, editData.toTime)) {
+      return;
+    }
+
     const result = await handleUpdateEvent({
       editData,
       userRole,
@@ -447,7 +429,18 @@ export default function UpcomingEvents() {
             variant='ghost'
             size='icon'
             className='w-6 h-6 rounded-full bg-[#124A69] text-white flex items-center justify-center hover:bg-[#0a2f42]'
-            onClick={handleAddClick}
+            onClick={() => {
+              setOpenAdd(true);
+              setTimeError('');
+              setNewEvent({
+                title: '',
+                description: '',
+                date: null,
+                fromTime: '',
+                toTime: '',
+                dates: [],
+              });
+            }}
           >
             <Plus className='w-3 h-3' />
           </Button>
@@ -611,6 +604,17 @@ export default function UpcomingEvents() {
                       mode='single'
                       selected={editData.date || undefined}
                       onSelect={(date) => {
+                        if (date) {
+                          if (
+                            !validateDateTime(
+                              date,
+                              editData.fromTime,
+                              editData.toTime,
+                            )
+                          ) {
+                            return;
+                          }
+                        }
                         setEditData({ ...editData, date: date || null });
                       }}
                       disabled={(date) =>
@@ -639,6 +643,9 @@ export default function UpcomingEvents() {
                     />
                   </div>
                 </div>
+                {dateError && (
+                  <p className='text-sm text-red-500 mt-1'>{dateError}</p>
+                )}
                 {timeError && (
                   <p className='text-sm text-red-500 mt-1'>{timeError}</p>
                 )}
@@ -731,6 +738,17 @@ export default function UpcomingEvents() {
                           mode='single'
                           selected={newEvent.date || undefined}
                           onSelect={(date) => {
+                            if (date) {
+                              if (
+                                !validateDateTime(
+                                  date,
+                                  newEvent.fromTime,
+                                  newEvent.toTime,
+                                )
+                              ) {
+                                return;
+                              }
+                            }
                             setNewEvent({
                               ...newEvent,
                               date: date || null,
@@ -762,6 +780,9 @@ export default function UpcomingEvents() {
                   </div>
                 </div>
               </div>
+              {dateError && (
+                <p className='text-[11px] text-red-500'>{dateError}</p>
+              )}
               {timeError && (
                 <p className='text-[11px] text-red-500'>{timeError}</p>
               )}

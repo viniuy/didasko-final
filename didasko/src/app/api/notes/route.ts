@@ -3,40 +3,11 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { prisma } from '@/lib/db';
 
-// Function to get user ID by email
-async function getUserIdByEmail(email: string) {
-  if (!email) {
-    return null;
-  }
-
-  try {
-    // Try to find user by email
-    const user = await prisma.user.findUnique({
-      where: { email },
-      select: { id: true },
-    });
-
-    // If user found, return ID
-    if (user) {
-      console.log(`Found user ID ${user.id} for email ${email}`);
-      return user.id;
-    }
-
-    return null;
-  } catch (error) {
-    console.error('Error getting user by email:', error);
-    return null;
-  }
-}
-
 export async function GET(request: Request) {
   try {
     // Get session
     const session = await getServerSession(authOptions);
-    const email = session?.user?.email;
-
-    // Get user ID from email
-    const userId = await getUserIdByEmail(email || 'admin@example.com');
+    const userId = session?.user?.id;
 
     if (!userId) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
@@ -77,10 +48,7 @@ export async function POST(request: Request) {
 
     // Get session
     const session = await getServerSession(authOptions);
-    const email = session?.user?.email;
-
-    // Get user ID from email
-    const userId = await getUserIdByEmail(email || 'admin@example.com');
+    const userId = session?.user?.id;
 
     if (!userId) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
@@ -114,10 +82,7 @@ export async function PUT(request: Request) {
 
     // Get session
     const session = await getServerSession(authOptions);
-    const email = session?.user?.email;
-
-    // Get user ID from email
-    const userId = await getUserIdByEmail(email || 'admin@example.com');
+    const userId = session?.user?.id;
 
     if (!userId) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
@@ -165,12 +130,8 @@ export async function DELETE(request: Request) {
 
     // Get session
     const session = await getServerSession(authOptions);
-    const email = session?.user?.email;
-    console.log('Session email:', email);
-
-    // Get user ID from email
-    const userId = await getUserIdByEmail(email || 'admin@example.com');
-    console.log('Resolved user ID:', userId);
+    const userId = session?.user?.id;
+    console.log('Session user ID:', userId);
 
     if (!userId) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });

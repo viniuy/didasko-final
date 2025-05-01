@@ -100,18 +100,6 @@ export default function Courses() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 3;
 
-  const fetchUserIdByEmail = async (email: string) => {
-    try {
-      const response = await fetch(`/api/users?email=${email}`);
-      if (!response.ok) throw new Error('Failed to fetch user');
-      const data = await response.json();
-      return data.id;
-    } catch (error) {
-      console.error('Error fetching user:', error);
-      return null;
-    }
-  };
-
   const fetchAttendanceStats = async (courseId: string) => {
     try {
       const response = await fetch(`/api/courses/${courseId}/attendance/stats`);
@@ -124,20 +112,14 @@ export default function Courses() {
   };
 
   const fetchSchedules = async () => {
-    if (!session?.user?.email) {
-      setIsLoading(false);
-      return;
-    }
-
-    const userId = await fetchUserIdByEmail(session.user.email);
-    if (!userId) {
+    if (!session?.user?.id) {
       setIsLoading(false);
       return;
     }
 
     try {
       const response = await fetch(
-        `/api/courses/schedules?facultyId=${userId}`,
+        `/api/courses/schedules?facultyId=${session.user.id}`,
       );
       const data = await response.json();
       if (response.ok) {
@@ -167,7 +149,7 @@ export default function Courses() {
     if (status === 'authenticated') {
       fetchSchedules();
     }
-  }, [status, session?.user?.email]);
+  }, [status, session?.user?.id]);
 
   // Get all courses from schedules
   const allCourses = schedules.map((schedule) => ({

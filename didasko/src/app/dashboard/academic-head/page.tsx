@@ -16,29 +16,35 @@ export default function AcademicHeadDashboard() {
 
   return (
     <SidebarProvider open={open} onOpenChange={setOpen}>
-      <div className='flex h-screen w-screen overflow-hidden relative'>
+      <div className='relative h-screen w-screen overflow-hidden'>
         <AppSidebar />
 
-        <main className='flex flex-1 h-screen overflow-hidden transition-all'>
-          <div className='flex flex-col flex-grow px-4'>
-            <Header />
-            <Greet />
-            <Stats />
-            <h2 className='pl-2 pb-1 text-2xl font-bold text-muted-foreground'>
-              Courses
-            </h2>
-            <Courses />
+        <main className='h-full w-full lg:w-[calc(100%-22.5rem)] pl-[4rem] sm:pl-[5rem] transition-all overflow-y-auto'>
+          <div className='flex-1 px-4'>
+            <div className='flex flex-col flex-grow'>
+              <div className='px-4'>
+                <Header />
+                <Greet />
+                <Stats />
+                <h2 className='pl-2 pb-1 text-2xl font-bold text-muted-foreground'>
+                  Courses
+                </h2>
+                <Courses />
+              </div>
 
-            {session?.user?.email && (
-              <WeeklySchedule
-                teacherInfo={{
-                  email: session.user.email,
-                }}
-              />
-            )}
+              {session?.user?.id && (
+                <WeeklySchedule
+                  teacherInfo={{
+                    id: session.user.id,
+                  }}
+                />
+              )}
+            </div>
           </div>
 
-          <Rightsidebar />
+          <div className='hidden lg:block'>
+            <Rightsidebar />
+          </div>
         </main>
       </div>
     </SidebarProvider>

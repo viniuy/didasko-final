@@ -183,7 +183,7 @@ export function GradingTable({
   // Fetch saved criteria on mount
   useEffect(() => {
     const fetchCriteria = async () => {
-      if (!session?.user?.id) return;
+      if (!session?.user?.id) console.log('No user ID');
 
       try {
         const response = await fetch(`/api/courses/${courseId}/criteria`);
@@ -324,7 +324,22 @@ export function GradingTable({
   };
 
   const handleCreateCriteria = async () => {
-    if (!session?.user?.id) return;
+    console.log('Button clicked!');
+    console.log('Current state:', {
+      name: newCriteria.name,
+      isLoading,
+      rubricNames: newCriteria.rubricDetails.map((r) => r.name),
+      totalWeight: newCriteria.rubricDetails.reduce(
+        (sum, r) => sum + r.weight,
+        0,
+      ),
+      session: session?.user?.id,
+    });
+
+    if (!session?.user?.id) {
+      console.log('No session user ID');
+      return;
+    }
 
     try {
       setIsLoading(true);
@@ -335,7 +350,7 @@ export function GradingTable({
         },
         body: JSON.stringify({
           name: newCriteria.name,
-          rubrics: parseInt(newCriteria.rubrics),
+          rubrics: JSON.stringify(newCriteria.rubricDetails),
           scoringRange: parseInt(newCriteria.scoringRange),
           passingScore: parseInt(newCriteria.passingScore),
           userId: session.user.id,
@@ -347,6 +362,8 @@ export function GradingTable({
       const created = await response.json();
       setSavedCriteria((prev) => [created, ...prev]);
       setSelectedCriteria(created.id);
+      setActiveCriteria(created);
+      setShowCriteriaDialog(false);
       toast.success('Criteria created successfully');
     } catch (error) {
       console.error('Error creating criteria:', error);
