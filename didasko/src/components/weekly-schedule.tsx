@@ -180,13 +180,13 @@ export default function WeeklySchedule({ teacherInfo }: WeeklyScheduleProps) {
                 return (
                   <div
                     key={schedule.id}
-                    className='absolute w-[90%] bg-[#FAEDCB] rounded-lg p-2 text-[#124A69] shadow-sm'
+                    className='absolute w-[90%] bg-[#FAEDCB] rounded-lg p-1 text-[#124A69] shadow-sm items-center'
                     style={styles}
                   >
-                    <div className='font-bold text-1xl flex justify-center'>
+                    <div className='font-bold text-1xl flex justify-center items-center mt-3 md:text-sm '>
                       {schedule.course.title}
                     </div>
-                    <div className='text-sm mt-0.5 flex justify-center'>
+                    <div className='text-sm mt-0.5 flex justify-center md:text-xs'>
                       {formatTime(schedule.fromTime)} -{' '}
                       {formatTime(schedule.toTime)}
                     </div>

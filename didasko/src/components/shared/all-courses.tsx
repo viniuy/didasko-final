@@ -15,7 +15,6 @@ import {
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { format } from 'date-fns';
 import axiosInstance from '@/lib/axios';
 
 interface Course {
@@ -31,17 +30,7 @@ interface Course {
   };
 }
 
-interface Schedule {
-  id: string;
-  courseId: string;
-  day: Date;
-  fromTime: string;
-  toTime: string;
-  course: Course;
-}
-
-interface SemesterCoursesProps {
-  semester: '1st Semester' | '2nd Semester';
+interface AllCoursesProps {
   type: 'attendance' | 'grading';
 }
 
@@ -58,7 +47,7 @@ const CourseCard = ({
       : `/grading/reporting/${course.code}/${course.section}`;
 
   return (
-    <Card className='bg-[#124A69] text-white rounded-lg shadow-md w-full max-w-[440px] flex flex-col justify-between h-45 md:w-[320px] '>
+    <Card className='bg-[#124A69] text-white rounded-lg shadow-md w-full max-w-[440px] flex flex-col justify-between h-45'>
       <div>
         <CardHeader className='-mt-4 flex justify-between items-center'>
           <CardTitle className='text-2xl font-bold'>{course.title}</CardTitle>
@@ -103,10 +92,7 @@ const LoadingSkeleton = ({ index }: { index: number }) => (
   </Card>
 );
 
-export default function SemesterCourses({
-  semester,
-  type,
-}: SemesterCoursesProps) {
+export default function AllCourses({ type }: AllCoursesProps) {
   const router = useRouter();
   const { data: session, status } = useSession();
   const [courses, setCourses] = useState<Course[]>([]);
@@ -124,7 +110,6 @@ export default function SemesterCourses({
       const response = await axiosInstance.get('/courses', {
         params: {
           facultyId: session.user.id,
-          semester,
         },
       });
       const courses = response.data.courses || [];
@@ -189,10 +174,9 @@ export default function SemesterCourses({
       <Card className='p-4 shadow-md rounded-lg'>
         <div className='text-center py-8'>
           <BookOpenText className='mx-auto mb-4' size={50} />
-          <h2 className='text-xl font-semibold mb-2'>No {semester} Courses</h2>
+          <h2 className='text-xl font-semibold mb-2'>No Courses</h2>
           <p className='text-gray-500'>
-            You don't have any courses assigned for the {semester.toLowerCase()}
-            .
+            You don't have any courses assigned.
           </p>
         </div>
       </Card>
@@ -201,7 +185,7 @@ export default function SemesterCourses({
 
   return (
     <Card className='p-4 shadow-md rounded-lg'>
-      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 '>
+      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
         {currentCourses.map((course) => (
           <CourseCard key={course.id} course={course} type={type} />
         ))}
@@ -209,7 +193,7 @@ export default function SemesterCourses({
 
       {courses.length > itemsPerPage && (
         <div className='flex justify-between items-center px-2 -mt-4'>
-          <p className='text-sm text-gray-500 w-40    '>
+          <p className='text-sm text-gray-500 w-100'>
             {currentPage * itemsPerPage - (itemsPerPage - 1)}-
             {Math.min(currentPage * itemsPerPage, courses.length)} out of{' '}
             {courses.length} classes
@@ -257,4 +241,4 @@ export default function SemesterCourses({
       )}
     </Card>
   );
-}
+} 

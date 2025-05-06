@@ -27,14 +27,18 @@ export default function ReportingTypePage({
   const [open, setOpen] = React.useState(false);
   const { course_code, course_section } = React.use(params);
   const [course, setCourse] = useState<Course | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const fetchCourse = async () => {
       try {
+        setIsLoading(true);
         const response = await axios.get(`/api/courses/${course_code}`);
         setCourse(response.data);
       } catch (error) {
         console.error('Error fetching course:', error);
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -87,8 +91,11 @@ export default function ReportingTypePage({
                             Grade students one at a time
                           </p>
                         </div>
-                        <Button className='w-full bg-[#124A69] hover:bg-gray-800'>
-                          Select student
+                        <Button 
+                          className='w-full bg-[#124A69] hover:bg-gray-800'
+                          disabled={isLoading}
+                        >
+                          {isLoading ? 'Loading...' : 'Select student'}
                         </Button>
                       </div>
                     </Card>
@@ -110,8 +117,11 @@ export default function ReportingTypePage({
                             Grade multiple students at once
                           </p>
                         </div>
-                        <Button className='w-full bg-[#124A69] hover:bg-gray-800'>
-                          Select group
+                        <Button 
+                          className='w-full bg-[#124A69] hover:bg-gray-800'
+                          disabled={isLoading}
+                        >
+                          {isLoading ? 'Loading...' : 'Select group'}
                         </Button>
                       </div>
                     </Card>

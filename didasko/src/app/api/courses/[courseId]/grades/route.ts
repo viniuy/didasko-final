@@ -17,21 +17,67 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
     const criteriaId = searchParams.get('criteriaId');
+    const courseCode = searchParams.get('courseCode');
+    const courseSection = searchParams.get('courseSection');
 
-    if (!date || !criteriaId) {
+    if (!date) {
       return NextResponse.json(
-        { error: 'Date and criteriaId are required' },
+        { error: 'Date is required' },
         { status: 400 },
       );
     }
 
-    // Ensure params is properly awaited
-    const courseId = params.courseId;
+    if (!courseCode || !courseSection) {
+      return NextResponse.json(
+        { error: 'Course code and section are required' },
+        { status: 400 },
+      );
+    }
 
+    // First find the course by code and section
+    const course = await prisma.course.findFirst({
+      where: {
+        code: courseCode,
+        section: courseSection,
+      },
+    });
+
+    if (!course) {
+      return NextResponse.json(
+        { error: 'Course not found' },
+        { status: 404 },
+      );
+    }
+
+    // If criteriaId is provided, fetch specific grades
+    if (criteriaId) {
+      const grades = await prisma.grade.findMany({
+        where: {
+          courseId: course.id,
+          criteriaId: criteriaId,
+          date: new Date(date),
+        },
+        include: {
+          student: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              middleInitial: true,
+              image: true,
+            },
+          },
+        },
+      });
+
+      console.log('Found grades:', grades);
+      return NextResponse.json(grades);
+    }
+
+    // If no criteriaId, fetch all grades for the date to check existing criteria
     const grades = await prisma.grade.findMany({
       where: {
-        courseId: courseId,
-        criteriaId: criteriaId,
+        courseId: course.id,
         date: new Date(date),
       },
       include: {
@@ -48,7 +94,6 @@ export async function GET(
     });
 
     console.log('Found grades:', grades);
-
     return NextResponse.json(grades);
   } catch (error) {
     console.error('Error fetching grades:', error);

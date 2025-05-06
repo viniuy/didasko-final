@@ -26,7 +26,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Loader2 } from 'lucide-react';
+import { Calendar as CalendarIcon, Loader2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Table,
@@ -37,6 +37,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import axiosInstance from '@/lib/axios';
+import { DataTable } from '@/app/dashboard/admin/_components/data-table';
+import { ColumnDef } from '@tanstack/react-table';
+import GradingTableHeader from './grading-table-header';
+import GradingTableRow from './grading-table-row';
+import GradingTableFooter from './grading-table-footer';
 
 interface Student {
   id: string;
@@ -50,19 +55,21 @@ interface Student {
 
 interface GradingTableProps {
   courseId: string;
-  searchQuery: string;
+  courseCode: string;
+  courseSection: string;
   selectedDate: Date | undefined;
   onDateSelect?: (date: Date | undefined) => void;
 }
 
-interface GradingCriteria {
+interface GradingReport {
   id: string;
   name: string;
   courseId: string;
   userId: string;
-  rubrics: number;
-  scoringRange: number;
-  passingScore: number;
+  rubrics: RubricDetail[];
+  scoringRange: string;
+  passingScore: string;
+  date: string;
   createdAt: Date;
   updatedAt: Date;
   user?: {
@@ -83,7 +90,8 @@ interface GradingScore {
 
 export function GradingTable({
   courseId,
-  searchQuery,
+  courseCode,
+  courseSection,
   selectedDate,
   onDateSelect,
 }: GradingTableProps) {
@@ -91,14 +99,12 @@ export function GradingTable({
   const [students, setStudents] = useState<Student[]>([]);
   const [showCriteriaDialog, setShowCriteriaDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [savedCriteria, setSavedCriteria] = useState<GradingCriteria[]>([]);
-  const [selectedCriteria, setSelectedCriteria] = useState<string>('');
-  const [activeCriteria, setActiveCriteria] = useState<GradingCriteria | null>(
-    null,
-  );
+  const [savedReports, setSavedReports] = useState<GradingReport[]>([]);
+  const [selectedReport, setSelectedReport] = useState<string>('');
+  const [activeReport, setActiveReport] = useState<GradingReport | null>(null);
   const [scores, setScores] = useState<Record<string, GradingScore>>({});
   const [rubricDetails, setRubricDetails] = useState<RubricDetail[]>([]);
-  const [newCriteria, setNewCriteria] = useState({
+  const [newReport, setNewReport] = useState({
     name: '',
     rubrics: '2',
     scoringRange: '5',
@@ -108,170 +114,104 @@ export function GradingTable({
       { name: '', weight: 50 },
     ],
   });
-
-  // Set today's date as default when component mounts
-  useEffect(() => {
-    if (!selectedDate) {
-      onDateSelect?.(new Date());
-    }
-  }, []);
+  const [criteriaLoading, setCriteriaLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Function to handle dialog close
   const handleDialogClose = () => {
     setShowCriteriaDialog(false);
-    // Clear the selected date if no criteria was selected
-    if (!activeCriteria) {
-      // Using the onDateSelect prop to clear the date in the parent component
-      onDateSelect?.(undefined);
-    }
   };
 
   // Fetch grades when both date and criteria are available
   useEffect(() => {
-    const fetchGrades = async () => {
-      if (!selectedDate || !activeCriteria) {
-        console.log('Missing required data:', {
-          selectedDate: selectedDate?.toISOString(),
-          activeCriteria: activeCriteria?.id,
-        });
-        return;
-      }
-
+    const fetchData = async () => {
+      if (!courseId || !selectedDate || !activeReport) return;
+      setIsLoading(true);
       try {
-        setIsLoading(true);
+        // 1. Fetch students
+        const studentsRes = await axiosInstance.get(`/courses/${courseId}/students`);
+        const studentsData: Student[] = studentsRes.data.students || [];
+        setStudents(studentsData);
+
+        // 2. Fetch grades for the selected date/criteria
         const formattedDate = selectedDate.toISOString().split('T')[0];
-        console.log('Fetching grades for:', {
-          courseId,
-          date: formattedDate,
-          criteriaId: activeCriteria.id,
+        const gradesRes = await axiosInstance.get(`/courses/${courseId}/grades`, {
+          params: {
+            date: formattedDate,
+            courseCode,
+            courseSection,
+            criteriaId: activeReport.id,
+          },
+        });
+        const grades: GradingScore[] = gradesRes.data || [];
+        
+        // 3. Map grades by studentId
+        const gradesMap: Record<string, GradingScore> = {};
+        grades.forEach((grade: GradingScore) => {
+          gradesMap[grade.studentId] = grade;
         });
 
-        const response = await axiosInstance.get(
-          `/courses/${courseId}/grades`,
-          {
-            params: {
-              date: formattedDate,
-              criteriaId: activeCriteria.id,
-            },
-          },
-        );
-
-        const existingGrades = response.data;
-        console.log('Received grades:', existingGrades);
-
-        if (existingGrades && existingGrades.length > 0) {
-          const gradesMap: Record<string, GradingScore> = {};
-          existingGrades.forEach((grade: any) => {
-            console.log('Processing grade:', grade);
-            gradesMap[grade.studentId] = {
-              studentId: grade.studentId,
-              scores: grade.scores,
-              total: grade.total,
-            };
-          });
-          setScores(gradesMap);
-          console.log('Updated scores state:', gradesMap);
-        } else {
-          console.log('No grades found for this date and criteria');
-          setScores({});
-        }
-      } catch (error) {
-        console.error('Error fetching grades:', error);
-        toast.error('Failed to fetch existing grades');
+        // 4. Initialize scores state for all students, even those without grades
+        const newScores: Record<string, GradingScore> = {};
+        studentsData.forEach((student: Student) => {
+          newScores[student.id] = {
+            studentId: student.id,
+            scores: gradesMap[student.id]?.scores || new Array(rubricDetails.length).fill(0),
+            total: gradesMap[student.id]?.total || 0,
+          };
+        });
+        setScores(newScores);
+      } catch (error) { 
+        console.error('Error fetching students or grades:', error);
+        // Don't clear students on error, only clear scores
+        setScores({});
       } finally {
         setIsLoading(false);
       }
     };
+    fetchData();
+    // Only run when courseId, selectedDate, activeReport, or rubricDetails change
+  }, [courseId, selectedDate, activeReport, rubricDetails, courseCode, courseSection]);
 
-    fetchGrades();
-  }, [selectedDate, activeCriteria, courseId]);
-
-  // Check for existing criteria when date is selected
+  // Check for existing criteria when date is selected or on mount
   useEffect(() => {
     const checkExistingCriteria = async () => {
-      if (!selectedDate || activeCriteria) {
-        return;
-      }
-
+      if (!selectedDate) return;
+      setCriteriaLoading(true);
+      setShowCriteriaDialog(false);
       try {
-        setIsLoading(true);
         const formattedDate = selectedDate.toISOString().split('T')[0];
-        console.log('Checking for existing criteria on:', formattedDate);
-
-        // First, get all grades for this date
-        const response = await axiosInstance.get(
-          `/courses/${courseId}/grades`,
-          {
-            params: {
-              date: formattedDate,
-            },
-          },
-        );
-
-        const existingGrades = response.data;
-        console.log('Found existing grades:', existingGrades);
-
-        if (existingGrades && existingGrades.length > 0) {
-          // Get the criteria ID from the first grade
-          const criteriaId = existingGrades[0].criteriaId;
-          console.log('Found existing criteria ID:', criteriaId);
-
-          // Find the matching criteria from savedCriteria
-          const matchingCriteria = savedCriteria.find(
-            (criteria) => criteria.id === criteriaId,
-          );
-
-          if (matchingCriteria) {
-            console.log('Setting active criteria:', matchingCriteria);
-            setActiveCriteria(matchingCriteria);
-            setSelectedCriteria(criteriaId);
-            // Create placeholders for rubrics with default names and evenly distributed percentages
-            const defaultRubrics = Array(matchingCriteria.rubrics)
-              .fill(null)
-              .map((_, i) => {
-                let defaultName = '';
-                switch (i) {
-                  case 0:
-                    defaultName = 'Content';
-                    break;
-                  case 1:
-                    defaultName = 'Organization';
-                    break;
-                  case 2:
-                    defaultName = 'Delivery';
-                    break;
-                  case 3:
-                    defaultName = 'Creativity';
-                    break;
-                  default:
-                    defaultName = `Rubric ${i + 1}`;
-                }
-                return {
-                  name: defaultName,
-                  percentage: Math.floor(100 / matchingCriteria.rubrics),
-                };
-              });
-            setRubricDetails(defaultRubrics);
-          }
+        // Fetch all criteria for this course
+        const response = await axiosInstance.get(`/courses/${courseId}/criteria`);
+        const allReports = response.data;
+        // Find a criteria for this date
+        const found = allReports.find((c: any) => {
+          // If your criteria has a date field, compare it here
+          // If not, you may need to fetch grades for this date and get the criteriaId from there
+          return c.date === formattedDate;
+        });
+        if (found) {
+          setActiveReport(found);
+          setRubricDetails(found.rubrics);
+          setSelectedReport(found.id);
+          setShowCriteriaDialog(false);
+        } else {
+          setActiveReport(null);
+          setRubricDetails([]);
+          setSelectedReport('');
+          setShowCriteriaDialog(true);
         }
       } catch (error) {
-        console.error('Error checking for existing criteria:', error);
-        toast.error('Failed to check for existing criteria');
+        setActiveReport(null);
+        setRubricDetails([]);
+        setSelectedReport('');
+        setShowCriteriaDialog(true);
       } finally {
-        setIsLoading(false);
+        setCriteriaLoading(false);
       }
     };
-
     checkExistingCriteria();
-  }, [selectedDate, activeCriteria, courseId, savedCriteria]);
-
-  // Show criteria dialog when date is selected but no criteria is active
-  useEffect(() => {
-    if (selectedDate && !activeCriteria && !showCriteriaDialog) {
-      console.log('Date selected but no criteria - showing dialog');
-      setShowCriteriaDialog(true);
-    }
-  }, [selectedDate, activeCriteria, showCriteriaDialog]);
+  }, [selectedDate, courseId]);
 
   // Fetch saved criteria on mount
   useEffect(() => {
@@ -285,7 +225,7 @@ export function GradingTable({
         const response = await axiosInstance.get(
           `/courses/${courseId}/criteria`,
         );
-        setSavedCriteria(response.data);
+        setSavedReports(response.data);
       } catch (error: any) {
         console.error('Error fetching criteria:', {
           message: error.message,
@@ -303,64 +243,6 @@ export function GradingTable({
     }
   }, [courseId, session?.user?.id]);
 
-  // Fetch students when component mounts
-  useEffect(() => {
-    const fetchStudents = async () => {
-      if (!courseId) {
-        console.log('No course ID provided');
-        setStudents([]);
-        return;
-      }
-
-      try {
-        setIsLoading(true);
-        const response = await axiosInstance.get(
-          `/courses/${courseId}/students`,
-        );
-
-        if (!response.data) {
-          console.log('No data received from API');
-          setStudents([]);
-          return;
-        }
-
-        if (response.data.error) {
-          console.error('API returned an error:', response.data.error);
-          toast.error(response.data.error);
-          setStudents([]);
-          return;
-        }
-
-        if (response.data.students) {
-          // Transform the student data to match our interface
-          const transformedStudents = response.data.students.map(
-            (student: any) => ({
-              id: student.id,
-              firstName: student.firstName,
-              lastName: student.lastName,
-              middleInitial: student.middleInitial,
-              image: student.image,
-              status: student.status,
-              attendanceRecords: student.attendanceRecords,
-            }),
-          );
-          setStudents(transformedStudents);
-        } else {
-          console.log('No students found in course');
-          setStudents([]);
-        }
-      } catch (error) {
-        console.error('Error fetching students:', error);
-        toast.error('Failed to fetch students');
-        setStudents([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchStudents();
-  }, [courseId]);
-
   const handleSaveGrades = async () => {
     if (!session?.user?.id) return;
 
@@ -368,7 +250,7 @@ export function GradingTable({
       setIsLoading(true);
       const response = await axiosInstance.post(`/courses/${courseId}/grades`, {
         date: selectedDate,
-        criteriaId: activeCriteria?.id,
+        criteriaId: activeReport?.id,
         grades: Object.values(scores).map((score) => ({
           studentId: score.studentId,
           scores: score.scores,
@@ -388,37 +270,11 @@ export function GradingTable({
   };
 
   const handleApplyCriteria = () => {
-    if (selectedCriteria) {
-      const selected = savedCriteria.find((c) => c.id === selectedCriteria);
+    if (selectedReport) {
+      const selected = savedReports.find((c) => c.id === selectedReport);
       if (selected) {
-        setActiveCriteria(selected);
-        // Create placeholders for rubrics with default names and evenly distributed percentages
-        const defaultRubrics = Array(selected.rubrics)
-          .fill(null)
-          .map((_, i) => {
-            let defaultName = '';
-            switch (i) {
-              case 0:
-                defaultName = 'Content';
-                break;
-              case 1:
-                defaultName = 'Organization';
-                break;
-              case 2:
-                defaultName = 'Delivery';
-                break;
-              case 3:
-                defaultName = 'Creativity';
-                break;
-              default:
-                defaultName = `Rubric ${i + 1}`;
-            }
-            return {
-              name: defaultName,
-              percentage: Math.floor(100 / selected.rubrics),
-            };
-          });
-        setRubricDetails(defaultRubrics);
+        setActiveReport(selected);
+        setRubricDetails(selected.rubrics);
       }
     }
     setShowCriteriaDialog(false);
@@ -430,7 +286,7 @@ export function GradingTable({
     value: number,
   ) => {
     setScores((prev) => {
-      const rubricCount = activeCriteria?.rubrics || 0;
+      const rubricCount = activeReport?.rubrics || 0;
       const studentScores =
         prev[studentId]?.scores || new Array(rubricCount).fill(0);
       const newScores = [...studentScores];
@@ -449,19 +305,28 @@ export function GradingTable({
 
   const calculateTotal = (scores: number[]): number => {
     if (!rubricDetails.length) return 0;
-    return scores.reduce((sum, score, index) => {
-      const percentage = rubricDetails[index]?.percentage || 0;
-      return sum + (score * percentage) / 100;
-    }, 0);
+    
+    // Calculate the maximum possible score based on the scoring range
+    const maxScore = Number(activeReport?.scoringRange) || 5;
+    
+    // Calculate weighted percentage for each rubric
+    const weightedScores = scores.map((score, index) => {
+      const weight = rubricDetails[index]?.percentage || 0;
+      // Convert score to percentage based on max score, then apply weight
+      return (score / maxScore) * weight;
+    });
+    
+    // Sum up all weighted scores
+    return weightedScores.reduce((sum, score) => sum + score, 0);
   };
 
-  const handleCreateCriteria = async () => {
+  const handleCreateReport = async () => {
     console.log('Button clicked!');
     console.log('Current state:', {
-      name: newCriteria.name,
+      name: newReport.name,
       isLoading,
-      rubricNames: newCriteria.rubricDetails.map((r) => r.name),
-      totalWeight: newCriteria.rubricDetails.reduce(
+      rubricNames: newReport.rubricDetails.map((r) => r.name),
+      totalWeight: newReport.rubricDetails.reduce(
         (sum, r) => sum + r.weight,
         0,
       ),
@@ -475,26 +340,32 @@ export function GradingTable({
 
     try {
       setIsLoading(true);
+      // Prepare rubrics as array of { name, weight }
+      const rubrics = newReport.rubricDetails.map((r) => ({
+        name: r.name,
+        weight: r.weight,
+      }));
+      // Create criteria with rubrics in a single step
       const response = await axiosInstance.post(
         `/courses/${courseId}/criteria`,
         {
-          name: newCriteria.name,
-          rubrics: JSON.stringify(newCriteria.rubricDetails),
-          scoringRange: newCriteria.scoringRange,
-          passingScore: newCriteria.passingScore,
+          name: newReport.name,
+          rubrics,
+          scoringRange: newReport.scoringRange,
+          passingScore: newReport.passingScore,
           userId: session.user.id,
+          date: selectedDate ? selectedDate.toISOString() : undefined,
         },
       );
-
       const created = response.data;
-      setSavedCriteria((prev) => [created, ...prev]);
-      setSelectedCriteria(created.id);
-      setActiveCriteria(created);
+      setSavedReports((prev) => [created, ...prev]);
+      setSelectedReport(created.id);
+      setActiveReport(created);
       setShowCriteriaDialog(false);
-      toast.success('Criteria created successfully');
+      toast.success('Report created successfully');
     } catch (error) {
-      console.error('Error creating criteria:', error);
-      toast.error('Failed to create criteria');
+      console.error('Error creating report:', error);
+      toast.error('Failed to create report');
     } finally {
       setIsLoading(false);
     }
@@ -509,7 +380,7 @@ export function GradingTable({
         name: '',
         weight: defaultWeight,
       }));
-    setNewCriteria((prev) => ({
+    setNewReport((prev) => ({
       ...prev,
       rubrics: value,
       rubricDetails: newRubricDetails,
@@ -521,7 +392,7 @@ export function GradingTable({
     field: 'name' | 'weight',
     value: string | number,
   ) => {
-    setNewCriteria((prev) => {
+    setNewReport((prev) => {
       const newDetails = [...prev.rubricDetails];
       newDetails[index] = {
         ...newDetails[index],
@@ -534,439 +405,320 @@ export function GradingTable({
     });
   };
 
-  const filteredStudents = Array.isArray(students)
-    ? students.filter((student) => {
-        const firstName = student.firstName?.toLowerCase() || '';
-        const lastName = student.lastName?.toLowerCase() || '';
-        const searchTerm = searchQuery.toLowerCase();
-        return firstName.includes(searchTerm) || lastName.includes(searchTerm);
-      })
-    : [];
-
   return (
-    <>
-      <Dialog open={showCriteriaDialog} onOpenChange={handleDialogClose}>
-        <DialogContent className='sm:max-w-[450px]'>
-          <DialogHeader>
-            <DialogTitle>Grading Criteria</DialogTitle>
-            <DialogDescription>
-              Select existing criteria or create new ones
-            </DialogDescription>
-          </DialogHeader>
-
-          <Tabs defaultValue='existing' className='w-full'>
-            <TabsList className='grid w-full grid-cols-2'>
-              <TabsTrigger value='existing'>Use Existing</TabsTrigger>
-              <TabsTrigger value='new'>Create New</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value='existing'>
-              <div className='space-y-4 py-4'>
-                {savedCriteria.length > 0 ? (
-                  <>
-                    <Select
-                      value={selectedCriteria}
-                      onValueChange={setSelectedCriteria}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder='Select saved criteria' />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {savedCriteria.map((criteria) => (
-                          <SelectItem key={criteria.id} value={criteria.id}>
-                            {criteria.name}
-                            <span className='text-sm text-muted-foreground ml-2'>
-                              (by {criteria.user?.name || 'Unknown'})
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {selectedCriteria && (
-                      <div className='text-sm text-muted-foreground'>
-                        Created by:{' '}
-                        {savedCriteria.find((c) => c.id === selectedCriteria)
-                          ?.user?.name || 'Unknown'}
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className='text-sm text-muted-foreground text-center py-4'>
-                    No saved criteria found. Create new ones in the other tab.
-                  </p>
-                )}
-                <DialogFooter>
-                  <Button variant='outline' onClick={handleDialogClose}>
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleApplyCriteria}
-                    disabled={!selectedCriteria}
-                  >
-                    Apply Selected Criteria
-                  </Button>
-                </DialogFooter>
+    <div className="min-h-screen w-full  p-0">
+      <div className="max-w-6xl mx-auto">
+        {/* x */}
+        <div className="bg-white rounded-lg shadow-md">
+          {/* Card Header */}
+          <div className="flex items-center gap-2 px-4 py-3 border-b">
+            <div className="flex flex-col mr-4">
+              <span className="text-lg font-bold text-[#124A69] leading-tight">{courseCode}</span>
+              <span className="text-sm text-gray-500">{courseSection}</span>
+            </div>
+            <div className="flex-1 flex items-center">
+              <div className="relative w-64">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                <Input
+                  placeholder="Search a name"
+                  className="w-full pl-9 rounded-full border-gray-200 h-9 bg-[#F5F6FA]"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                />
               </div>
-            </TabsContent>
-
-            <TabsContent value='new'>
-              <div className='space-y-4 py-4'>
-                <div className='grid gap-4'>
-                  <div className='grid gap-2'>
-                    <label htmlFor='name'>Criteria Name</label>
-                    <Input
-                      id='name'
-                      value={newCriteria.name}
-                      onChange={(e) =>
-                        setNewCriteria((prev) => ({
-                          ...prev,
-                          name: e.target.value,
-                        }))
-                      }
-                      placeholder='e.g., Midterm Exam'
-                    />
-                  </div>
-                  <div className='grid gap-2'>
-                    <label htmlFor='rubrics'>Number of Rubrics</label>
-                    <Select
-                      value={newCriteria.rubrics}
-                      onValueChange={handleRubricCountChange}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value='2'>2 Rubrics</SelectItem>
-                        <SelectItem value='3'>3 Rubrics</SelectItem>
-                        <SelectItem value='4'>4 Rubrics</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className='grid gap-4 mt-2'>
-                    <label className='text-sm font-medium'>
-                      Rubric Details
-                    </label>
-                    <div className='space-y-4 max-h-[200px] overflow-y-auto pr-2'>
-                      {newCriteria.rubricDetails.map((rubric, index) => (
-                        <div key={index} className='flex items-center gap-2'>
-                          <div className='relative w-[400px]'>
-                            <Input
-                              value={rubric.name}
-                              onChange={(e) =>
-                                updateRubricDetail(
-                                  index,
-                                  'name',
-                                  e.target.value.slice(0, 15),
-                                )
-                              }
-                              placeholder={`Rubric ${index + 1} name`}
-                              className='pr-20'
-                              maxLength={15}
-                            />
-                            <div className='absolute right-1 top-1 bottom-1 flex items-center'>
-                              <span className='text-xs text-gray-400 mr-2'>
-                                {rubric.name.length}/15
-                              </span>
-                              <Input
-                                type='number'
-                                value={rubric.weight}
-                                onChange={(e) =>
-                                  updateRubricDetail(
-                                    index,
-                                    'weight',
-                                    parseInt(e.target.value) || 0,
-                                  )
-                                }
-                                min={0}
-                                max={100}
-                                className='w-14 h-7 px-1 text-right'
-                              />
-                              <span className='text-sm text-gray-500 ml-0.5 mr-2'>
-                                %
-                              </span>
+              <Button variant="outline" className="ml-2 h-9 rounded bg-white border border-gray-200 text-gray-500">Add filter +</Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={'outline'}
+                    className={cn(
+                      'w-[200px] justify-start text-left font-normal h-9',
+                      !selectedDate && 'text-muted-foreground',
+                    )}
+                  >
+                    <CalendarIcon className='mr-2 h-4 w-4' />
+                    {selectedDate ? (
+                      format(selectedDate, 'PPP')
+                    ) : (
+                      <span>Pick a date</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className='w-auto p-0' align='end'>
+                  <Calendar
+                    mode='single'
+                    selected={selectedDate}
+                    onSelect={onDateSelect}
+                    initialFocus
+                    disabled={(date) => date > new Date()}
+                    defaultMonth={new Date()}
+                  />
+                </PopoverContent>
+              </Popover>
+              <Button className="ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14m7-7H5" /></svg>
+                Export to PDF
+              </Button>
+            </div>
+          </div>
+          <Dialog open={showCriteriaDialog} onOpenChange={handleDialogClose}>
+            <DialogContent className='sm:max-w-[450px]'>
+              <DialogHeader>
+                <DialogTitle>Grading Report</DialogTitle>
+                <DialogDescription>
+                  Select existing report or create new ones
+                </DialogDescription>
+              </DialogHeader>
+              {criteriaLoading ? (
+                <div className='flex justify-center items-center py-8'>
+                  <Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
+                </div>
+              ) : (
+                <Tabs defaultValue='existing' className='w-full'>
+                  <TabsList className='grid w-full grid-cols-2'>
+                    <TabsTrigger value='existing'>Use Existing</TabsTrigger>
+                    <TabsTrigger value='new'>Create New</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value='existing'>
+                    <div className='space-y-4 py-4'>
+                      {savedReports.filter(report => {
+                        if (!selectedDate) return false;
+                        const reportDate = new Date(report.date).toISOString().split('T')[0];
+                        const selected = selectedDate.toISOString().split('T')[0];
+                        return reportDate === selected;
+                      }).length > 0 ? (
+                        <>
+                          <Select
+                            value={selectedReport}
+                            onValueChange={setSelectedReport}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder='Select saved report' />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {savedReports.filter(report => {
+                                if (!selectedDate) return false;
+                                const reportDate = new Date(report.date).toISOString().split('T')[0];
+                                const selected = selectedDate.toISOString().split('T')[0];
+                                return reportDate === selected;
+                              }).map((report) => (
+                                <SelectItem key={report.id} value={report.id}>
+                                  {report.name}
+                                  <span className='text-sm text-muted-foreground ml-2'>
+                                    (by {report.user?.name || 'Unknown'})
+                                  </span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {selectedReport && (
+                            <div className='text-sm text-muted-foreground'>
+                              Created by:{' '}
+                              {savedReports.find((c) => c.id === selectedReport)?.user?.name || 'Unknown'}
                             </div>
+                          )}
+                        </>
+                      ) : (
+                        <p className='text-sm text-muted-foreground text-center py-4'>
+                          No saved reports found. Create new ones in the other tab.
+                        </p>
+                      )}
+                      <DialogFooter>
+                        <Button variant='outline' onClick={handleDialogClose}>
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={handleApplyCriteria}
+                          disabled={!selectedReport}
+                        >
+                          Apply Selected Report
+                        </Button>
+                      </DialogFooter>
+                    </div>
+                  </TabsContent>
+                  <TabsContent value='new'>
+                    <div className='space-y-4 py-4'>
+                      <div className='grid gap-4'>
+                        <div className='grid gap-2'>
+                          <label htmlFor='name'>Report Name</label>
+                          <Input
+                            id='name'
+                            value={newReport.name}
+                            onChange={(e) =>
+                              setNewReport((prev) => ({
+                                ...prev,
+                                name: e.target.value,
+                              }))
+                            }
+                            placeholder='e.g., Midterm Exam'
+                          />
+                        </div>
+                        <div className='grid gap-2'>
+                          <label htmlFor='rubrics'>Number of Rubrics</label>
+                          <Select
+                            value={newReport.rubrics}
+                            onValueChange={handleRubricCountChange}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value='2'>2 Rubrics</SelectItem>
+                              <SelectItem value='3'>3 Rubrics</SelectItem>
+                              <SelectItem value='4'>4 Rubrics</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className='grid gap-2'>
+                          <label htmlFor='scoringRange'>Scoring Range</label>
+                          <Select
+                            value={newReport.scoringRange}
+                            onValueChange={(value) =>
+                              setNewReport((prev) => ({
+                                ...prev,
+                                scoringRange: value,
+                              }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value='5'>1-5</SelectItem>
+                              <SelectItem value='10'>1-10</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className='grid gap-2'>
+                          <label htmlFor='passingScore'>Passing Score (%)</label>
+                          <Select
+                            value={newReport.passingScore}
+                            onValueChange={(value) =>
+                              setNewReport((prev) => ({
+                                ...prev,
+                                passingScore: value,
+                              }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value='75'>75%</SelectItem>
+                              <SelectItem value='80'>80%</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className='grid gap-4 mt-2'>
+                          <label className='text-sm font-medium'>
+                            Rubric Details
+                          </label>
+                          <div className='space-y-4 max-h-[200px] overflow-y-auto pr-2'>
+                            {newReport.rubricDetails.map((rubric, index) => (
+                              <div key={index} className='flex items-center gap-2'>
+                                <div className='relative w-[400px]'>
+                                  <Input
+                                    value={rubric.name}
+                                    onChange={(e) =>
+                                      updateRubricDetail(
+                                        index,
+                                        'name',
+                                        e.target.value.slice(0, 15),
+                                      )
+                                    }
+                                    placeholder={`Rubric ${index + 1} name`}
+                                  />
+                                </div>
+                                <div className='relative w-[100px]'>
+                                  <Input
+                                    value={rubric.weight}
+                                    onChange={(e) =>
+                                      updateRubricDetail(
+                                        index,
+                                        'weight',
+                                        parseInt(e.target.value),
+                                      )
+                                    }
+                                    placeholder={`Weight`}
+                                  />
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                      ))}
+                      </div>
+                      <DialogFooter>
+                        <Button variant='outline' onClick={handleDialogClose}>
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={handleCreateReport}
+                          disabled={!newReport.name || !newReport.rubrics}
+                        >
+                          Create New Report
+                        </Button>
+                      </DialogFooter>
                     </div>
-                    <div className='text-sm text-gray-500 flex justify-end items-center gap-1.5 w-[400px]'>
-                      <span>Total:</span>
-                      <span
-                        className={cn(
-                          'font-medium',
-                          newCriteria.rubricDetails.reduce(
-                            (sum, r) => sum + r.weight,
-                            0,
-                          ) === 100
-                            ? 'text-green-600'
-                            : 'text-red-600',
-                        )}
-                      >
-                        {newCriteria.rubricDetails.reduce(
-                          (sum, r) => sum + r.weight,
-                          0,
-                        )}
-                        %
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className='grid gap-2'>
-                    <label htmlFor='scoringRange'>Scoring Range</label>
-                    <Select
-                      value={newCriteria.scoringRange}
-                      onValueChange={(value) =>
-                        setNewCriteria((prev) => ({
-                          ...prev,
-                          scoringRange: value,
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value='5'>1-5</SelectItem>
-                        <SelectItem value='10'>1-10</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className='grid gap-2'>
-                    <label htmlFor='passingScore'>Passing Score (%)</label>
-                    <Select
-                      value={newCriteria.passingScore}
-                      onValueChange={(value) =>
-                        setNewCriteria((prev) => ({
-                          ...prev,
-                          passingScore: value,
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value='75'>75%</SelectItem>
-                        <SelectItem value='80'>80%</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className='grid gap-4'>
-                    <div className='grid gap-2'>
-                      <label htmlFor='date'>Date</label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant={'outline'}
-                            className={cn(
-                              'w-full justify-start text-left font-normal',
-                              !selectedDate && 'text-muted-foreground',
-                            )}
-                          >
-                            <CalendarIcon className='mr-2 h-4 w-4' />
-                            {selectedDate ? (
-                              format(selectedDate, 'PPP')
-                            ) : (
-                              <span>Pick a date</span>
-                            )}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className='w-auto p-0' align='start'>
-                          <Calendar
-                            mode='single'
-                            selected={selectedDate}
-                            onSelect={onDateSelect}
-                            initialFocus
-                            disabled={(date) => date > new Date()}
-                            defaultMonth={new Date()}
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant='outline' onClick={handleDialogClose}>
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleCreateCriteria}
-                    disabled={
-                      !newCriteria.name ||
-                      isLoading ||
-                      newCriteria.rubricDetails.some((r) => !r.name) ||
-                      newCriteria.rubricDetails.reduce(
-                        (sum, r) => sum + r.weight,
-                        0,
-                      ) !== 100
-                    }
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                        Creating...
-                      </>
-                    ) : (
-                      'Create & Apply'
-                    )}
-                  </Button>
-                </DialogFooter>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </DialogContent>
-      </Dialog>
-
-      {!showCriteriaDialog && activeCriteria && (
-        <div className='space-y-4'>
-          <div className='flex items-center justify-between'>
-            <div className='flex items-center gap-2 text-sm text-muted-foreground'>
-              <span>Created by: {activeCriteria.user?.name || 'You'}</span>
-              <span>•</span>
-              <span>Rubrics: {activeCriteria.rubrics}</span>
-              <span>•</span>
-              <span>Scoring: 1-{activeCriteria.scoringRange}</span>
-              <span>•</span>
-              <span>Passing: {activeCriteria.passingScore}%</span>
-            </div>
-            <Button onClick={handleSaveGrades} disabled={isLoading}>
-              {isLoading ? (
-                <>
-                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                  Saving...
-                </>
-              ) : (
-                'Save Grades'
+                  </TabsContent>
+                </Tabs>
               )}
-            </Button>
-          </div>
+            </DialogContent>
+          </Dialog>
 
-          {isLoading ? (
-            <div className='flex items-center justify-center h-32'>
-              <Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
-            </div>
-          ) : filteredStudents.length === 0 ? (
-            <div className='flex items-center justify-center h-32 text-muted-foreground'>
-              No students in this course
-            </div>
-          ) : (
-            <div className='relative overflow-x-auto'>
-              <div className='min-w-full inline-block align-middle'>
-                <div className='overflow-x-auto border rounded-lg'>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className='sticky left-0 bg-white z-10 min-w-[200px]'>
-                          Name
-                        </TableHead>
-                        {rubricDetails.map((rubric, i) => (
-                          <TableHead key={i} className='min-w-[150px]'>
-                            <div className='flex flex-col gap-1'>
-                              <Input
-                                value={rubric.name}
-                                onChange={(e) => {
-                                  const newRubrics = [...rubricDetails];
-                                  newRubrics[i] = {
-                                    ...rubric,
-                                    name: e.target.value,
-                                  };
-                                  setRubricDetails(newRubrics);
-                                }}
-                                className='w-full'
-                                placeholder={`Rubric ${i + 1}`}
-                              />
-                              <div className='flex items-center gap-2'>
-                                <Input
-                                  type='number'
-                                  value={rubric.percentage}
-                                  onChange={(e) => {
-                                    const newRubrics = [...rubricDetails];
-                                    newRubrics[i] = {
-                                      ...rubric,
-                                      percentage: parseInt(e.target.value) || 0,
-                                    };
-                                    setRubricDetails(newRubrics);
-                                  }}
-                                  className='w-20'
-                                  min={0}
-                                  max={100}
-                                />
-                                <span className='text-sm text-muted-foreground'>
-                                  %
-                                </span>
-                              </div>
-                            </div>
-                          </TableHead>
-                        ))}
-                        <TableHead className='min-w-[100px]'>Total</TableHead>
-                        <TableHead className='min-w-[100px]'>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredStudents.map((student) => {
+          {!showCriteriaDialog && activeReport && (
+            <div className="space-y-4 p-0">
+              {/* Grading Table */}
+              <div className="overflow-x-auto">
+                <table className="min-w-full border-separate border-spacing-0">
+                  <GradingTableHeader rubricDetails={rubricDetails} />
+                  <tbody>
+                    {(() => {
+                      const filteredStudents = students.filter(student => {
+                        const name = `${student.lastName || ''} ${student.firstName || ''} ${student.middleInitial || ''}`.toLowerCase();
+                        return name.includes(searchQuery.toLowerCase());
+                      });
+                      if (filteredStudents.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={rubricDetails.length + 4} className="text-center py-8 text-muted-foreground">
+                              No students found
+                            </td>
+                          </tr>
+                        );
+                      }
+                      return filteredStudents.map((student, idx) => {
                         const studentScore = scores[student.id] || {
                           studentId: student.id,
-                          scores: new Array(activeCriteria.rubrics).fill(0),
+                          scores: new Array(rubricDetails.length).fill(0),
                           total: 0,
                         };
-
                         return (
-                          <TableRow key={student.id}>
-                            <TableCell className='sticky left-0 bg-white z-10'>
-                              {`${student.lastName}, ${student.firstName}${
-                                student.middleInitial
-                                  ? ` ${student.middleInitial}.`
-                                  : ''
-                              }`}
-                            </TableCell>
-                            {studentScore.scores.map((score, index) => (
-                              <TableCell key={index}>
-                                <Input
-                                  type='number'
-                                  min={1}
-                                  max={activeCriteria.scoringRange}
-                                  value={score}
-                                  onChange={(e) =>
-                                    handleScoreChange(
-                                      student.id,
-                                      index,
-                                      parseInt(e.target.value) || 0,
-                                    )
-                                  }
-                                />
-                              </TableCell>
-                            ))}
-                            <TableCell>
-                              {studentScore.total.toFixed(2)}%
-                            </TableCell>
-                            <TableCell>
-                              <span
-                                className={cn(
-                                  'px-2 py-1 rounded-full text-xs font-medium',
-                                  studentScore.total >=
-                                    Number(activeCriteria.passingScore)
-                                    ? 'bg-green-100 text-green-800'
-                                    : 'bg-red-100 text-red-800',
-                                )}
-                              >
-                                {studentScore.total >=
-                                Number(activeCriteria.passingScore)
-                                  ? 'Pass'
-                                  : 'Fail'}
-                              </span>
-                            </TableCell>
-                          </TableRow>
+                          <GradingTableRow
+                            key={student.id}
+                            student={student}
+                            rubricDetails={rubricDetails}
+                            activeReport={activeReport}
+                            studentScore={studentScore}
+                            handleScoreChange={handleScoreChange}
+                            idx={idx}
+                          />
                         );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
+                      });
+                    })()}
+                  </tbody>
+                </table>
               </div>
+              {/* Footer Bar */}
+              <GradingTableFooter totalStudents={students.length} />
             </div>
           )}
         </div>
-      )}
-    </>
+      </div>
+    </div>
   );
 }

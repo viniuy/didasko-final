@@ -35,7 +35,7 @@ export async function GET(
     const criteriaWithRubrics = await Promise.all(
       criteria.map(async (c) => ({
         ...c,
-        rubrics: await prisma.rubrics.findMany({ where: { criteriaId: c.id } }),
+        rubrics: await prisma.rubric.findMany({ where: { criteriaId: c.id } }),
       })),
     );
 
@@ -94,6 +94,7 @@ export async function POST(
         name: data.name,
         courseId,
         userId: data.userId,
+        date: new Date(data.date),
         scoringRange,
         passingScore,
         rubrics: {
@@ -114,7 +115,7 @@ export async function POST(
       },
     });
     // Fetch rubrics for the created criteria
-    const rubrics = await prisma.rubrics.findMany({
+    const rubrics = await prisma.rubric.findMany({
       where: { criteriaId: criteria.id },
     });
     const criteriaWithRubrics = { ...criteria, rubrics };

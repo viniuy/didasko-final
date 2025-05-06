@@ -167,6 +167,7 @@ model Criteria {
   passingScore String    // "75" or "80"
   grades       Grade[]
   rubrics      Rubric[]  // NEW: relation to Rubric
+  date         DateTime
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 

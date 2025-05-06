@@ -106,75 +106,19 @@ function IndividualGradingContent({
         <main className='h-full w-full lg:w-[calc(100%-22.5rem)] pl-[4rem] sm:pl-[5rem] transition-all'>
           <div className='flex flex-col flex-grow px-4'>
             <Header />
-            <div className='mb-6 flex items-center gap-4'>
-              <Button asChild variant='ghost' size='icon'>
-                <Link
-                  href={`/grading/reporting/${course_code}/${course_section}`}
-                >
-                  <ArrowLeft className='h-4 w-4' />
-                </Link>
-              </Button>
-              <div>
-                <h2 className='text-2xl font-semibold'>{course.title}</h2>
-                <p className='text-sm text-muted-foreground'>
-                  {course.code} - Section {course.section}
-                </p>
-              </div>
+            <div className="flex items-center justify-between mb-8">
+              <h1 className="text-3xl font-bold tracking-tight text-[#A0A0A0]">Individual Reporting</h1>
             </div>
 
-            <div className='flex items-center gap-4 mb-6'>
-              <div className='relative flex-grow max-w-[300px]'>
-                <Search className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400' />
-                <Input
-                  placeholder='Search a name'
-                  className='w-full pl-9 bg-white border-gray-200 rounded-full h-10'
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant={'outline'}
-                    className={cn(
-                      'w-[200px] justify-start text-left font-normal',
-                      !selectedDate && 'text-muted-foreground',
-                    )}
-                  >
-                    <CalendarIcon className='mr-2 h-4 w-4' />
-                    {selectedDate ? (
-                      format(selectedDate, 'PPP')
-                    ) : (
-                      <span>Pick a date</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className='w-auto p-0' align='start'>
-                  <Calendar
-                    mode='single'
-                    selected={selectedDate}
-                    onSelect={setSelectedDate}
-                    initialFocus
-                    disabled={(date) => date > new Date()}
-                    defaultMonth={new Date()}
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
 
             <div className='flex-1 overflow-y-auto pb-6'>
-              {selectedDate ? (
-                <GradingTable
-                  courseId={course.id}
-                  searchQuery={searchQuery}
-                  selectedDate={selectedDate}
-                  onDateSelect={setSelectedDate}
-                />
-              ) : (
-                <div className='flex items-center justify-center h-full text-muted-foreground'>
-                  Please select a date to view or create grades
-                </div>
-              )}
+              <GradingTable
+                courseId={course.id}
+                courseCode={course.code}
+                courseSection={course.section}
+                selectedDate={selectedDate}
+                onDateSelect={setSelectedDate}
+              />
             </div>
           </div>
 

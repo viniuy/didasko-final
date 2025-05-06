@@ -109,7 +109,7 @@ export function DataTable<TData, TValue>({
             </DropdownMenuContent>
           </DropdownMenu>
           <Input
-            placeholder='Search for users, reports, or actions...'
+            placeholder='Search for users'
             value={(table.getColumn('name')?.getFilterValue() as string) ?? ''}
             onChange={(event) =>
               table.getColumn('name')?.setFilterValue(event.target.value)
@@ -119,21 +119,8 @@ export function DataTable<TData, TValue>({
         </div>
         <div className='flex items-center space-x-2'>
           <Button variant='outline'>
-            <Upload className='mr-2 h-4 w-4' /> Import Users
-          </Button>
-          <Button variant='outline'>
             <Download className='mr-2 h-4 w-4' /> Export Data
           </Button>
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button>
-                <Plus className='mr-2 h-4 w-4' /> Add New User
-              </Button>
-            </SheetTrigger>
-            <SheetContent side='right' className='p-4'>
-              <AddUserSheet isInline={true} />
-            </SheetContent>
-          </Sheet>
         </div>
       </div>
       {/* Table */}

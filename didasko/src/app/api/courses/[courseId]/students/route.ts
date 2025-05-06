@@ -79,11 +79,12 @@ export async function GET(
       console.log('Processing student:', student.id);
       return {
         id: student.id,
-        name: `${student.lastName}, ${student.firstName}${
-          student.middleInitial ? ` ${student.middleInitial}.` : ''
-        }`,
+        name: `${student.firstName} ${student.lastName}`,
+        firstName: student.firstName,
+        lastName: student.lastName,
+        middleInitial: student.middleInitial,
         image: student.image || undefined,
-        status: student.attendance[0]?.status || 'NOT SET',
+        status: student.attendance[0]?.status || 'NOT_SET',
         attendanceRecords: student.attendance,
       };
     });
