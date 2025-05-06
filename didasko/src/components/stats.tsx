@@ -3,6 +3,7 @@
 import { User, BookOpen } from 'lucide-react';
 import { Card, CardContent, CardDescription } from '@/components/ui/card';
 import { useEffect, useState } from 'react';
+import axiosInstance from '@/lib/axios';
 
 interface StatCardProps {
   icon: React.ReactNode;
@@ -33,9 +34,8 @@ const StatCard = ({ icon, count, label, isLoading = false }: StatCardProps) => {
 
 async function getFacultyCount() {
   try {
-    const response = await fetch('/api/users/faculty-count');
-    if (!response.ok) throw new Error('Failed to fetch faculty count');
-    return await response.json();
+    const response = await axiosInstance.get('/users/faculty-count');
+    return response.data;
   } catch (error) {
     console.error('Error fetching faculty count:', error);
     return { fullTime: 0, partTime: 0 };

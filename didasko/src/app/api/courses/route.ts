@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
+import { CourseResponse, CourseCreateInput } from '@/types/course';
 
 export async function GET(request: Request) {
   try {
@@ -15,6 +16,7 @@ export async function GET(request: Request) {
     const facultyId = searchParams.get('facultyId');
     const search = searchParams.get('search');
     const department = searchParams.get('department');
+    const semester = searchParams.get('semester');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
     const skip = (page - 1) * limit;
@@ -24,6 +26,7 @@ export async function GET(request: Request) {
       AND: [
         facultyId ? { facultyId } : {},
         department ? { faculty: { department } } : {},
+        semester ? { semester } : {},
         search
           ? {
               OR: [
@@ -81,15 +84,23 @@ export async function GET(request: Request) {
       orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
     });
 
-    return NextResponse.json({
-      courses,
+    const response: CourseResponse = {
+      courses: courses.map((course) => ({
+        ...course,
+        students: course.students?.map((student) => ({
+          ...student,
+          middleInitial: student.middleInitial || undefined,
+        })),
+      })),
       pagination: {
         total,
         page,
         limit,
         totalPages: Math.ceil(total / limit),
       },
-    });
+    };
+
+    return NextResponse.json(response);
   } catch (error) {
     console.error('Error fetching courses:', error);
     return NextResponse.json(
@@ -106,13 +117,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const body = await request.json();
+    const body: CourseCreateInput = await request.json();
     const { code, title, room, facultyId, semester, section } = body;
 
     // Validate required fields
-    if (!code || !title || !facultyId) {
+    if (!code || !title || !facultyId || !semester || !section) {
       return NextResponse.json(
         { error: 'Missing required fields' },
+        { status: 400 },
+      );
+    }
+
+    // Ensure semester and section are strings
+    if (typeof semester !== 'string' || typeof section !== 'string') {
+      return NextResponse.json(
+        { error: 'Semester and section must be strings' },
         { status: 400 },
       );
     }
@@ -121,7 +140,7 @@ export async function POST(request: Request) {
     const existingCourse = await prisma.course.findFirst({
       where: {
         code,
-        NOT: { id: body.id },
+        NOT: { id: body.id || undefined },
       },
     });
 
@@ -136,7 +155,7 @@ export async function POST(request: Request) {
       data: {
         code,
         title,
-        room,
+        room: room || '', // Ensure room is not null
         semester,
         section,
         facultyId,

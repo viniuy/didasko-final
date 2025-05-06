@@ -157,20 +157,32 @@ model GradeItem {
 }
 
 model Criteria {
-  id          String   @id @default(uuid())
-  name        String
-  courseId    String
-  course      Course   @relation(fields: [courseId], references: [id])
-  userId      String   @map("user_id")
-  user        User     @relation(fields: [userId], references: [id])
-  rubrics     Json     // Will store array of {name: string, percentage: number}
-  scoringRange String  // "1-5" or "1-10"
-  passingScore String  // "75" or "80"
-  grades      Grade[]
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id           String    @id @default(uuid())
+  name         String
+  courseId     String
+  course       Course    @relation(fields: [courseId], references: [id])
+  userId       String    @map("user_id")
+  user         User      @relation(fields: [userId], references: [id])
+  scoringRange String    // "1-5" or "1-10"
+  passingScore String    // "75" or "80"
+  grades       Grade[]
+  rubrics      Rubric[]  // NEW: relation to Rubric
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   @@map("criteria")
+}
+
+model Rubric {
+  id         String    @id @default(uuid())
+  criteria   Criteria  @relation(fields: [criteriaId], references: [id])
+  criteriaId String
+  name       String
+  percentage Int
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@map("rubrics")
 }
 
 model Event {

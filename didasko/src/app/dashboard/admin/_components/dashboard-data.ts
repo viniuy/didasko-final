@@ -1,3 +1,5 @@
+import axiosInstance from '@/lib/axios';
+
 export interface DashboardData {
   totalStudents: number;
   totalTeachers: number;
@@ -11,20 +13,19 @@ export interface DashboardData {
   }[];
 }
 
-export async function getDashboardData(): Promise<DashboardData> {
-  // Fetch data from your API endpoints
+const fetchDashboardData = async () => {
   const [
     studentsCount,
     teachersCount,
     coursesCount,
     attendanceCount,
-    activity,
+    recentActivity,
   ] = await Promise.all([
-    fetch('/api/students/count').then((res) => res.json()),
-    fetch('/api/teachers/count').then((res) => res.json()),
-    fetch('/api/courses/count').then((res) => res.json()),
-    fetch('/api/attendance/count').then((res) => res.json()),
-    fetch('/api/activity/recent').then((res) => res.json()),
+    axiosInstance.get('/api/students/count').then((res) => res.data),
+    axiosInstance.get('/api/teachers/count').then((res) => res.data),
+    axiosInstance.get('/api/courses/count').then((res) => res.data),
+    axiosInstance.get('/api/attendance/count').then((res) => res.data),
+    axiosInstance.get('/api/activity/recent').then((res) => res.data),
   ]);
 
   return {
@@ -32,6 +33,10 @@ export async function getDashboardData(): Promise<DashboardData> {
     totalTeachers: teachersCount,
     totalCourses: coursesCount,
     totalAttendance: attendanceCount,
-    recentActivity: activity,
+    recentActivity,
   };
+};
+
+export async function getDashboardData(): Promise<DashboardData> {
+  return fetchDashboardData();
 }

@@ -3,11 +3,17 @@ import { prisma } from '@/lib/prisma';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { courseId: string } },
+  request: Request,
+  context: { params: Promise<{ courseId: string }> },
 ) {
   try {
-    const courseId = params.courseId;
+    const { courseId } = await context.params;
+    if (!courseId || typeof courseId !== 'string') {
+      return NextResponse.json(
+        { error: 'Missing or invalid courseId' },
+        { status: 400 },
+      );
+    }
     console.log('Fetching criteria for course:', courseId);
 
     const criteria = await prisma.criteria.findMany({
@@ -25,49 +31,79 @@ export async function GET(
         createdAt: 'desc',
       },
     });
+    // Fetch rubrics for each criteria
+    const criteriaWithRubrics = await Promise.all(
+      criteria.map(async (c) => ({
+        ...c,
+        rubrics: await prisma.rubrics.findMany({ where: { criteriaId: c.id } }),
+      })),
+    );
 
     console.log(`Found ${criteria.length} criteria`);
-    return NextResponse.json(criteria);
+    return NextResponse.json(criteriaWithRubrics);
   } catch (error) {
-    console.error('Error details:', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-      courseId: params.courseId,
-      stack: error instanceof Error ? error.stack : undefined,
-    });
-
+    let errorMessage = 'Unknown error';
+    if (error instanceof Error) errorMessage = error.message;
     if (error instanceof PrismaClientKnownRequestError) {
       if (error.code === 'P2023') {
         return NextResponse.json(
-          { error: 'Invalid ID format' },
+          { error: 'Invalid ID format', details: errorMessage },
           { status: 400 },
         );
       }
     }
-
+    console.error('Error details:', {
+      message: errorMessage,
+      courseId: (await context.params).courseId,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return NextResponse.json(
-      { error: 'Failed to fetch criteria' },
+      { error: 'Failed to fetch criteria', details: errorMessage },
       { status: 500 },
     );
   }
 }
 
 export async function POST(
-  request: NextRequest,
-  { params }: { params: { courseId: string } },
+  request: Request,
+  context: { params: Promise<{ courseId: string }> },
 ) {
   try {
-    const courseId = params.courseId;
+    const { courseId } = await context.params;
+    if (!courseId || typeof courseId !== 'string') {
+      return NextResponse.json(
+        { error: 'Missing or invalid courseId' },
+        { status: 400 },
+      );
+    }
     const data = await request.json();
     console.log('Creating criteria with data:', { courseId, ...data });
+
+    const scoringRange =
+      typeof data.scoringRange === 'number'
+        ? String(data.scoringRange)
+        : data.scoringRange;
+
+    const passingScore =
+      typeof data.passingScore === 'number'
+        ? String(data.passingScore)
+        : data.passingScore;
 
     const criteria = await prisma.criteria.create({
       data: {
         name: data.name,
-        courseId: courseId,
+        courseId,
         userId: data.userId,
-        rubrics: data.rubrics,
-        scoringRange: data.scoringRange,
-        passingScore: data.passingScore,
+        scoringRange,
+        passingScore,
+        rubrics: {
+          create: Array.isArray(data.rubrics)
+            ? data.rubrics.map((r: any) => ({
+                name: r.name,
+                percentage: r.weight ?? r.percentage,
+              }))
+            : [],
+        },
       },
       include: {
         user: {
@@ -77,33 +113,38 @@ export async function POST(
         },
       },
     });
+    // Fetch rubrics for the created criteria
+    const rubrics = await prisma.rubrics.findMany({
+      where: { criteriaId: criteria.id },
+    });
+    const criteriaWithRubrics = { ...criteria, rubrics };
 
     console.log('Created criteria:', criteria.id);
-    return NextResponse.json(criteria);
+    return NextResponse.json(criteriaWithRubrics);
   } catch (error) {
-    console.error('Error details:', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-      courseId: params.courseId,
-      stack: error instanceof Error ? error.stack : undefined,
-    });
-
+    let errorMessage = 'Unknown error';
+    if (error instanceof Error) errorMessage = error.message;
     if (error instanceof PrismaClientKnownRequestError) {
       if (error.code === 'P2003') {
         return NextResponse.json(
-          { error: 'Course or user not found' },
+          { error: 'Course or user not found', details: errorMessage },
           { status: 404 },
         );
       }
       if (error.code === 'P2023') {
         return NextResponse.json(
-          { error: 'Invalid ID format' },
+          { error: 'Invalid ID format', details: errorMessage },
           { status: 400 },
         );
       }
     }
-
+    console.error('Error details:', {
+      message: errorMessage,
+      courseId: (await context.params).courseId,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return NextResponse.json(
-      { error: 'Failed to create criteria' },
+      { error: 'Failed to create criteria', details: errorMessage },
       { status: 500 },
     );
   }

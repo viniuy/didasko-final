@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppSidebar } from '@/components/shared/layout/app-sidebar';
 import Header from '@/components/shared/layout/header';
 import Rightsidebar from '@/components/shared/layout/right-sidebar';
@@ -19,12 +19,85 @@ import { format } from 'date-fns';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import Link from 'next/link';
 import { ArrowLeft, Search } from 'lucide-react';
+import axios from 'axios';
+
+interface Course {
+  id: string;
+  code: string;
+  title: string;
+  section: string;
+}
 
 // Client Component
-function IndividualGradingContent({ courseId }: { courseId: string }) {
+function IndividualGradingContent({
+  course_code,
+  course_section,
+}: {
+  course_code: string;
+  course_section: string;
+}) {
   const [open, setOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(
+    new Date(),
+  );
+  const [course, setCourse] = useState<Course | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchCourse = async () => {
+      try {
+        const response = await axios.get(`/api/courses/${course_code}`);
+        setCourse(response.data);
+      } catch (error) {
+        console.error('Error fetching course:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (course_code && course_section) {
+      fetchCourse();
+    }
+  }, [course_code, course_section]);
+
+  if (loading) {
+    return (
+      <SidebarProvider open={open} onOpenChange={setOpen}>
+        <div className='relative h-screen w-screen overflow-hidden'>
+          <AppSidebar />
+          <main className='h-full w-full lg:w-[calc(100%-22.5rem)] pl-[4rem] sm:pl-[5rem] transition-all'>
+            <div className='flex flex-col flex-grow px-4'>
+              <Header />
+              <div className='flex items-center justify-center h-full'>
+                <p className='text-muted-foreground'>
+                  Loading course information...
+                </p>
+              </div>
+            </div>
+          </main>
+        </div>
+      </SidebarProvider>
+    );
+  }
+
+  if (!course) {
+    return (
+      <SidebarProvider open={open} onOpenChange={setOpen}>
+        <div className='relative h-screen w-screen overflow-hidden'>
+          <AppSidebar />
+          <main className='h-full w-full lg:w-[calc(100%-22.5rem)] pl-[4rem] sm:pl-[5rem] transition-all'>
+            <div className='flex flex-col flex-grow px-4'>
+              <Header />
+              <div className='flex items-center justify-center h-full'>
+                <p className='text-muted-foreground'>Course not found</p>
+              </div>
+            </div>
+          </main>
+        </div>
+      </SidebarProvider>
+    );
+  }
 
   return (
     <SidebarProvider open={open} onOpenChange={setOpen}>
@@ -35,14 +108,16 @@ function IndividualGradingContent({ courseId }: { courseId: string }) {
             <Header />
             <div className='mb-6 flex items-center gap-4'>
               <Button asChild variant='ghost' size='icon'>
-                <Link href='/grading/reporting'>
+                <Link
+                  href={`/grading/reporting/${course_code}/${course_section}`}
+                >
                   <ArrowLeft className='h-4 w-4' />
                 </Link>
               </Button>
               <div>
-                <h2 className='text-2xl font-semibold'>Individual Grading</h2>
+                <h2 className='text-2xl font-semibold'>{course.title}</h2>
                 <p className='text-sm text-muted-foreground'>
-                  {courseId} - Individual Grading
+                  {course.code} - Section {course.section}
                 </p>
               </div>
             </div>
@@ -80,6 +155,8 @@ function IndividualGradingContent({ courseId }: { courseId: string }) {
                     selected={selectedDate}
                     onSelect={setSelectedDate}
                     initialFocus
+                    disabled={(date) => date > new Date()}
+                    defaultMonth={new Date()}
                   />
                 </PopoverContent>
               </Popover>
@@ -88,7 +165,7 @@ function IndividualGradingContent({ courseId }: { courseId: string }) {
             <div className='flex-1 overflow-y-auto pb-6'>
               {selectedDate ? (
                 <GradingTable
-                  courseId={courseId}
+                  courseId={course.id}
                   searchQuery={searchQuery}
                   selectedDate={selectedDate}
                   onDateSelect={setSelectedDate}
@@ -112,8 +189,13 @@ function IndividualGradingContent({ courseId }: { courseId: string }) {
 export default function IndividualGradingPage({
   params,
 }: {
-  params: Promise<{ courseId: string }>;
+  params: Promise<{ course_code: string; course_section: string }>;
 }) {
-  const { courseId } = React.use(params);
-  return <IndividualGradingContent courseId={courseId} />;
+  const { course_code, course_section } = React.use(params);
+  return (
+    <IndividualGradingContent
+      course_code={course_code}
+      course_section={course_section}
+    />
+  );
 }

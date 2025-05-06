@@ -36,10 +36,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import axiosInstance from '@/lib/axios';
 
 interface Student {
   id: string;
-  name: string;
+  firstName: string;
+  lastName: string;
+  middleInitial?: string;
+  image?: string;
+  status?: string;
+  attendanceRecords?: any[];
 }
 
 interface GradingTableProps {
@@ -103,6 +109,13 @@ export function GradingTable({
     ],
   });
 
+  // Set today's date as default when component mounts
+  useEffect(() => {
+    if (!selectedDate) {
+      onDateSelect?.(new Date());
+    }
+  }, []);
+
   // Function to handle dialog close
   const handleDialogClose = () => {
     setShowCriteriaDialog(false);
@@ -112,14 +125,6 @@ export function GradingTable({
       onDateSelect?.(undefined);
     }
   };
-
-  // Show criteria dialog when date is selected but no criteria is active
-  useEffect(() => {
-    if (selectedDate && !activeCriteria && !showCriteriaDialog) {
-      console.log('Date selected but no criteria - showing dialog');
-      setShowCriteriaDialog(true);
-    }
-  }, [selectedDate, activeCriteria, showCriteriaDialog]);
 
   // Fetch grades when both date and criteria are available
   useEffect(() => {
@@ -141,16 +146,17 @@ export function GradingTable({
           criteriaId: activeCriteria.id,
         });
 
-        const response = await fetch(
-          `/api/courses/${courseId}/grades?date=${formattedDate}&criteriaId=${activeCriteria.id}`,
+        const response = await axiosInstance.get(
+          `/courses/${courseId}/grades`,
+          {
+            params: {
+              date: formattedDate,
+              criteriaId: activeCriteria.id,
+            },
+          },
         );
 
-        if (!response.ok) {
-          console.error('Failed to fetch grades:', response.status);
-          throw new Error('Failed to fetch grades');
-        }
-
-        const existingGrades = await response.json();
+        const existingGrades = response.data;
         console.log('Received grades:', existingGrades);
 
         if (existingGrades && existingGrades.length > 0) {
@@ -180,19 +186,115 @@ export function GradingTable({
     fetchGrades();
   }, [selectedDate, activeCriteria, courseId]);
 
+  // Check for existing criteria when date is selected
+  useEffect(() => {
+    const checkExistingCriteria = async () => {
+      if (!selectedDate || activeCriteria) {
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        const formattedDate = selectedDate.toISOString().split('T')[0];
+        console.log('Checking for existing criteria on:', formattedDate);
+
+        // First, get all grades for this date
+        const response = await axiosInstance.get(
+          `/courses/${courseId}/grades`,
+          {
+            params: {
+              date: formattedDate,
+            },
+          },
+        );
+
+        const existingGrades = response.data;
+        console.log('Found existing grades:', existingGrades);
+
+        if (existingGrades && existingGrades.length > 0) {
+          // Get the criteria ID from the first grade
+          const criteriaId = existingGrades[0].criteriaId;
+          console.log('Found existing criteria ID:', criteriaId);
+
+          // Find the matching criteria from savedCriteria
+          const matchingCriteria = savedCriteria.find(
+            (criteria) => criteria.id === criteriaId,
+          );
+
+          if (matchingCriteria) {
+            console.log('Setting active criteria:', matchingCriteria);
+            setActiveCriteria(matchingCriteria);
+            setSelectedCriteria(criteriaId);
+            // Create placeholders for rubrics with default names and evenly distributed percentages
+            const defaultRubrics = Array(matchingCriteria.rubrics)
+              .fill(null)
+              .map((_, i) => {
+                let defaultName = '';
+                switch (i) {
+                  case 0:
+                    defaultName = 'Content';
+                    break;
+                  case 1:
+                    defaultName = 'Organization';
+                    break;
+                  case 2:
+                    defaultName = 'Delivery';
+                    break;
+                  case 3:
+                    defaultName = 'Creativity';
+                    break;
+                  default:
+                    defaultName = `Rubric ${i + 1}`;
+                }
+                return {
+                  name: defaultName,
+                  percentage: Math.floor(100 / matchingCriteria.rubrics),
+                };
+              });
+            setRubricDetails(defaultRubrics);
+          }
+        }
+      } catch (error) {
+        console.error('Error checking for existing criteria:', error);
+        toast.error('Failed to check for existing criteria');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkExistingCriteria();
+  }, [selectedDate, activeCriteria, courseId, savedCriteria]);
+
+  // Show criteria dialog when date is selected but no criteria is active
+  useEffect(() => {
+    if (selectedDate && !activeCriteria && !showCriteriaDialog) {
+      console.log('Date selected but no criteria - showing dialog');
+      setShowCriteriaDialog(true);
+    }
+  }, [selectedDate, activeCriteria, showCriteriaDialog]);
+
   // Fetch saved criteria on mount
   useEffect(() => {
     const fetchCriteria = async () => {
-      if (!session?.user?.id) console.log('No user ID');
+      if (!session?.user?.id) {
+        console.error('No user ID found in session');
+        return;
+      }
 
       try {
-        const response = await fetch(`/api/courses/${courseId}/criteria`);
-        if (!response.ok) throw new Error('Failed to fetch criteria');
-        const data = await response.json();
-        setSavedCriteria(data);
-      } catch (error) {
-        console.error('Error fetching criteria:', error);
-        toast.error('Failed to load saved criteria');
+        const response = await axiosInstance.get(
+          `/courses/${courseId}/criteria`,
+        );
+        setSavedCriteria(response.data);
+      } catch (error: any) {
+        console.error('Error fetching criteria:', {
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+        });
+        toast.error(
+          error.response?.data?.error || 'Failed to load saved criteria',
+        );
       }
     };
 
@@ -201,51 +303,81 @@ export function GradingTable({
     }
   }, [courseId, session?.user?.id]);
 
-  // Fetch students when needed
+  // Fetch students when component mounts
   useEffect(() => {
-    if (!showCriteriaDialog && activeCriteria && session?.user?.id) {
-      fetchStudents();
-    }
-  }, [courseId, showCriteriaDialog, activeCriteria, session?.user?.id]);
+    const fetchStudents = async () => {
+      if (!courseId) {
+        console.log('No course ID provided');
+        setStudents([]);
+        return;
+      }
 
-  const fetchStudents = async () => {
-    if (!session?.user?.id) return;
+      try {
+        setIsLoading(true);
+        const response = await axiosInstance.get(
+          `/courses/${courseId}/students`,
+        );
 
-    try {
-      const response = await fetch(`/api/courses/${courseId}/students`);
-      if (!response.ok) throw new Error('Failed to fetch students');
-      const data = await response.json();
-      setStudents(data);
-    } catch (error) {
-      console.error('Error fetching students:', error);
-    }
-  };
+        if (!response.data) {
+          console.log('No data received from API');
+          setStudents([]);
+          return;
+        }
+
+        if (response.data.error) {
+          console.error('API returned an error:', response.data.error);
+          toast.error(response.data.error);
+          setStudents([]);
+          return;
+        }
+
+        if (response.data.students) {
+          // Transform the student data to match our interface
+          const transformedStudents = response.data.students.map(
+            (student: any) => ({
+              id: student.id,
+              firstName: student.firstName,
+              lastName: student.lastName,
+              middleInitial: student.middleInitial,
+              image: student.image,
+              status: student.status,
+              attendanceRecords: student.attendanceRecords,
+            }),
+          );
+          setStudents(transformedStudents);
+        } else {
+          console.log('No students found in course');
+          setStudents([]);
+        }
+      } catch (error) {
+        console.error('Error fetching students:', error);
+        toast.error('Failed to fetch students');
+        setStudents([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchStudents();
+  }, [courseId]);
 
   const handleSaveGrades = async () => {
     if (!session?.user?.id) return;
 
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/courses/${courseId}/grades`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          date: selectedDate,
-          criteriaId: activeCriteria?.id,
-          grades: Object.values(scores).map((score) => ({
-            studentId: score.studentId,
-            scores: score.scores,
-            total: score.total,
-          })),
-        }),
+      const response = await axiosInstance.post(`/courses/${courseId}/grades`, {
+        date: selectedDate,
+        criteriaId: activeCriteria?.id,
+        grades: Object.values(scores).map((score) => ({
+          studentId: score.studentId,
+          scores: score.scores,
+          total: score.total,
+        })),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to save grades');
-      }
-
+      const created = response.data;
+      setScores({});
       toast.success('Grades saved successfully');
     } catch (error) {
       console.error('Error saving grades:', error);
@@ -343,23 +475,18 @@ export function GradingTable({
 
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/courses/${courseId}/criteria`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const response = await axiosInstance.post(
+        `/courses/${courseId}/criteria`,
+        {
           name: newCriteria.name,
           rubrics: JSON.stringify(newCriteria.rubricDetails),
-          scoringRange: parseInt(newCriteria.scoringRange),
-          passingScore: parseInt(newCriteria.passingScore),
+          scoringRange: newCriteria.scoringRange,
+          passingScore: newCriteria.passingScore,
           userId: session.user.id,
-        }),
-      });
+        },
+      );
 
-      if (!response.ok) throw new Error('Failed to create criteria');
-
-      const created = await response.json();
+      const created = response.data;
       setSavedCriteria((prev) => [created, ...prev]);
       setSelectedCriteria(created.id);
       setActiveCriteria(created);
@@ -407,9 +534,14 @@ export function GradingTable({
     });
   };
 
-  const filteredStudents = students.filter((student) =>
-    student.name.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
+  const filteredStudents = Array.isArray(students)
+    ? students.filter((student) => {
+        const firstName = student.firstName?.toLowerCase() || '';
+        const lastName = student.lastName?.toLowerCase() || '';
+        const searchTerm = searchQuery.toLowerCase();
+        return firstName.includes(searchTerm) || lastName.includes(searchTerm);
+      })
+    : [];
 
   return (
     <>
@@ -620,6 +752,39 @@ export function GradingTable({
                       </SelectContent>
                     </Select>
                   </div>
+                  <div className='grid gap-4'>
+                    <div className='grid gap-2'>
+                      <label htmlFor='date'>Date</label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant={'outline'}
+                            className={cn(
+                              'w-full justify-start text-left font-normal',
+                              !selectedDate && 'text-muted-foreground',
+                            )}
+                          >
+                            <CalendarIcon className='mr-2 h-4 w-4' />
+                            {selectedDate ? (
+                              format(selectedDate, 'PPP')
+                            ) : (
+                              <span>Pick a date</span>
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className='w-auto p-0' align='start'>
+                          <Calendar
+                            mode='single'
+                            selected={selectedDate}
+                            onSelect={onDateSelect}
+                            initialFocus
+                            disabled={(date) => date > new Date()}
+                            defaultMonth={new Date()}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button variant='outline' onClick={handleDialogClose}>
@@ -677,109 +842,129 @@ export function GradingTable({
             </Button>
           </div>
 
-          <div className='relative overflow-x-auto'>
-            <div className='min-w-full inline-block align-middle'>
-              <div className='overflow-x-auto border rounded-lg'>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className='sticky left-0 bg-white z-10 min-w-[200px]'>
-                        Name
-                      </TableHead>
-                      {rubricDetails.map((rubric, i) => (
-                        <TableHead key={i} className='min-w-[150px]'>
-                          <Input
-                            value={rubric.name}
-                            onChange={(e) => {
-                              const newRubrics = [...rubricDetails];
-                              newRubrics[i] = {
-                                ...rubric,
-                                name: e.target.value,
-                              };
-                              setRubricDetails(newRubrics);
-                            }}
-                            className='w-full mb-1'
-                            placeholder={`Rubric ${i + 1}`}
-                          />
-                          <Input
-                            type='number'
-                            value={rubric.percentage}
-                            onChange={(e) => {
-                              const newRubrics = [...rubricDetails];
-                              newRubrics[i] = {
-                                ...rubric,
-                                percentage: parseInt(e.target.value) || 0,
-                              };
-                              setRubricDetails(newRubrics);
-                            }}
-                            className='w-full'
-                            min={0}
-                            max={100}
-                            placeholder='Percentage'
-                          />
+          {isLoading ? (
+            <div className='flex items-center justify-center h-32'>
+              <Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
+            </div>
+          ) : filteredStudents.length === 0 ? (
+            <div className='flex items-center justify-center h-32 text-muted-foreground'>
+              No students in this course
+            </div>
+          ) : (
+            <div className='relative overflow-x-auto'>
+              <div className='min-w-full inline-block align-middle'>
+                <div className='overflow-x-auto border rounded-lg'>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className='sticky left-0 bg-white z-10 min-w-[200px]'>
+                          Name
                         </TableHead>
-                      ))}
-                      <TableHead className='min-w-[100px]'>Total</TableHead>
-                      <TableHead className='min-w-[100px]'>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredStudents.map((student) => {
-                      const studentScore = scores[student.id] || {
-                        studentId: student.id,
-                        scores: new Array(activeCriteria.rubrics).fill(0),
-                        total: 0,
-                      };
-
-                      return (
-                        <TableRow key={student.id}>
-                          <TableCell className='sticky left-0 bg-white z-10'>
-                            {student.name}
-                          </TableCell>
-                          {studentScore.scores.map((score, index) => (
-                            <TableCell key={index}>
+                        {rubricDetails.map((rubric, i) => (
+                          <TableHead key={i} className='min-w-[150px]'>
+                            <div className='flex flex-col gap-1'>
                               <Input
-                                type='number'
-                                min={1}
-                                max={activeCriteria.scoringRange}
-                                value={score}
-                                onChange={(e) =>
-                                  handleScoreChange(
-                                    student.id,
-                                    index,
-                                    parseInt(e.target.value) || 0,
-                                  )
-                                }
+                                value={rubric.name}
+                                onChange={(e) => {
+                                  const newRubrics = [...rubricDetails];
+                                  newRubrics[i] = {
+                                    ...rubric,
+                                    name: e.target.value,
+                                  };
+                                  setRubricDetails(newRubrics);
+                                }}
+                                className='w-full'
+                                placeholder={`Rubric ${i + 1}`}
                               />
+                              <div className='flex items-center gap-2'>
+                                <Input
+                                  type='number'
+                                  value={rubric.percentage}
+                                  onChange={(e) => {
+                                    const newRubrics = [...rubricDetails];
+                                    newRubrics[i] = {
+                                      ...rubric,
+                                      percentage: parseInt(e.target.value) || 0,
+                                    };
+                                    setRubricDetails(newRubrics);
+                                  }}
+                                  className='w-20'
+                                  min={0}
+                                  max={100}
+                                />
+                                <span className='text-sm text-muted-foreground'>
+                                  %
+                                </span>
+                              </div>
+                            </div>
+                          </TableHead>
+                        ))}
+                        <TableHead className='min-w-[100px]'>Total</TableHead>
+                        <TableHead className='min-w-[100px]'>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredStudents.map((student) => {
+                        const studentScore = scores[student.id] || {
+                          studentId: student.id,
+                          scores: new Array(activeCriteria.rubrics).fill(0),
+                          total: 0,
+                        };
+
+                        return (
+                          <TableRow key={student.id}>
+                            <TableCell className='sticky left-0 bg-white z-10'>
+                              {`${student.lastName}, ${student.firstName}${
+                                student.middleInitial
+                                  ? ` ${student.middleInitial}.`
+                                  : ''
+                              }`}
                             </TableCell>
-                          ))}
-                          <TableCell>
-                            {studentScore.total.toFixed(2)}%
-                          </TableCell>
-                          <TableCell>
-                            <span
-                              className={cn(
-                                'px-2 py-1 rounded-full text-xs font-medium',
-                                studentScore.total >=
-                                  Number(activeCriteria.passingScore)
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-red-100 text-red-800',
-                              )}
-                            >
-                              {studentScore.total >=
-                              Number(activeCriteria.passingScore)
-                                ? 'Pass'
-                                : 'Fail'}
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                            {studentScore.scores.map((score, index) => (
+                              <TableCell key={index}>
+                                <Input
+                                  type='number'
+                                  min={1}
+                                  max={activeCriteria.scoringRange}
+                                  value={score}
+                                  onChange={(e) =>
+                                    handleScoreChange(
+                                      student.id,
+                                      index,
+                                      parseInt(e.target.value) || 0,
+                                    )
+                                  }
+                                />
+                              </TableCell>
+                            ))}
+                            <TableCell>
+                              {studentScore.total.toFixed(2)}%
+                            </TableCell>
+                            <TableCell>
+                              <span
+                                className={cn(
+                                  'px-2 py-1 rounded-full text-xs font-medium',
+                                  studentScore.total >=
+                                    Number(activeCriteria.passingScore)
+                                    ? 'bg-green-100 text-green-800'
+                                    : 'bg-red-100 text-red-800',
+                                )}
+                              >
+                                {studentScore.total >=
+                                Number(activeCriteria.passingScore)
+                                  ? 'Pass'
+                                  : 'Fail'}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </>

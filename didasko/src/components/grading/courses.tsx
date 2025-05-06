@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/pagination';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
+import axiosInstance from '@/lib/axios';
 
 interface Course {
   id: string;
@@ -83,10 +84,12 @@ export default function Courses() {
 
   const fetchUserIdByEmail = async (email: string) => {
     try {
-      const response = await fetch(`/api/users?email=${email}`);
-      if (!response.ok) throw new Error('Failed to fetch user');
-      const data = await response.json();
-      return data.id;
+      const response = await axiosInstance.get('/users', {
+        params: {
+          email: email,
+        },
+      });
+      return response.data.user?.id;
     } catch (error) {
       console.error('Error fetching user:', error);
       return null;
@@ -106,15 +109,15 @@ export default function Courses() {
     }
 
     try {
-      const response = await fetch(
-        `/api/courses/schedules?facultyId=${userId}`,
-      );
-      const data = await response.json();
-      if (response.ok) {
-        setSchedules(data);
-      }
+      const response = await axiosInstance.get('/courses', {
+        params: {
+          facultyId: userId,
+          semester: 'first',
+        },
+      });
+      setSchedules(response.data);
     } catch (error) {
-      console.error('Error in fetchSchedules:', error);
+      console.error('Error fetching courses:', error);
     } finally {
       setIsLoading(false);
     }

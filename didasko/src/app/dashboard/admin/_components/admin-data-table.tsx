@@ -65,6 +65,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import * as XLSX from 'xlsx';
+import axiosInstance from '@/lib/axios';
 
 interface User {
   id: string;
@@ -746,8 +747,8 @@ export function AdminDataTable({
   const refreshTableData = async () => {
     try {
       setIsRefreshing(true);
-      const response = await fetch('/api/users');
-      const data = await response.json();
+      const response = await axiosInstance.get('/api/users');
+      const data = await response.data;
       if (data.users) {
         setTableData(data.users);
       }
@@ -759,238 +760,34 @@ export function AdminDataTable({
   };
 
   const handleImport = async () => {
-    if (!selectedFile || !isValidFile) {
-      toast.error('Please select a valid file first');
-      return;
-    }
-
     try {
-      setImportProgress({
-        current: 0,
-        total: 0,
-        status: 'Starting import process...',
-        hasError: false,
-      });
-      console.log('Starting import process...');
-      const formData = new FormData();
+      const usersToImport = previewData.map((row) => ({
+        lastName: row['Last Name'],
+        firstName: row['First Name'],
+        middleInitial: row['Middle Initial'],
+        email: row['Email'],
+        department: row['Department'],
+        workType: row['Work Type'] as WorkType,
+        role: row['Role'] as Role,
+        permission: row['Permission'] as Permission,
+      }));
 
-      console.log('File details:', {
-        name: selectedFile.name,
-        type: selectedFile.type,
-        size: selectedFile.size,
-      });
-
-      formData.append('file', selectedFile, selectedFile.name);
-
-      console.log('Sending file to server...');
-      setImportProgress((prev) => ({ ...prev!, status: 'Uploading file...' }));
-
-      const response = await fetch('/api/users/import', {
-        method: 'POST',
-        body: formData,
+      const response = await axiosInstance.post('/users/import', {
+        users: usersToImport,
       });
 
-      console.log('Response status:', response.status);
-      console.log(
-        'Response headers:',
-        Object.fromEntries(response.headers.entries()),
-      );
-
-      const data = await response.json();
-      console.log('Response data:', data);
-
-      if (!response.ok) {
-        console.error('Server error:', data);
-        const errorMessage =
-          data.error || 'Failed to import users. Server returned an error.';
-        console.log('Error details:', {
-          status: response.status,
-          errorMessage,
-          fullResponse: data,
-        });
-        setImportProgress((prev) => ({
-          ...prev!,
-          hasError: true,
-          error: errorMessage,
-          status: 'Import failed',
-        }));
-        throw new Error(errorMessage);
-      }
-
-      // Log the exact response structure for debugging
-      console.log('FULL IMPORT RESPONSE:', JSON.stringify(data, null, 2));
-      console.log('Import errors detail:', data.errors);
-
-      // Handle the case where server indicates success
-      if (data.success) {
-        // Display immediately what was successful
-        console.log('Successful imports:', data.importedUsers);
-
-        // Create a formatted message showing the import summary
-        const summary = `Imported: ${data.imported} of ${data.total} records`;
-        console.log(summary);
-
-        // Format a complete message for the user
-        let importMessage = '';
-        if (data.imported > 0) {
-          importMessage += `<strong>${data.imported}</strong> record${
-            data.imported !== 1 ? 's' : ''
-          } imported successfully. `;
+      if (response.status === 200) {
+        toast.success('Users imported successfully');
+        setPreviewData([]);
+        setShowImportPreview(false);
+        if (onUserAdded) {
+          onUserAdded();
         }
-        if (data.errors && data.errors.length > 0) {
-          importMessage += `<strong>${data.errors.length}</strong> record${
-            data.errors.length !== 1 ? 's' : ''
-          } skipped (already exist). `;
-        }
-
-        // Update the progress to show the results
-        setImportProgress((prev) => ({
-          ...prev!,
-          hasError: false,
-          error: importMessage.replace(/<\/?strong>/g, ''),
-          status: 'Import completed',
-        }));
-
-        // Build a more detailed display for the notification
-        if (data.importedUsers && data.importedUsers.length > 0) {
-          // Display imported users in a normal message
-          try {
-            // Directly use a div for the notification without relying on toast.success
-            toast(
-              <div className='space-y-2 p-2 bg-green-50 border border-green-200 rounded'>
-                <p className='font-medium text-green-800'>
-                  {data.imported} record{data.imported !== 1 ? 's' : ''}{' '}
-                  imported successfully:
-                </p>
-                <ul className='list-disc pl-4'>
-                  {data.importedUsers.map((user: any, index: number) => (
-                    <li key={index} className='text-sm text-green-700'>
-                      {user.name} ({user.email})
-                    </li>
-                  ))}
-                </ul>
-              </div>,
-              { duration: 5000 },
-            );
-          } catch (e) {
-            console.error('Error displaying success toast:', e);
-          }
-        }
-
-        // Display duplicate/error messages if needed
-        if (data.errors && data.errors.length > 0) {
-          try {
-            // Get the unique constraint violations (duplicates)
-            const duplicates = data.errors.filter(
-              (err: any) =>
-                err.message &&
-                (err.message.includes('unique constraint failed') ||
-                  err.message.includes('already exists')),
-            );
-
-            if (duplicates.length > 0) {
-              // Display duplicates in an info message
-              toast(
-                <div className='space-y-2 p-2 bg-amber-50 border border-amber-200 rounded'>
-                  <p className='font-medium text-amber-800'>
-                    {duplicates.length} record
-                    {duplicates.length !== 1 ? 's' : ''} skipped (already
-                    exist):
-                  </p>
-                  <ul className='list-disc pl-4'>
-                    {duplicates.slice(0, 3).map((err: any, index: number) => (
-                      <li key={index} className='text-sm text-amber-700'>
-                        {err.email} (Row {err.row})
-                      </li>
-                    ))}
-                    {duplicates.length > 3 && (
-                      <li className='text-sm text-amber-700'>
-                        ...and {duplicates.length - 3} more
-                      </li>
-                    )}
-                  </ul>
-                </div>,
-                { duration: 5000 },
-              );
-            }
-
-            // Get other errors
-            const otherErrors = data.errors.filter(
-              (err: any) =>
-                !err.message ||
-                (!err.message.includes('unique constraint failed') &&
-                  !err.message.includes('already exists')),
-            );
-
-            if (otherErrors.length > 0) {
-              // Display other errors in an error message
-              toast(
-                <div className='space-y-2 p-2 bg-red-50 border border-red-200 rounded'>
-                  <p className='font-medium text-red-800'>
-                    {otherErrors.length} error
-                    {otherErrors.length !== 1 ? 's' : ''} occurred:
-                  </p>
-                  <ul className='list-disc pl-4'>
-                    {otherErrors.slice(0, 3).map((err: any, index: number) => (
-                      <li key={index} className='text-sm text-red-700'>
-                        Row {err.row}: {err.message || 'Unknown error'}
-                      </li>
-                    ))}
-                    {otherErrors.length > 3 && (
-                      <li className='text-sm text-red-700'>
-                        ...and {otherErrors.length - 3} more
-                      </li>
-                    )}
-                  </ul>
-                </div>,
-                { duration: 5000 },
-              );
-            }
-          } catch (e) {
-            console.error('Error displaying error toast:', e);
-          }
-        }
-
-        // Refresh table data
-        refreshTableData();
       } else {
-        // Server indicated the import was not successful
-        console.error('Import unsuccessful. Data structure:', data);
-
-        // Update progress to show failure
-        setImportProgress((prev) => ({
-          ...prev!,
-          hasError: true,
-          error: data.error || 'Import failed',
-          status: 'Import failed',
-        }));
-
-        // Display error notification
-        try {
-          toast(
-            <div className='space-y-2 p-2 bg-red-50 border border-red-200 rounded'>
-              <p className='font-medium text-red-800'>Import failed:</p>
-              <p className='text-sm text-red-700'>
-                {data.error || 'Unknown error occurred'}
-              </p>
-            </div>,
-            { duration: 5000 },
-          );
-        } catch (e) {
-          console.error('Error displaying error toast:', e);
-          // Fallback to a simpler notification
-          alert(`Import failed: ${data.error || 'Unknown error'}`);
-        }
+        throw new Error('Failed to import users');
       }
     } catch (error) {
-      console.error('Error in import process:', error);
-      setImportProgress((prev) => ({
-        ...prev!,
-        hasError: true,
-        error:
-          error instanceof Error ? error.message : 'Failed to import users',
-        status: 'Import failed',
-      }));
+      console.error('Error importing users:', error);
       toast.error(
         error instanceof Error ? error.message : 'Failed to import users',
       );

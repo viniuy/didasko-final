@@ -41,6 +41,7 @@ import {
 import { useSession } from 'next-auth/react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
+import axiosInstance from '@/lib/axios';
 
 interface Note {
   id: string;
@@ -123,23 +124,17 @@ export default function Notes() {
   async function fetchNotes() {
     try {
       setIsLoading(true);
+      const response = await axiosInstance.get('/notes');
+      const data = response.data;
 
-      const response = await fetch('/api/notes');
-
-      if (response.ok) {
-        const data = await response.json();
-
-        if (Array.isArray(data.notes)) {
-          const processedNotes = data.notes.map((note: any) => ({
-            ...note,
-            date: new Date(note.date),
-          }));
-          setNoteList(processedNotes);
-        } else {
-          setNoteList([]);
-        }
+      if (Array.isArray(data.notes)) {
+        const processedNotes = data.notes.map((note: any) => ({
+          ...note,
+          date: new Date(note.date),
+        }));
+        setNoteList(processedNotes);
       } else {
-        throw new Error('Failed to fetch notes');
+        setNoteList([]);
       }
     } catch (error) {
       showAlert('Error', 'Failed to fetch notes', 'error');
@@ -253,16 +248,14 @@ export default function Notes() {
         return;
       }
 
-      const response = await fetch(`/api/notes/${noteToDelete}`, {
-        method: 'DELETE',
-      });
+      const response = await axiosInstance.delete(`/notes/${noteToDelete}`);
 
       console.log('Delete response status:', response.status);
 
-      const responseText = await response.text();
+      const responseText = await response.data;
       console.log('Delete response text:', responseText);
 
-      if (response.ok) {
+      if (response.status === 200) {
         console.log('Note deleted successfully');
         setOpenDelete(false);
         setNoteToDelete(null);

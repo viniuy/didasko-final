@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { AttendanceStatus } from '@prisma/client';
+import { AttendanceStats } from '@/types/attendance';
 
 export async function GET(
   request: Request,
@@ -47,10 +48,15 @@ export async function GET(
     });
 
     if (!mostRecentAttendance) {
-      return NextResponse.json({
-        totalAbsents: 0,
+      const stats: AttendanceStats = {
+        totalStudents: course.students.length,
+        totalPresent: 0,
+        totalAbsent: 0,
+        totalLate: 0,
+        attendanceRate: 0,
         lastAttendanceDate: null,
-      });
+      };
+      return NextResponse.json(stats);
     }
 
     // Get all attendance records for the most recent date
@@ -70,21 +76,44 @@ export async function GET(
       attendanceRecords.map((record) => [record.studentId, record.status]),
     );
 
-    // Count absents:
-    // 1. Students marked as ABSENT in the database
-    // 2. Students not present in the attendance records (NOT_SET)
-    let totalAbsents = 0;
+    // Count attendance statuses
+    let totalPresent = 0;
+    let totalAbsent = 0;
+    let totalLate = 0;
+
     course.students.forEach((student: { id: string }) => {
       const status = attendanceMap.get(student.id);
-      if (status === 'ABSENT' || !status) {
-        totalAbsents++;
+      switch (status) {
+        case 'PRESENT':
+          totalPresent++;
+          break;
+        case 'ABSENT':
+          totalAbsent++;
+          break;
+        case 'LATE':
+          totalLate++;
+          break;
+        default:
+          totalAbsent++; // Count NOT_SET as absent
       }
     });
 
-    return NextResponse.json({
-      totalAbsents,
+    const totalStudents = course.students.length;
+    const attendanceRate =
+      totalStudents > 0
+        ? ((totalPresent + totalLate) / totalStudents) * 100
+        : 0;
+
+    const stats: AttendanceStats = {
+      totalStudents,
+      totalPresent,
+      totalAbsent,
+      totalLate,
+      attendanceRate,
       lastAttendanceDate: mostRecentAttendance.date,
-    });
+    };
+
+    return NextResponse.json(stats);
   } catch (error) {
     console.error('Error fetching attendance stats:', error);
     return NextResponse.json(

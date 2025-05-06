@@ -1,42 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthCookie, verifyToken } from '@/lib/auth';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth-options';
 
 export async function GET(
-  request: NextRequest,
+  request: Request,
   { params }: { params: { courseId: string } },
 ) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
     const criteriaId = searchParams.get('criteriaId');
 
-    console.log('GET grades request params:', {
-      courseId: params.courseId,
-      date,
-      criteriaId,
-    });
-
     if (!date || !criteriaId) {
-      console.log('Missing required parameters');
       return NextResponse.json(
         { error: 'Date and criteriaId are required' },
         { status: 400 },
       );
     }
 
+    // Ensure params is properly awaited
+    const courseId = params.courseId;
+
     const grades = await prisma.grade.findMany({
       where: {
-        courseId: params.courseId,
+        courseId: courseId,
         criteriaId: criteriaId,
         date: new Date(date),
       },
       include: {
-        student: true,
+        student: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            middleInitial: true,
+            image: true,
+          },
+        },
       },
     });
 
     console.log('Found grades:', grades);
+
     return NextResponse.json(grades);
   } catch (error) {
     console.error('Error fetching grades:', error);

@@ -20,6 +20,7 @@ import {
 import { useToast } from '@/components/ui/use-toast';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import axiosInstance from '@/lib/axios';
 
 interface AddCourseSheetProps {
   open: boolean;
@@ -51,29 +52,18 @@ export default function AddCourseSheet({
     };
 
     try {
-      const response = await fetch('/api/courses', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to create course');
-      }
-
+      await axiosInstance.post('/courses', data);
+      router.refresh();
+      onOpenChange(false);
       toast({
         title: 'Success',
-        description: 'Course created successfully',
+        description: 'Course added successfully',
       });
-
-      onOpenChange(false);
-      router.refresh();
     } catch (error) {
+      console.error('Error adding course:', error);
       toast({
         title: 'Error',
-        description: 'Failed to create course',
+        description: 'Failed to add course',
         variant: 'destructive',
       });
     } finally {

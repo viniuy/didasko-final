@@ -55,6 +55,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import axiosInstance from '@/lib/axios';
 
 // Add interface for Excel data
 interface ExcelRow {
@@ -175,39 +176,18 @@ export default function StudentList() {
   });
   const [showMarkAllConfirm, setShowMarkAllConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const fetchStudents = async () => {
     if (!courseId) return;
 
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/courses/${courseId}/students`, {
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch students');
-      }
-
-      const data = await response.json();
-
-      // Initialize students with empty attendance records
-      const studentsWithEmptyRecords: Student[] = data.students.map(
-        (student: ApiStudent) => ({
-          id: student.id,
-          name: student.name,
-          image: student.image,
-          status: 'NOT_SET' as const,
-          attendanceRecords: [],
-        }),
-      );
-      setStudentList(studentsWithEmptyRecords);
-      setCourseInfo(data.course);
+      const response = await axiosInstance.get(`/courses/${courseId}/students`);
+      setStudentList(response.data.students);
+      setCourseInfo(response.data.course);
     } catch (error) {
-      console.error('Error in fetchStudents:', error);
+      console.error('Error fetching students:', error);
       setStudentList([]);
     } finally {
       setIsLoading(false);
@@ -220,47 +200,35 @@ export default function StudentList() {
     try {
       setIsDateLoading(true);
       const dateStr = format(date, 'yyyy-MM-dd');
-      const attendanceResponse = await fetch(
-        `/api/courses/${courseId}/attendance?date=${dateStr}`,
+      const attendanceResponse = await axiosInstance.get(
+        `/courses/${courseId}/attendance`,
         {
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
+          params: {
+            date: dateStr,
           },
         },
       );
 
-      if (attendanceResponse.ok) {
-        const attendanceData = await attendanceResponse.json();
-        const attendanceMap = new Map(
-          attendanceData.map((record: AttendanceRecord) => [
-            record.studentId,
-            record,
-          ]),
-        );
+      const attendanceData = attendanceResponse.data;
+      const attendanceMap = new Map(
+        attendanceData.map((record: AttendanceRecord) => [
+          record.studentId,
+          record.status,
+        ]),
+      );
 
-        setStudentList((prevStudents) =>
-          prevStudents.map((student) => {
-            const attendanceRecord = attendanceMap.get(student.id) as
-              | AttendanceRecord
-              | undefined;
-            return {
-              ...student,
-              status: attendanceRecord?.status || 'NOT_SET',
-              attendanceRecords: attendanceRecord ? [attendanceRecord] : [],
-            } satisfies Student;
-          }),
-        );
-      } else {
-        // Reset attendance status if no records found
-        setStudentList((prevStudents) =>
-          prevStudents.map((student) => ({
+      setStudentList((prevStudents) =>
+        prevStudents.map((student) => {
+          const attendanceRecord = attendanceMap.get(student.id) as
+            | AttendanceRecord
+            | undefined;
+          return {
             ...student,
-            status: 'NOT_SET',
-            attendanceRecords: [],
-          })),
-        );
-      }
+            status: attendanceRecord?.status || 'NOT_SET',
+            attendanceRecords: attendanceRecord ? [attendanceRecord] : [],
+          } satisfies Student;
+        }),
+      );
     } catch (error) {
       console.error('Error fetching attendance:', error);
     } finally {
@@ -269,11 +237,13 @@ export default function StudentList() {
   };
 
   const fetchAttendanceStats = async () => {
+    if (!courseId) return;
+
     try {
-      const response = await fetch(`/api/courses/${courseId}/attendance/stats`);
-      if (!response.ok) throw new Error('Failed to fetch attendance stats');
-      const data = await response.json();
-      setAttendanceStats(data);
+      const response = await axiosInstance.get(
+        `/courses/${courseId}/attendance/stats`,
+      );
+      setAttendanceStats(response.data);
     } catch (error) {
       console.error('Error fetching attendance stats:', error);
     }
@@ -362,38 +332,46 @@ export default function StudentList() {
     currentPage * itemsPerPage,
   );
 
-  const handleImageUpload = (index: number) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/jpeg,image/png';
+  const handleImageUpload = async (studentId: string, file: File) => {
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
 
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          if (e.target?.result) {
-            setTempImage({
-              index,
-              dataUrl: e.target.result as string,
-            });
-          }
-        };
-        reader.readAsDataURL(file);
-      }
-    };
-    input.click();
+      const response = await axiosInstance.post(
+        `/courses/${courseId}/students/${studentId}/image`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        },
+      );
+
+      // Update the student's image in the list
+      setStudentList((prev) =>
+        prev.map((student) =>
+          student.id === studentId
+            ? { ...student, image: response.data.image }
+            : student,
+        ),
+      );
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast.error('Failed to upload image');
+    }
   };
 
-  const handleSaveChanges = async (index: number) => {
+  const handleSaveImageChanges = async (index: number) => {
     if (!tempImage || tempImage.index !== index) return;
 
     try {
       setIsSaving(true);
       const formData = new FormData();
       // Convert base64 to blob
-      const base64Response = await fetch(tempImage.dataUrl);
-      const blob = await base64Response.blob();
+      const base64Response = await axiosInstance.get(tempImage.dataUrl, {
+        responseType: 'arraybuffer',
+      });
+      const blob = new Blob([base64Response.data]);
 
       // Get file extension from data URL
       const ext = tempImage.dataUrl.split(';')[0].split('/')[1];
@@ -403,31 +381,16 @@ export default function StudentList() {
       const file = new File([blob], fileName, { type: `image/${ext}` });
       formData.append('image', file);
 
-      const uploadResponse = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!uploadResponse.ok) {
-        const errorData = await uploadResponse.json();
-        throw new Error(errorData.error || 'Failed to upload image');
-      }
-
-      const { imageUrl } = await uploadResponse.json();
+      const uploadResponse = await axiosInstance.post('/upload', formData);
+      const { imageUrl } = uploadResponse.data;
 
       // Update the student's image in the database
       const student = studentList[index];
-      const updateResponse = await fetch(`/api/students/${student.id}/image`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ imageUrl }),
-      });
-
-      if (!updateResponse.ok) {
-        throw new Error('Failed to update student image in database');
-      }
+      const updateResponse = await axiosInstance.put(
+        `/students/${student.id}/image`,
+        { imageUrl },
+      );
+      const updatedStudent = updateResponse.data;
 
       // Update student list with new image URL
       setStudentList((prev) =>
@@ -472,34 +435,17 @@ export default function StudentList() {
 
         // Delete the image file from public/uploads
         if (student.image) {
-          const deleteResponse = await fetch('/api/upload', {
-            method: 'DELETE',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ imageUrl: student.image }),
+          const deleteResponse = await axiosInstance.delete('/upload', {
+            data: { imageUrl: student.image },
           });
-
-          if (!deleteResponse.ok) {
-            console.error('Failed to delete image file');
-          }
         }
 
         // Update the database
-        const updateResponse = await fetch(
-          `/api/students/${student.id}/image`,
-          {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ imageUrl: null }),
-          },
+        const updateResponse = await axiosInstance.put(
+          `/students/${student.id}/image`,
+          { imageUrl: null },
         );
-
-        if (!updateResponse.ok) {
-          throw new Error('Failed to remove image from database');
-        }
+        const updatedStudent = updateResponse.data;
 
         // Update local state
         setStudentList((prev) =>
@@ -666,22 +612,11 @@ export default function StudentList() {
     image?: string;
   }) => {
     try {
-      const response = await fetch('/api/students', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...student,
-          courseId,
-        }),
+      const response = await axiosInstance.post('/students', {
+        ...student,
+        courseId,
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to add student');
-      }
-
-      const newStudent = await response.json();
+      const newStudent = response.data;
 
       const fullName = `${newStudent.lastName}, ${newStudent.firstName}${
         newStudent.middleInitial ? ` ${newStudent.middleInitial}.` : ''
@@ -718,21 +653,13 @@ export default function StudentList() {
         courseId: courseId,
       });
 
-      const response = await fetch(`/api/courses/${courseId}/students`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const response = await axiosInstance.post(
+        `/courses/${courseId}/students`,
+        {
           studentId: student.id,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Error response:', errorData);
-        throw new Error(errorData.error || 'Failed to add existing student');
-      }
+        },
+      );
+      const addedStudent = response.data;
 
       const fullName = `${student.lastName}, ${student.firstName}${
         student.middleInitial ? ` ${student.middleInitial}.` : ''
@@ -756,73 +683,45 @@ export default function StudentList() {
     }
   };
 
-  const saveAttendanceChanges = async () => {
-    if (!selectedDate || Object.keys(unsavedChanges).length === 0) {
-      return;
-    }
-
+  const handleSaveChanges = async () => {
     try {
-      setIsSaving(true);
-      const response = await fetch(`/api/courses/${courseId}/attendance`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          date: format(selectedDate, 'yyyy-MM-dd'),
-          attendance: Object.entries(unsavedChanges).map(
-            ([studentId, status]) => {
-              const student = studentList.find((s) => s.id === studentId);
-              const existingRecord = student?.attendanceRecords.find(
-                (record) => record.date === format(selectedDate, 'yyyy-MM-dd'),
-              );
-              return {
-                studentId,
-                status,
-                id: existingRecord?.id,
-              };
-            },
+      const response = await axiosInstance.post(
+        `/courses/${courseId}/attendance`,
+        {
+          date: selectedDate?.toISOString(),
+          records: Object.entries(unsavedChanges).map(
+            ([studentId, status]) => ({
+              studentId,
+              status,
+            }),
           ),
-        }),
-      });
+        },
+      );
 
-      if (!response.ok) {
-        throw new Error('Failed to save attendance');
-      }
-
-      const updatedRecords = await response.json();
-
-      // Update the local state with the new/updated records
+      // Update the attendance records with the saved changes
       setStudentList((prev) =>
         prev.map((student) => {
-          const updatedRecord = updatedRecords.records.find(
-            (record: any) => record.studentId === student.id,
-          );
-          if (updatedRecord) {
-            return {
-              ...student,
-              status: updatedRecord.status,
-              attendanceRecords: student.attendanceRecords.map((record) =>
-                record.date === updatedRecord.date ? updatedRecord : record,
-              ),
-            };
-          }
-          return student;
+          const newStatus = unsavedChanges[student.id] as AttendanceStatus;
+          return {
+            ...student,
+            status: newStatus,
+            attendanceRecords: student.attendanceRecords.map((record) =>
+              record.date === format(selectedDate || new Date(), 'yyyy-MM-dd')
+                ? { ...record, status: newStatus }
+                : record,
+            ),
+          };
         }),
       );
 
-      // Clear unsaved changes after successful save
+      // Clear unsaved changes
       setUnsavedChanges({});
       toast.success('Attendance saved successfully');
     } catch (error) {
       console.error('Error saving attendance:', error);
       toast.error('Failed to save attendance');
-    } finally {
-      setIsSaving(false);
     }
   };
-
-  const hasUnsavedChanges = Object.keys(unsavedChanges).length > 0;
 
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -862,56 +761,28 @@ export default function StudentList() {
         recordsToDelete: existingRecordIds,
       };
 
-      const response = await fetch(
-        `/api/courses/${courseId}/attendance/clear`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify(payload),
-        },
+      await axiosInstance.post(
+        `/courses/${courseId}/attendance/clear`,
+        payload,
       );
 
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        const errorMessage =
-          data.error ||
-          `Failed to clear attendance records (${response.status}: ${response.statusText})`;
-        throw new Error(errorMessage);
-      }
-
-      // Update local state - remove all attendance records for this date
-      setStudentList((prev) =>
-        prev.map((student) => ({
+      // Update the local state
+      setStudentList((prevStudents) =>
+        prevStudents.map((student) => ({
           ...student,
-          status: 'NOT_SET' as AttendanceStatusWithNotSet,
+          status: 'NOT_SET',
           attendanceRecords: student.attendanceRecords.filter(
-            (record) => record.date.split('T')[0] !== dateStr,
+            (record) => record.date !== format(selectedDate, 'yyyy-MM-dd'),
           ),
         })),
       );
 
-      // Clear any unsaved changes
       setUnsavedChanges({});
-      setShowClearConfirm(false);
-
-      toast.success(
-        `Successfully cleared attendance for ${format(
-          selectedDate,
-          'MMMM d, yyyy',
-        )}`,
-        { duration: 3000 },
-      );
+      setHasUnsavedChanges(false);
+      toast.success('Attendance cleared successfully');
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'An unexpected error occurred while clearing attendance. Please try again.',
-        { duration: 5000 },
-      );
+      console.error('Error clearing attendance:', error);
+      toast.error('Failed to clear attendance');
     } finally {
       setIsSaving(false);
     }
@@ -1080,7 +951,7 @@ export default function StudentList() {
           {hasUnsavedChanges && (
             <Button
               className='bg-[#124A69] hover:bg-[#0D3A54] text-white rounded-full px-6 h-10'
-              onClick={saveAttendanceChanges}
+              onClick={handleSaveChanges}
               disabled={isSaving}
             >
               {isSaving ? (
@@ -1147,8 +1018,10 @@ export default function StudentList() {
                   }}
                   index={index}
                   tempImage={tempImage}
-                  onImageUpload={(index) => handleImageUpload(index)}
-                  onSaveChanges={handleSaveChanges}
+                  onImageUpload={(index) =>
+                    handleImageUpload(student.id, new File([], ''))
+                  }
+                  onSaveChanges={handleSaveImageChanges}
                   onRemoveImage={() =>
                     setImageToRemove({ index, name: student.name })
                   }

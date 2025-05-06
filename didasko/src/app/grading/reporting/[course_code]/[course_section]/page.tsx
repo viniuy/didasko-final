@@ -9,39 +9,39 @@ import { Card } from '@/components/ui/card';
 import Link from 'next/link';
 import { ArrowLeft, User, Users } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
+import axios from 'axios';
 
 interface Course {
   id: string;
   code: string;
   title: string;
   description: string | null;
+  section: string;
 }
 
 export default function ReportingTypePage({
   params,
 }: {
-  params: Promise<{ courseId: string }>;
+  params: Promise<{ course_code: string; course_section: string }>;
 }) {
   const [open, setOpen] = React.useState(false);
-  const { courseId } = React.use(params);
+  const { course_code, course_section } = React.use(params);
   const [course, setCourse] = useState<Course | null>(null);
 
   useEffect(() => {
     const fetchCourse = async () => {
       try {
-        const response = await fetch(`/api/courses/${courseId}`);
-        if (!response.ok) throw new Error('Failed to fetch course');
-        const data = await response.json();
-        setCourse(data);
+        const response = await axios.get(`/api/courses/${course_code}`);
+        setCourse(response.data);
       } catch (error) {
         console.error('Error fetching course:', error);
       }
     };
 
-    if (courseId) {
+    if (course_code && course_section) {
       fetchCourse();
     }
-  }, [courseId]);
+  }, [course_code, course_section]);
 
   return (
     <SidebarProvider open={open} onOpenChange={setOpen}>
@@ -65,13 +65,15 @@ export default function ReportingTypePage({
                       {course?.title || 'Loading...'}
                     </h1>
                     <p className='text-sm text-muted-foreground'>
-                      {course?.code || 'Loading...'}
+                      {course?.code} - Section {course?.section || 'Loading...'}
                     </p>
                   </div>
                 </div>
 
                 <div className='grid md:grid-cols-2 gap-6'>
-                  <Link href={`/grading/reporting/${course?.code}/individual`}>
+                  <Link
+                    href={`/grading/reporting/${course_code}/${course_section}/individual`}
+                  >
                     <Card className='p-6 hover:bg-accent transition-colors cursor-pointer h-full'>
                       <div className='flex flex-col items-center text-center space-y-4'>
                         <div className='h-24 w-24 rounded-full bg-secondary flex items-center justify-center'>
@@ -92,7 +94,9 @@ export default function ReportingTypePage({
                     </Card>
                   </Link>
 
-                  <Link href={`/grading/reporting/${course?.code}/group`}>
+                  <Link
+                    href={`/grading/reporting/${course_code}/${course_section}/group`}
+                  >
                     <Card className='p-6 hover:bg-accent transition-colors cursor-pointer h-full'>
                       <div className='flex flex-col items-center text-center space-y-4'>
                         <div className='h-24 w-24 rounded-full bg-secondary flex items-center justify-center'>

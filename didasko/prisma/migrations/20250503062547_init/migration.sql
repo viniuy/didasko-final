@@ -170,7 +170,7 @@ CREATE TABLE "courses" (
     "id" TEXT NOT NULL,
     "code" TEXT NOT NULL,
     "title" TEXT NOT NULL,
-    "description" TEXT,
+    "room" TEXT NOT NULL,
     "semester" TEXT NOT NULL,
     "section" TEXT NOT NULL,
     "facultyId" TEXT NOT NULL,

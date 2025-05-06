@@ -48,6 +48,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { useEffect, useState } from 'react';
+import axiosInstance from '@/lib/axios';
 
 const adminItems = [
   { title: 'Home', url: '/dashboard/admin', icon: Home },
@@ -116,11 +117,6 @@ export function AppSidebar() {
   const { open, setOpen } = useSidebar();
   const { data: session, status } = useSession();
   const pathname = usePathname();
-  const [userData, setUserData] = useState<{
-    name: string;
-    department: string;
-  } | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
 
   const isAdmin = session?.user?.role === 'ADMIN';
   const items = isAdmin ? adminItems : academicHeadItems;
@@ -130,51 +126,18 @@ export function AppSidebar() {
   };
 
   useEffect(() => {
-    const fetchUserData = async () => {
-      if (session?.user?.id) {
-        setIsLoading(true);
-        try {
-          const response = await fetch(
-            `/api/users/by-id?id=${session.user.id}`,
-          );
-          if (response.ok) {
-            const data = await response.json();
-            if (data.user) {
-              setUserData({
-                name: data.user.name,
-                department:
-                  data.user.department ||
-                  (isAdmin ? 'Administrator' : 'Academic Head'),
-              });
-            }
-          }
-        } catch (error) {
-          console.error('Error fetching user data:', error);
-        } finally {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    if (session?.user?.id) {
-      fetchUserData();
-    } else {
-      setIsLoading(false);
-    }
-  }, [session?.user?.id, isAdmin]);
-
-  useEffect(() => {
     if (!open) setIsGradingOpen(false);
   }, [open]);
 
-  if (status === 'loading' || isLoading) {
+  if (status === 'loading') {
     return <SidebarSkeleton />;
   }
 
-  const displayName = userData?.name || 'Loading...';
+  const displayName = session?.user?.name || 'Loading...';
   const displayDepartment =
-    userData?.department || (isAdmin ? 'Administrator' : 'Academic Head');
+    session?.user?.department || (isAdmin ? 'Administrator' : 'Academic Head');
   const avatarInitial = displayName.charAt(0);
+  const userImage = session?.user?.image || undefined;
 
   return (
     <Sidebar
@@ -187,10 +150,7 @@ export function AppSidebar() {
         {/* User Profile */}
         <SidebarHeader className='flex flex-row items-center gap-3 px-2 mt-4'>
           <Avatar className='w-12 h-12 shrink-0'>
-            <AvatarImage
-              src={session?.user?.image || 'https://i.imgur.com/kT3j3Lf.jpeg'}
-              className='object-cover'
-            />
+            <AvatarImage src={userImage} className='object-cover' />
             <AvatarFallback className='text-xl'>{avatarInitial}</AvatarFallback>
           </Avatar>
           <div

@@ -14,6 +14,7 @@ import {
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
+import axiosInstance from '@/lib/axios';
 
 interface Course {
   id: string;
@@ -82,46 +83,24 @@ export default function AttendanceSchedule() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 4;
 
-  const fetchUserIdByEmail = async (email: string) => {
-    try {
-      const response = await fetch(`/api/users?email=${email}`);
-      if (!response.ok) throw new Error('Failed to fetch user');
-      const data = await response.json();
-      return data.id;
-    } catch (error) {
-      console.error('Error fetching user:', error);
-      return null;
-    }
-  };
-
   const fetchSchedules = async () => {
-    if (!session?.user?.email) {
+    if (!session?.user?.id) {
       setIsLoading(false);
-      router.push('/');
-      return;
-    }
-
-    const userId = await fetchUserIdByEmail(session.user.email);
-    if (!userId) {
-      setIsLoading(false);
-      router.push('/');
       return;
     }
 
     try {
-      const response = await fetch(
-        `/api/courses/schedules?facultyId=${userId}`,
-      );
-      const data = await response.json();
-      if (response.ok) {
-        setSchedules(data);
-        if (data.length === 0) {
-          router.push('/');
-        }
-      }
+      const response = await axiosInstance.get('/courses/schedules', {
+        params: {
+          facultyId: session.user.id,
+          semester: '1st Semester',
+          limit: 100,
+        },
+      });
+      setSchedules(response.data.schedules || []);
     } catch (error) {
-      console.error('Error in fetchSchedules:', error);
-      router.push('/');
+      console.error('Error fetching schedules:', error);
+      setSchedules([]);
     } finally {
       setIsLoading(false);
     }
@@ -130,10 +109,8 @@ export default function AttendanceSchedule() {
   useEffect(() => {
     if (status === 'authenticated') {
       fetchSchedules();
-    } else if (status === 'unauthenticated') {
-      router.push('/');
     }
-  }, [status, session?.user?.email, router]);
+  }, [status, session?.user?.id]);
 
   // Calculate pagination
   const totalPages = Math.ceil(schedules.length / itemsPerPage);
