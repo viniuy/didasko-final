@@ -58,7 +58,7 @@ const CourseCard = ({
       : `/grading/reporting/${course.code}/${course.section}`;
 
   return (
-    <Card className='bg-[#124A69] text-white rounded-lg shadow-md w-full max-w-[440px] flex flex-col justify-between h-45 md:w-[320px] '>
+    <Card className='bg-[#124A69] text-white rounded-lg shadow-md w-full max-w-[320px] sm:max-w-[360px] md:max-w-[320px] lg:max-w-[380px] xl:max-w-[440px] flex flex-col justify-between h-45'>
       <div>
         <CardHeader className='-mt-4 flex justify-between items-center'>
           <CardTitle className='text-2xl font-bold'>{course.title}</CardTitle>
@@ -201,7 +201,7 @@ export default function SemesterCourses({
 
   return (
     <Card className='p-4 shadow-md rounded-lg'>
-      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 '>
+      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 lg:gap-8'>
         {currentCourses.map((course) => (
           <CourseCard key={course.id} course={course} type={type} />
         ))}
