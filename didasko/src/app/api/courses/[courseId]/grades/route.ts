@@ -21,10 +21,7 @@ export async function GET(
     const courseSection = searchParams.get('courseSection');
 
     if (!date) {
-      return NextResponse.json(
-        { error: 'Date is required' },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: 'Date is required' }, { status: 400 });
     }
 
     if (!courseCode || !courseSection) {
@@ -43,10 +40,7 @@ export async function GET(
     });
 
     if (!course) {
-      return NextResponse.json(
-        { error: 'Course not found' },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: 'Course not found' }, { status: 404 });
     }
 
     // If criteriaId is provided, fetch specific grades
@@ -55,7 +49,10 @@ export async function GET(
         where: {
           courseId: course.id,
           criteriaId: criteriaId,
-          date: new Date(date),
+          date: {
+            gte: new Date(date + 'T00:00:00.000Z'),
+            lt: new Date(date + 'T23:59:59.999Z'),
+          },
         },
         include: {
           student: {
@@ -78,7 +75,10 @@ export async function GET(
     const grades = await prisma.grade.findMany({
       where: {
         courseId: course.id,
-        date: new Date(date),
+        date: {
+          gte: new Date(date + 'T00:00:00.000Z'),
+          lt: new Date(date + 'T23:59:59.999Z'),
+        },
       },
       include: {
         student: {
@@ -109,7 +109,8 @@ export async function POST(
   { params }: { params: { courseId: string } },
 ) {
   try {
-    const { date, criteriaId, grades } = await request.json();
+    const { date, criteriaId, grades, courseCode, courseSection } =
+      await request.json();
     const authCookie = getAuthCookie();
 
     console.log('POST grades request:', {
@@ -124,7 +125,14 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (!date || !criteriaId || !grades || !Array.isArray(grades)) {
+    if (
+      !date ||
+      !criteriaId ||
+      !grades ||
+      !Array.isArray(grades) ||
+      !courseCode ||
+      !courseSection
+    ) {
       console.log('Invalid request data');
       return NextResponse.json(
         { error: 'Invalid request data' },
@@ -132,13 +140,33 @@ export async function POST(
       );
     }
 
-    // Delete existing grades for this date and criteria
+    // First find the course by code and section
+    const course = await prisma.course.findFirst({
+      where: {
+        code: courseCode,
+        section: courseSection,
+      },
+    });
+
+    if (!course) {
+      return NextResponse.json({ error: 'Course not found' }, { status: 404 });
+    }
+
+    // Get all student IDs from the grades array
+    const studentIds = grades.map((grade) => grade.studentId);
+
+    // Delete existing grades for these students on this date
     console.log('Deleting existing grades');
     await prisma.grade.deleteMany({
       where: {
-        courseId: params.courseId,
-        criteriaId: criteriaId,
-        date: new Date(date),
+        courseId: course.id,
+        studentId: {
+          in: studentIds,
+        },
+        date: {
+          gte: new Date(date + 'T00:00:00.000Z'),
+          lt: new Date(date + 'T23:59:59.999Z'),
+        },
       },
     });
 
@@ -147,13 +175,13 @@ export async function POST(
     const createdGrades = await prisma.grade.createMany({
       data: grades.map(
         (grade: { studentId: string; scores: number[]; total: number }) => ({
-          courseId: params.courseId,
+          courseId: course.id,
           criteriaId: criteriaId,
           studentId: grade.studentId,
           value: grade.total,
           scores: grade.scores,
           total: grade.total,
-          date: new Date(date),
+          date: new Date(date + 'T00:00:00.000Z'),
         }),
       ),
     });

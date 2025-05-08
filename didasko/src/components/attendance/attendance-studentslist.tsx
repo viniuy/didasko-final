@@ -157,7 +157,7 @@ export default function StudentList() {
   } | null>(null);
   const [showExportPreview, setShowExportPreview] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date>();
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [isLoading, setIsLoading] = useState(true);
   const [unsavedChanges, setUnsavedChanges] = useState<{
     [key: string]: AttendanceStatus;
@@ -209,7 +209,7 @@ export default function StudentList() {
         },
       );
 
-      const attendanceData = attendanceResponse.data;
+      const attendanceData = attendanceResponse.data.attendance;
       const attendanceMap = new Map(
         attendanceData.map((record: AttendanceRecord) => [
           record.studentId,
@@ -688,7 +688,7 @@ export default function StudentList() {
       const response = await axiosInstance.post(
         `/courses/${courseId}/attendance`,
         {
-          date: selectedDate?.toISOString(),
+          date: selectedDate.toISOString(),
           records: Object.entries(unsavedChanges).map(
             ([studentId, status]) => ({
               studentId,
@@ -706,7 +706,7 @@ export default function StudentList() {
             ...student,
             status: newStatus,
             attendanceRecords: student.attendanceRecords.map((record) =>
-              record.date === format(selectedDate || new Date(), 'yyyy-MM-dd')
+              record.date === format(selectedDate, 'yyyy-MM-dd')
                 ? { ...record, status: newStatus }
                 : record,
             ),
@@ -904,10 +904,12 @@ export default function StudentList() {
                   mode='single'
                   selected={selectedDate}
                   onSelect={(date) => {
-                    setSelectedDate(date);
-                    const popover = document.querySelector('[role="dialog"]');
-                    if (popover) {
-                      (popover as HTMLElement).style.display = 'none';
+                    if (date) {
+                      setSelectedDate(date);
+                      const popover = document.querySelector('[role="dialog"]');
+                      if (popover) {
+                        (popover as HTMLElement).style.display = 'none';
+                      }
                     }
                   }}
                   disabled={(date) => {
@@ -948,21 +950,19 @@ export default function StudentList() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          {hasUnsavedChanges && (
-            <Button
-              className='bg-[#124A69] hover:bg-[#0D3A54] text-white rounded-full px-6 h-10'
-              onClick={handleSaveChanges}
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <>
-                  <span className='mr-2'>Saving...</span>
-                </>
-              ) : (
-                'Save Changes'
-              )}
-            </Button>
-          )}
+          <Button
+            className='bg-[#124A69] hover:bg-[#0D3A54] text-white rounded-full px-6 h-10'
+            onClick={handleSaveChanges}
+            disabled={isSaving || Object.keys(unsavedChanges).length === 0}
+          >
+            {isSaving ? (
+              <>
+                <span className='mr-2'>Saving...</span>
+              </>
+            ) : (
+              'Save Attendance'
+            )}
+          </Button>
           <div className='flex items-center gap-3 ml-auto'>
             <FilterSheet
               isOpen={isFilterSheetOpen}

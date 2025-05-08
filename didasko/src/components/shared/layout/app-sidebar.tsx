@@ -68,8 +68,6 @@ const gradingSubItems = [
   { title: 'Quiz', url: '/grading/quiz', icon: NotebookPen },
 ];
 
-const settingsItem = { title: 'Settings', url: '/settings', icon: Settings };
-
 function SidebarSkeleton() {
   return (
     <Sidebar
@@ -256,29 +254,6 @@ export function AppSidebar() {
                         </SidebarGroupContent>
                       </CollapsibleContent>
                     </Collapsible>
-                  </SidebarMenuItem>
-
-                  {/* Settings for non-admin users */}
-                  <SidebarMenuItem key={settingsItem.title}>
-                    <a
-                      href={settingsItem.url}
-                      className={`flex items-center gap-3 p-3 rounded hover:bg-gray-800 w-full ${
-                        pathname.startsWith(settingsItem.url)
-                          ? 'bg-gray-800'
-                          : ''
-                      }`}
-                    >
-                      <settingsItem.icon className='w-6 h-6 shrink-0' />
-                      <span
-                        className={`whitespace-nowrap transition-all duration-300 ${
-                          open
-                            ? 'opacity-100 translate-x-0 delay-200'
-                            : 'opacity-0 translate-x-[-10px] delay-0'
-                        }`}
-                      >
-                        {open && settingsItem.title}
-                      </span>
-                    </a>
                   </SidebarMenuItem>
                 </>
               )}

@@ -27,11 +27,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { Calendar as CalendarIcon, Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
+import toast, { Toaster } from 'react-hot-toast';
 import axiosInstance from '@/lib/axios';
 import GradingTableHeader from './grading-table-header';
 import GradingTableRow from './grading-table-row';
 import * as XLSX from 'xlsx';
+import { Slider } from '@/components/ui/slider';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface Student {
   id: string;
@@ -94,6 +96,9 @@ export function GradingTable({
   const [selectedReport, setSelectedReport] = useState<string>('');
   const [activeReport, setActiveReport] = useState<GradingReport | null>(null);
   const [scores, setScores] = useState<Record<string, GradingScore>>({});
+  const [originalScores, setOriginalScores] = useState<
+    Record<string, GradingScore>
+  >({});
   const [rubricDetails, setRubricDetails] = useState<RubricDetail[]>([]);
   const [newReport, setNewReport] = useState({
     name: '',
@@ -107,13 +112,24 @@ export function GradingTable({
   });
   const [criteriaLoading, setCriteriaLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [gradeFilter, setGradeFilter] = useState<
-    'all' | 'passed' | 'failed' | 'no-grades'
-  >('all');
+  const [gradeFilter, setGradeFilter] = useState<{
+    passed: boolean;
+    failed: boolean;
+    noGrades: boolean;
+  }>({
+    passed: false,
+    failed: false,
+    noGrades: false,
+  });
   const [validationErrors, setValidationErrors] = useState<{
     name?: string;
     rubrics?: string[];
   }>({});
+  const [showExportPreview, setShowExportPreview] = useState(false);
+  const [exportData, setExportData] = useState<{
+    header: string[][];
+    studentRows: string[][];
+  } | null>(null);
 
   // Function to handle dialog close
   const handleDialogClose = () => {
@@ -188,7 +204,13 @@ export function GradingTable({
   // Check for existing criteria when date is selected or on mount
   useEffect(() => {
     const checkExistingCriteria = async () => {
-      if (!selectedDate) return;
+      if (!selectedDate) {
+        setActiveReport(null);
+        setRubricDetails([]);
+        setSelectedReport('');
+        setShowCriteriaDialog(false);
+        return;
+      }
       setCriteriaLoading(true);
       setShowCriteriaDialog(false);
       try {
@@ -227,6 +249,11 @@ export function GradingTable({
     checkExistingCriteria();
   }, [selectedDate, courseId]);
 
+  // Reset scores when date changes
+  useEffect(() => {
+    setScores({});
+  }, [selectedDate]);
+
   // Fetch saved criteria on mount
   useEffect(() => {
     const fetchCriteria = async () => {
@@ -257,39 +284,124 @@ export function GradingTable({
     }
   }, [courseId, session?.user?.id]);
 
+  // Update originalScores when scores are first loaded
+  useEffect(() => {
+    if (
+      Object.keys(scores).length > 0 &&
+      Object.keys(originalScores).length === 0
+    ) {
+      // Only set originalScores on initial load
+      setOriginalScores(JSON.parse(JSON.stringify(scores)));
+    }
+  }, [activeReport, selectedDate, scores]);
+
+  // Reset originalScores when changing report or date
+  useEffect(() => {
+    setOriginalScores({});
+  }, [activeReport, selectedDate]);
+
+  // Check if there are any changes
+  const hasChanges = () => {
+    // If we're still loading or no scores are loaded yet, return false
+    if (isLoading || Object.keys(scores).length === 0) return false;
+
+    if (Object.keys(scores).length !== Object.keys(originalScores).length)
+      return true;
+
+    return Object.entries(scores).some(([studentId, score]) => {
+      const originalScore = originalScores[studentId];
+      if (!originalScore) return true;
+
+      // Check if scores array is different
+      if (score.scores.length !== originalScore.scores.length) return true;
+      if (score.scores.some((s, i) => s !== originalScore.scores[i]))
+        return true;
+
+      // Check if total is different
+      return score.total !== originalScore.total;
+    });
+  };
+
   const handleSaveGrades = async () => {
     if (!session?.user?.id || !selectedDate || !activeReport) {
-      toast.error('Missing required information to save grades');
+      toast.error('Missing required information to save grades', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+      });
       return;
     }
 
-    try {
-      setIsLoading(true);
-      const formattedDate = selectedDate.toISOString().split('T')[0];
+    const savePromise = new Promise<string>(async (resolve, reject) => {
+      try {
+        const formattedDate = selectedDate.toISOString().split('T')[0];
 
-      const response = await axiosInstance.post(`/courses/${courseId}/grades`, {
-        date: formattedDate,
-        criteriaId: activeReport.id,
-        courseCode,
-        courseSection,
-        grades: Object.values(scores).map((score) => ({
-          studentId: score.studentId,
-          scores: score.scores,
-          total: score.total,
-        })),
-      });
+        // Ensure all students have the correct number of scores
+        const gradesToSave = Object.values(scores).map((score) => {
+          const correctScores = new Array(activeReport.rubrics.length).fill(0);
+          score.scores.forEach((s, i) => {
+            if (i < correctScores.length) {
+              correctScores[i] = s;
+            }
+          });
 
-      if (response.data) {
-        toast.success('Grades saved successfully');
-        // Optionally refresh the data
-        // await fetchData();
+          const total = calculateTotal(correctScores);
+
+          return {
+            studentId: score.studentId,
+            scores: correctScores,
+            total: total,
+          };
+        });
+
+        const payload = {
+          date: formattedDate,
+          criteriaId: activeReport.id,
+          courseCode,
+          courseSection,
+          grades: gradesToSave,
+        };
+
+        const response = await axiosInstance.post(
+          `/courses/${courseId}/grades`,
+          payload,
+        );
+
+        if (response.data) {
+          // Update original scores after successful save
+          setOriginalScores(JSON.parse(JSON.stringify(scores)));
+          resolve('Grades saved successfully');
+        }
+      } catch (error: any) {
+        console.error('Error saving grades:', {
+          error,
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+        });
+
+        if (error.response?.status === 500) {
+          reject(
+            'Server error occurred while saving grades. Please try again.',
+          );
+        } else if (error.response?.data?.message) {
+          reject(error.response.data.message);
+        } else {
+          reject(
+            'Failed to save grades. Please check your data and try again.',
+          );
+        }
       }
-    } catch (error: any) {
-      console.error('Error saving grades:', error);
-      toast.error(error.response?.data?.message || 'Failed to save grades');
-    } finally {
-      setIsLoading(false);
-    }
+    });
+
+    toast.promise(savePromise, {
+      loading: 'Saving Grades',
+      success: (message: string) => 'Grades saved successfully',
+      error: (err: string) => err,
+    });
   };
 
   const handleApplyCriteria = () => {
@@ -344,7 +456,7 @@ export function GradingTable({
 
     // Otherwise, update the grade as normal
     setScores((prev) => {
-      const rubricCount = activeReport?.rubrics || 0;
+      const rubricCount = activeReport?.rubrics.length || 0;
       const studentScores =
         prev[studentId]?.scores || new Array(rubricCount).fill(0);
       const newScores = [...studentScores];
@@ -367,15 +479,20 @@ export function GradingTable({
     // Calculate the maximum possible score based on the scoring range
     const maxScore = Number(activeReport?.scoringRange) || 5;
 
+    // Ensure we only use scores up to the number of rubrics
+    const validScores = scores.slice(0, rubricDetails.length);
+
     // Calculate weighted percentage for each rubric
-    const weightedScores = scores.map((score, index) => {
+    const weightedScores = validScores.map((score, index) => {
       const weight = rubricDetails[index]?.percentage || 0;
       // Convert score to percentage based on max score, then apply weight
       return (score / maxScore) * weight;
     });
 
-    // Sum up all weighted scores
-    return weightedScores.reduce((sum, score) => sum + score, 0);
+    // Sum up all weighted scores and round to 2 decimal places
+    return Number(
+      weightedScores.reduce((sum, score) => sum + score, 0).toFixed(2),
+    );
   };
 
   const validateReportName = (name: string) => {
@@ -419,13 +536,23 @@ export function GradingTable({
 
   const handleRubricCountChange = (value: string) => {
     const count = parseInt(value);
-    const defaultWeight = Math.floor(100 / count);
+    // Calculate the base weight and remainder
+    const baseWeight = Math.floor(100 / count);
+    const remainder = 100 % count;
+
+    // Create array of weights, distributing remainder to first elements
+    const weights = Array(count).fill(baseWeight);
+    for (let i = 0; i < remainder; i++) {
+      weights[i]++;
+    }
+
     const newRubricDetails = Array(count)
       .fill(null)
-      .map(() => ({
+      .map((_, index) => ({
         name: '',
-        weight: defaultWeight,
+        weight: weights[index],
       }));
+
     setNewReport((prev) => ({
       ...prev,
       rubrics: value,
@@ -482,7 +609,14 @@ export function GradingTable({
     const nameError = validateReportName(newReport.name);
     if (nameError) {
       setValidationErrors((prev) => ({ ...prev, name: nameError }));
-      toast.error(nameError);
+      toast.error(nameError, {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+      });
       return;
     }
 
@@ -493,7 +627,14 @@ export function GradingTable({
     const hasRubricErrors = rubricErrors.some((error) => error);
     if (hasRubricErrors) {
       setValidationErrors((prev) => ({ ...prev, rubrics: rubricErrors }));
-      toast.error('Please fix the rubric name errors');
+      toast.error('Please fix the rubric name errors', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+      });
       return;
     }
 
@@ -503,7 +644,14 @@ export function GradingTable({
       0,
     );
     if (totalWeight !== 100) {
-      toast.error('Total weight must equal 100%');
+      toast.error('Total weight must equal 100%', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+      });
       return;
     }
 
@@ -511,6 +659,16 @@ export function GradingTable({
       console.log('No session user ID');
       return;
     }
+
+    const loadingToast = toast.loading('Creating report...', {
+      position: 'top-center',
+      duration: Infinity,
+      style: {
+        background: '#fff',
+        color: '#124A69',
+        border: '1px solid #e5e7eb',
+      },
+    });
 
     try {
       setIsLoading(true);
@@ -534,7 +692,7 @@ export function GradingTable({
       );
       const created = response.data;
 
-      // Update the saved reports
+      // Update the saved reports with the new report at the beginning of the array
       setSavedReports((prev) => [created, ...prev]);
 
       // Set the active report and rubric details
@@ -560,63 +718,141 @@ export function GradingTable({
       // Clear validation errors
       setValidationErrors({});
 
-      toast.success('Report created successfully');
+      toast.dismiss(loadingToast);
+      toast.success('Report created successfully', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+        },
+      });
     } catch (error) {
       console.error('Error creating report:', error);
-      toast.error('Failed to create report');
+      toast.dismiss(loadingToast);
+      toast.error('Failed to create report', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Add a new useEffect to fetch reports when dialog opens or date changes
+  useEffect(() => {
+    const fetchReports = async () => {
+      if (selectedDate) {
+        try {
+          const response = await axiosInstance.get(
+            `/courses/${courseId}/criteria`,
+          );
+          const allReports = response.data;
+          // Filter reports for the selected date
+          const filteredReports = allReports.filter((report: GradingReport) => {
+            const reportDate = new Date(report.date);
+            reportDate.setHours(0, 0, 0, 0);
+
+            const selected = new Date(selectedDate);
+            selected.setHours(0, 0, 0, 0);
+
+            return reportDate.getTime() === selected.getTime();
+          });
+          setSavedReports(filteredReports);
+        } catch (error) {
+          console.error('Error fetching reports:', error);
+          toast.error('Failed to load saved reports', {
+            duration: 3000,
+            style: {
+              background: '#fff',
+              color: '#dc2626',
+              border: '1px solid #e5e7eb',
+            },
+          });
+        }
+      }
+    };
+
+    fetchReports();
+  }, [selectedDate, courseId]);
+
+  const prepareExportData = () => {
+    if (!activeReport || !selectedDate) return null;
+
+    const formattedDate = selectedDate.toISOString().split('T')[0];
+
+    // Create header rows
+    const header = [
+      [`${courseCode} - ${courseSection} GRADING REPORT`],
+      [''],
+      ['Date:', formattedDate],
+      ['Grading Report:', activeReport.name],
+      [''],
+      // Column headers
+      [
+        'Student Name',
+        ...rubricDetails.map((r) => `${r.name} (${r.percentage}%)`),
+        'Total Grade',
+        'Remarks',
+      ],
+    ];
+
+    // Create student data rows
+    const studentRows = students.map((student) => {
+      const studentScore = scores[student.id] || {
+        studentId: student.id,
+        scores: new Array(rubricDetails.length).fill(0),
+        total: 0,
+      };
+
+      return [
+        `${student.lastName}, ${student.firstName}${
+          student.middleInitial ? ` ${student.middleInitial}.` : ''
+        }`,
+        ...studentScore.scores.map((score) =>
+          score ? score.toString() : '---',
+        ),
+        `${studentScore.total.toFixed(0)}%`,
+        studentScore.scores.some((score) => score === 0)
+          ? '---'
+          : studentScore.total >= Number(activeReport.passingScore)
+          ? 'PASSED'
+          : 'FAILED',
+      ];
+    });
+
+    return { header, studentRows };
+  };
+
   const handleExport = () => {
     if (!activeReport || !selectedDate) {
-      toast.error('Please select a date and grading report first');
+      toast.error('Please select a date and grading report first', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+      });
       return;
     }
 
+    const data = prepareExportData();
+    if (!data) return;
+
+    setExportData(data);
+    setShowExportPreview(true);
+  };
+
+  const handleConfirmExport = () => {
+    if (!exportData) return;
+
     try {
-      const formattedDate = selectedDate.toISOString().split('T')[0];
-
-      // Create header rows
-      const header = [
-        [`${courseCode} - ${courseSection} GRADING REPORT`],
-        [''],
-        ['Date:', formattedDate],
-        ['Grading Report:', activeReport.name],
-        [''],
-        // Column headers
-        [
-          'Student Name',
-          ...rubricDetails.map((r) => `${r.name} (${r.percentage}%)`),
-          'Total Grade',
-          'Remarks',
-        ],
-      ];
-
-      // Create student data rows
-      const studentRows = students.map((student) => {
-        const studentScore = scores[student.id] || {
-          studentId: student.id,
-          scores: new Array(rubricDetails.length).fill(0),
-          total: 0,
-        };
-
-        return [
-          `${student.lastName}, ${student.firstName}${
-            student.middleInitial ? ` ${student.middleInitial}.` : ''
-          }`,
-          ...studentScore.scores.map((score) => score || '---'),
-          `${studentScore.total.toFixed(0)}%`,
-          studentScore.scores.some((score) => score === 0)
-            ? '---'
-            : studentScore.total >= Number(activeReport.passingScore)
-            ? 'PASSED'
-            : 'FAILED',
-        ];
-      });
-
-      // Combine header and data
+      const { header, studentRows } = exportData;
       const ws = XLSX.utils.aoa_to_sheet([...header, ...studentRows]);
 
       // Configure column widths
@@ -627,27 +863,229 @@ export function GradingTable({
         { wch: 15 }, // Remarks
       ];
 
-      // Merge cells for title
+      // Style configurations
+      const headerStyle = {
+        fill: { fgColor: { rgb: '124A69' } }, // Dark blue background
+        font: { color: { rgb: 'FFFFFF' }, bold: true }, // White bold text
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: {
+          top: { style: 'thin', color: { rgb: '000000' } },
+          bottom: { style: 'thin', color: { rgb: '000000' } },
+          left: { style: 'thin', color: { rgb: '000000' } },
+          right: { style: 'thin', color: { rgb: '000000' } },
+        },
+      };
+
+      const subHeaderStyle = {
+        fill: { fgColor: { rgb: 'F5F6FA' } }, // Light gray background
+        font: { bold: true },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: {
+          top: { style: 'thin', color: { rgb: '000000' } },
+          bottom: { style: 'thin', color: { rgb: '000000' } },
+          left: { style: 'thin', color: { rgb: '000000' } },
+          right: { style: 'thin', color: { rgb: '000000' } },
+        },
+      };
+
+      const cellStyle = {
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: {
+          top: { style: 'thin', color: { rgb: '000000' } },
+          bottom: { style: 'thin', color: { rgb: '000000' } },
+          left: { style: 'thin', color: { rgb: '000000' } },
+          right: { style: 'thin', color: { rgb: '000000' } },
+        },
+      };
+
+      // Apply styles to cells
+      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+
+      // Style the title row
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cellRef = XLSX.utils.encode_cell({ r: 0, c: C });
+        if (!ws[cellRef]) ws[cellRef] = { v: '' };
+        ws[cellRef].s = headerStyle;
+      }
+
+      // Style the subheader row (column headers)
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cellRef = XLSX.utils.encode_cell({ r: 5, c: C });
+        if (!ws[cellRef]) ws[cellRef] = { v: '' };
+        ws[cellRef].s = subHeaderStyle;
+      }
+
+      // Style all other cells
+      for (let R = 6; R <= range.e.r; ++R) {
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+          const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+          if (!ws[cellRef]) ws[cellRef] = { v: '' };
+
+          // Special styling for remarks column
+          if (C === range.e.c) {
+            const value = ws[cellRef].v;
+            if (value === 'PASSED') {
+              ws[cellRef].s = {
+                ...cellStyle,
+                font: { color: { rgb: '008000' }, bold: true }, // Green for PASSED
+              };
+            } else if (value === 'FAILED') {
+              ws[cellRef].s = {
+                ...cellStyle,
+                font: { color: { rgb: 'FF0000' }, bold: true }, // Red for FAILED
+              };
+            } else {
+              ws[cellRef].s = cellStyle;
+            }
+          } else {
+            ws[cellRef].s = cellStyle;
+          }
+        }
+      }
+
+      // Merge cells for title and info rows
       ws['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: rubricDetails.length + 3 } }, // Merge first row across all columns
+        { s: { r: 0, c: 0 }, e: { r: 0, c: range.e.c } }, // Title row
+        { s: { r: 1, c: 0 }, e: { r: 1, c: range.e.c } }, // Empty row
+        { s: { r: 2, c: 1 }, e: { r: 2, c: range.e.c } }, // Date row
+        { s: { r: 3, c: 1 }, e: { r: 3, c: range.e.c } }, // Report name row
+        { s: { r: 4, c: 0 }, e: { r: 4, c: range.e.c } }, // Empty row
       ];
 
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Grades');
 
       // Generate filename with date
+      const formattedDate = selectedDate?.toISOString().split('T')[0];
       const filename = `${courseCode}-${courseSection}-${formattedDate}-grades.xlsx`;
       XLSX.writeFile(wb, filename);
 
-      toast.success('Grades exported successfully');
+      setShowExportPreview(false);
+      toast.success('Grades exported successfully', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+        },
+      });
     } catch (error) {
       console.error('Error exporting grades:', error);
-      toast.error('Failed to export grades');
+      toast.error('Failed to export grades', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+      });
     }
   };
 
+  // Function to handle filter changes
+  const handleFilterChange = (key: keyof typeof gradeFilter) => {
+    const newFilter = {
+      ...gradeFilter,
+      [key]: !gradeFilter[key],
+    };
+
+    // If all options are checked, set all to true
+    if (Object.values(newFilter).every(Boolean)) {
+      setGradeFilter({
+        passed: true,
+        failed: true,
+        noGrades: true,
+      });
+    } else {
+      setGradeFilter(newFilter);
+    }
+  };
+
+  // Function to check if a student matches the current filters
+  const studentMatchesFilter = (student: Student) => {
+    // If no filters are checked, show all students
+    if (!gradeFilter.passed && !gradeFilter.failed && !gradeFilter.noGrades) {
+      return true;
+    }
+
+    const studentScore = scores[student.id];
+    const total = studentScore?.total || 0;
+    const hasGrades = studentScore?.scores.some((score) => score > 0) || false;
+
+    if (
+      gradeFilter.passed &&
+      hasGrades &&
+      total >= Number(activeReport?.passingScore)
+    )
+      return true;
+    if (
+      gradeFilter.failed &&
+      hasGrades &&
+      total < Number(activeReport?.passingScore)
+    )
+      return true;
+    if (gradeFilter.noGrades && !hasGrades) return true;
+    return false;
+  };
+
+  const handleResetGrades = () => {
+    setScores({});
+    setShowResetDialog(false);
+    toast.success('Grades reset successfully', {
+      duration: 3000,
+      style: {
+        background: '#fff',
+        color: '#124A69',
+        border: '1px solid #e5e7eb',
+      },
+    });
+  };
+
   return (
-    <div className='min-h-screen w-full  p-0'>
+    <div className='min-h-screen w-full p-0'>
+      <Toaster
+        toastOptions={{
+          className: '',
+          style: {
+            background: '#fff',
+            color: '#124A69',
+            border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
+          },
+          success: {
+            style: {
+              background: '#fff',
+              color: '#124A69',
+              border: '1px solid #e5e7eb',
+            },
+            iconTheme: {
+              primary: '#124A69',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            style: {
+              background: '#fff',
+              color: '#dc2626',
+              border: '1px solid #e5e7eb',
+            },
+            iconTheme: {
+              primary: '#dc2626',
+              secondary: '#fff',
+            },
+          },
+          loading: {
+            style: {
+              background: '#fff',
+              color: '#124A69',
+              border: '1px solid #e5e7eb',
+            },
+          },
+        }}
+      />
       <div className='max-w-6xl mx-auto'>
         {/* x */}
         <div className='bg-white rounded-lg shadow-md'>
@@ -678,22 +1116,89 @@ export function GradingTable({
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
-              <Select
-                value={gradeFilter}
-                onValueChange={(
-                  value: 'all' | 'passed' | 'failed' | 'no-grades',
-                ) => setGradeFilter(value)}
-              >
-                <SelectTrigger className='w-[140px] h-9 rounded-full border-gray-200 bg-[#F5F6FA]'>
-                  <SelectValue placeholder='Filter by grade' />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value='all'>All Students</SelectItem>
-                  <SelectItem value='passed'>Passed</SelectItem>
-                  <SelectItem value='failed'>Failed</SelectItem>
-                  <SelectItem value='no-grades'>No Grades</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className='flex items-center gap-2'>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant='outline'
+                      className='w-[140px] h-9 rounded-full border-gray-200 bg-[#F5F6FA] justify-between'
+                    >
+                      <span>Filter</span>
+                      <svg
+                        className='h-4 w-4 text-gray-500'
+                        fill='none'
+                        stroke='currentColor'
+                        strokeWidth='2'
+                        viewBox='0 0 24 24'
+                      >
+                        <path d='M19 9l-7 7-7-7' />
+                      </svg>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className='w-[200px] p-4'>
+                    <div className='space-y-3'>
+                      <div className='flex items-center space-x-2'>
+                        <Checkbox
+                          id='passed'
+                          checked={gradeFilter.passed}
+                          onCheckedChange={() => handleFilterChange('passed')}
+                        />
+                        <label
+                          htmlFor='passed'
+                          className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+                        >
+                          Passed
+                        </label>
+                      </div>
+                      <div className='flex items-center space-x-2'>
+                        <Checkbox
+                          id='failed'
+                          checked={gradeFilter.failed}
+                          onCheckedChange={() => handleFilterChange('failed')}
+                        />
+                        <label
+                          htmlFor='failed'
+                          className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+                        >
+                          Failed
+                        </label>
+                      </div>
+                      <div className='flex items-center space-x-2'>
+                        <Checkbox
+                          id='noGrades'
+                          checked={gradeFilter.noGrades}
+                          onCheckedChange={() => handleFilterChange('noGrades')}
+                        />
+                        <label
+                          htmlFor='noGrades'
+                          className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+                        >
+                          No Grades
+                        </label>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+                {Object.entries(gradeFilter).some(([_, value]) => !value) && (
+                  <div className='flex items-center gap-1.5'>
+                    {gradeFilter.passed && (
+                      <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700'>
+                        Passed
+                      </span>
+                    )}
+                    {gradeFilter.failed && (
+                      <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700'>
+                        Failed
+                      </span>
+                    )}
+                    {gradeFilter.noGrades && (
+                      <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700'>
+                        No Grades
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
             <div className='flex items-center gap-2'>
               <Popover>
@@ -775,59 +1280,86 @@ export function GradingTable({
                     <div className='space-y-4 py-4'>
                       {savedReports.filter((report) => {
                         if (!selectedDate) return false;
-                        const reportDate = new Date(report.date)
-                          .toISOString()
-                          .split('T')[0];
-                        const selected = selectedDate
-                          .toISOString()
-                          .split('T')[0];
-                        return reportDate === selected;
+
+                        // Convert both dates to local midnight for accurate comparison
+                        const reportDate = new Date(report.date);
+                        reportDate.setHours(0, 0, 0, 0);
+
+                        const selected = new Date(selectedDate);
+                        selected.setHours(0, 0, 0, 0);
+
+                        return reportDate.getTime() === selected.getTime();
                       }).length > 0 ? (
-                        <>
+                        <div className='flex flex-col items-center'>
                           <Select
                             value={selectedReport}
                             onValueChange={setSelectedReport}
                           >
-                            <SelectTrigger className='bg-gray-50 border-gray-200'>
+                            <SelectTrigger className='bg-gray-50 border-gray-200 w-full max-w-[400px]'>
                               <SelectValue placeholder='Select saved report' />
                             </SelectTrigger>
                             <SelectContent>
                               {savedReports
                                 .filter((report) => {
                                   if (!selectedDate) return false;
-                                  const reportDate = new Date(report.date)
-                                    .toISOString()
-                                    .split('T')[0];
-                                  const selected = selectedDate
-                                    .toISOString()
-                                    .split('T')[0];
-                                  return reportDate === selected;
+
+                                  // Convert both dates to local midnight for accurate comparison
+                                  const reportDate = new Date(report.date);
+                                  reportDate.setHours(0, 0, 0, 0);
+
+                                  const selected = new Date(selectedDate);
+                                  selected.setHours(0, 0, 0, 0);
+
+                                  return (
+                                    reportDate.getTime() === selected.getTime()
+                                  );
                                 })
-                                .map((report) => (
-                                  <SelectItem key={report.id} value={report.id}>
-                                    {report.name}
-                                    <span className='text-sm text-gray-500 ml-2'>
-                                      (by {report.user?.name || 'Unknown'})
-                                    </span>
-                                  </SelectItem>
-                                ))}
+                                .map((report) => {
+                                  // Count students without grades for this report
+                                  const ungradedCount = students.filter(
+                                    (student) => {
+                                      const studentScore = scores[student.id];
+                                      // Check if student has no scores or if any of their scores are 0
+                                      return (
+                                        !studentScore ||
+                                        studentScore.scores.length === 0 ||
+                                        studentScore.scores.every(
+                                          (score) => score === 0,
+                                        )
+                                      );
+                                    },
+                                  ).length;
+
+                                  return (
+                                    <SelectItem
+                                      key={report.id}
+                                      value={report.id}
+                                    >
+                                      {report.name}
+                                      <span className='text-sm text-gray-500 ml-2'>
+                                        ({ungradedCount} students ungraded)
+                                      </span>
+                                    </SelectItem>
+                                  );
+                                })}
                             </SelectContent>
                           </Select>
                           {selectedReport && (
-                            <div className='text-sm text-gray-500'>
+                            <div className='text-sm text-gray-500 mt-2'>
                               Created by:{' '}
                               {savedReports.find((c) => c.id === selectedReport)
                                 ?.user?.name || 'Unknown'}
                             </div>
                           )}
-                        </>
+                        </div>
                       ) : (
                         <p className='text-sm text-gray-500 text-center py-4'>
-                          No saved reports found. Create new ones in the other
-                          tab.
+                          No saved reports found for this date.
+                          <br />
+                          Create new ones in the other tab.
                         </p>
                       )}
-                      <DialogFooter className='gap-2 sm:gap-0'>
+                      <DialogFooter className='gap-2 sm:gap-2'>
                         <Button
                           variant='outline'
                           onClick={handleDialogClose}
@@ -945,8 +1477,13 @@ export function GradingTable({
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
+                                <SelectItem value='60'>60%</SelectItem>
+                                <SelectItem value='65'>65%</SelectItem>
+                                <SelectItem value='70'>70%</SelectItem>
                                 <SelectItem value='75'>75%</SelectItem>
                                 <SelectItem value='80'>80%</SelectItem>
+                                <SelectItem value='85'>85%</SelectItem>
+                                <SelectItem value='90'>90%</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
@@ -990,19 +1527,39 @@ export function GradingTable({
                                     </p>
                                   </div>
                                 </div>
-                                <div className='relative w-[100px] -mt-4'>
-                                  <Input
-                                    value={rubric.weight}
-                                    onChange={(e) =>
-                                      updateRubricDetail(
-                                        index,
-                                        'weight',
-                                        parseInt(e.target.value),
-                                      )
-                                    }
-                                    placeholder={`Weight`}
-                                    className='bg-gray-50 border-gray-200'
-                                  />
+                                <div className='relative w-[200px] -mt-4'>
+                                  <div className='flex items-center gap-2'>
+                                    <Slider
+                                      value={[rubric.weight]}
+                                      onValueChange={(value: number[]) =>
+                                        updateRubricDetail(
+                                          index,
+                                          'weight',
+                                          value[0],
+                                        )
+                                      }
+                                      max={100}
+                                      step={1}
+                                      className='w-[100px]'
+                                    />
+                                    <Input
+                                      value={rubric.weight}
+                                      onChange={(e) =>
+                                        updateRubricDetail(
+                                          index,
+                                          'weight',
+                                          parseInt(e.target.value),
+                                        )
+                                      }
+                                      type='number'
+                                      min={0}
+                                      max={100}
+                                      className='w-[60px] bg-gray-50 border-gray-200'
+                                    />
+                                    <span className='text-sm text-gray-500'>
+                                      %
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
                             ))}
@@ -1030,7 +1587,7 @@ export function GradingTable({
                           </div>
                         </div>
                       </div>
-                      <DialogFooter className='gap-2 sm:gap-0'>
+                      <DialogFooter className='gap-2 sm:gap-2'>
                         <Button
                           variant='outline'
                           onClick={handleDialogClose}
@@ -1101,29 +1658,7 @@ export function GradingTable({
                                 searchQuery.toLowerCase(),
                               );
 
-                              // Get student's score
-                              const studentScore = scores[student.id];
-                              const total = studentScore?.total || 0;
-                              const hasGrades =
-                                studentScore?.scores.some(
-                                  (score) => score > 0,
-                                ) || false;
-
-                              // Apply grade filter
-                              let gradeMatch = true;
-                              if (gradeFilter === 'passed') {
-                                gradeMatch =
-                                  hasGrades &&
-                                  total >= Number(activeReport?.passingScore);
-                              } else if (gradeFilter === 'failed') {
-                                gradeMatch =
-                                  hasGrades &&
-                                  total < Number(activeReport?.passingScore);
-                              } else if (gradeFilter === 'no-grades') {
-                                gradeMatch = !hasGrades;
-                              }
-
-                              return nameMatch && gradeMatch;
+                              return nameMatch && studentMatchesFilter(student);
                             },
                           );
 
@@ -1216,7 +1751,7 @@ export function GradingTable({
                     </Button>
                     <Button
                       onClick={handleSaveGrades}
-                      disabled={isLoading || Object.keys(scores).length === 0}
+                      disabled={isLoading || !hasChanges()}
                       className='h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] disabled:opacity-50 disabled:cursor-not-allowed'
                     >
                       {isLoading ? (
@@ -1231,6 +1766,26 @@ export function GradingTable({
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+          {!showCriteriaDialog && !activeReport && (
+            <div className='flex flex-col items-center justify-center py-12 text-center'>
+              {criteriaLoading ? (
+                <div className='flex flex-col items-center gap-4'>
+                  <Loader2 className='h-8 w-8 animate-spin text-[#124A69]' />
+                  <p className='text-gray-500'>Loading grading criteria...</p>
+                </div>
+              ) : (
+                <>
+                  <div className='text-2xl font-semibold text-[#124A69] mb-2'>
+                    No Report Selected
+                  </div>
+                  <p className='text-gray-500'>
+                    Please select a date and create or choose a grading report
+                    to begin.
+                  </p>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -1257,14 +1812,90 @@ export function GradingTable({
               Cancel
             </Button>
             <Button
-              onClick={() => {
-                setScores({});
-                setShowResetDialog(false);
-                toast.success('Grades reset successfully');
-              }}
+              onClick={handleResetGrades}
               className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
             >
               Reset Grades
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Export Preview Dialog */}
+      <Dialog open={showExportPreview} onOpenChange={setShowExportPreview}>
+        <DialogContent className='sm:max-w-[800px] max-h-[80vh] overflow-y-auto'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              Export Preview
+            </DialogTitle>
+            <DialogDescription className='text-gray-500'>
+              Preview how your grades will look in the Excel file
+            </DialogDescription>
+          </DialogHeader>
+
+          {exportData && (
+            <div className='mt-4 overflow-x-auto'>
+              <table className='w-full border-collapse'>
+                <tbody>
+                  {exportData.header.map((row, rowIndex) => (
+                    <tr key={`header-${rowIndex}`}>
+                      {row.map((cell, cellIndex) => (
+                        <td
+                          key={`header-cell-${cellIndex}`}
+                          className={`border border-gray-200 p-2 ${
+                            rowIndex === 0
+                              ? 'bg-[#124A69] text-white text-center font-bold'
+                              : rowIndex === 5
+                              ? 'bg-gray-100 font-medium'
+                              : ''
+                          }`}
+                          colSpan={
+                            rowIndex === 0 ? exportData.header[5].length : 1
+                          }
+                        >
+                          {cell}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  {exportData.studentRows.map((row, rowIndex) => (
+                    <tr key={`student-${rowIndex}`}>
+                      {row.map((cell, cellIndex) => (
+                        <td
+                          key={`student-cell-${cellIndex}`}
+                          className={`border border-gray-200 p-2 ${
+                            cellIndex === row.length - 1
+                              ? cell === 'PASSED'
+                                ? 'text-green-600 font-medium'
+                                : cell === 'FAILED'
+                                ? 'text-red-600 font-medium'
+                                : ''
+                              : ''
+                          }`}
+                        >
+                          {cell}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <DialogFooter className='gap-2 sm:gap-2 mt-4'>
+            <Button
+              variant='outline'
+              onClick={() => setShowExportPreview(false)}
+              className='border-gray-200'
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmExport}
+              className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+            >
+              Export to Excel
             </Button>
           </DialogFooter>
         </DialogContent>
