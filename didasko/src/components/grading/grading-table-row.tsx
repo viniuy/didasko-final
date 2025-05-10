@@ -35,7 +35,7 @@ const GradingTableRow: React.FC<GradingTableRowProps> = ({
   idx,
 }) => (
   <tr className={idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F6FA]'}>
-    <td className='sticky left-0 z-10 bg-white px-4 py-2 align-middle font-medium'>
+    <td className='sticky left-0 z-10 bg-white px-4 py-2 align-middle font-medium w-[300px]'>
       <div className='flex items-center gap-3'>
         {student.image ? (
           <img
@@ -58,7 +58,7 @@ const GradingTableRow: React.FC<GradingTableRowProps> = ({
             </svg>
           </span>
         )}
-        <span className='text-gray-700'>
+        <span className='text-gray-700 truncate'>
           {student.lastName && student.firstName
             ? `${student.lastName}, ${student.firstName}${
                 student.middleInitial ? ` ${student.middleInitial}.` : ''
@@ -80,7 +80,7 @@ const GradingTableRow: React.FC<GradingTableRowProps> = ({
       return (
         <td
           key={rubric.name + rubricIdx}
-          className={`text-center px-4 py-2 align-middle ${cellBg}`}
+          className={`text-center px-4 py-2 align-middle w-[120px] ${cellBg}`}
         >
           <select
             className='w-full rounded border border-gray-300 px-2 py-1'
@@ -106,10 +106,10 @@ const GradingTableRow: React.FC<GradingTableRowProps> = ({
         </td>
       );
     })}
-    <td className='text-center px-4 py-2 align-middle font-bold'>
+    <td className='text-center px-4 py-2 align-middle font-bold w-[100px]'>
       {studentScore.total.toFixed(0)}%
     </td>
-    <td className='text-center px-4 py-2 align-middle'>
+    <td className='text-center px-4 py-2 align-middle w-[100px]'>
       {studentScore.scores.some((score) => score === 0) ? (
         <span className='px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600'>
           ---

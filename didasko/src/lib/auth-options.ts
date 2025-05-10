@@ -52,17 +52,28 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id;
-        token.role = user.role;
+      // Always fetch fresh user data from the database
+      const dbUser = await prisma.user.findUnique({
+        where: { id: token.id as string },
+        select: { id: true, name: true, role: true, email: true }
+      });
+
+      if (dbUser) {
+        token.id = dbUser.id;
+        token.name = dbUser.name;
+        token.role = dbUser.role;
+        token.email = dbUser.email;
       }
+
       console.log('JWT callback - token:', token);
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
+        session.user.name = token.name as string;
         session.user.role = token.role as Role;
+        session.user.email = token.email as string;
       }
       console.log('Session callback - session:', session);
       return session;
@@ -73,6 +84,7 @@ export const authOptions: NextAuthOptions = {
   },
   session: {
     strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   debug: true, // Enable debug messages
 };

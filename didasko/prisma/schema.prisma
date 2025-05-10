@@ -108,8 +108,24 @@ model Class {
   @@map("classes")
 }
 
+model Group {
+  id          String   @id @default(uuid())
+  number      String
+  name        String?
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id])
+  students    Student[] @relation("GroupStudents")
+  leaderId    String?  // Optional leader ID
+  leader      Student? @relation("GroupLeader", fields: [leaderId], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("groups")
+}
+
 model Student {
   id            String    @id @default(uuid())
+  studentId     String    @unique
   lastName      String
   firstName     String
   middleInitial String?
@@ -117,6 +133,8 @@ model Student {
   grades        Grade[]
   attendance    Attendance[]
   coursesEnrolled Course[] @relation("StudentCourses")
+  groups        Group[]   @relation("GroupStudents")
+  leadingGroups Group[]   @relation("GroupLeader")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
@@ -227,6 +245,7 @@ model Course {
   attendance  Attendance[]
   criteria    Criteria[]
   grades      Grade[]
+  groups      Group[]
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 

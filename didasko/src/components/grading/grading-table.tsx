@@ -34,6 +34,14 @@ import GradingTableRow from './grading-table-row';
 import * as XLSX from 'xlsx';
 import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationPrevious,
+  PaginationNext,
+} from '@/components/ui/pagination';
 
 interface Student {
   id: string;
@@ -130,6 +138,10 @@ export function GradingTable({
     header: string[][];
     studentRows: string[][];
   } | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const studentsPerPage = 10;
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalStudents, setTotalStudents] = useState(0);
 
   // Function to handle dialog close
   const handleDialogClose = () => {
@@ -154,16 +166,16 @@ export function GradingTable({
         const gradesRes = await axiosInstance.get(
           `/courses/${courseId}/grades`,
           {
-            params: {
-              date: formattedDate,
-              courseCode,
-              courseSection,
-              criteriaId: activeReport.id,
-            },
+          params: {
+            date: formattedDate,
+            courseCode,
+            courseSection,
+            criteriaId: activeReport.id,
+          },
           },
         );
         const grades: GradingScore[] = gradesRes.data || [];
-
+        
         // 3. Map grades by studentId
         const gradesMap: Record<string, GradingScore> = {};
         grades.forEach((grade: GradingScore) => {
@@ -182,7 +194,7 @@ export function GradingTable({
           };
         });
         setScores(newScores);
-      } catch (error) {
+      } catch (error) { 
         console.error('Error fetching students or grades:', error);
         // Don't clear students on error, only clear scores
         setScores({});
@@ -351,7 +363,7 @@ export function GradingTable({
           const total = calculateTotal(correctScores);
 
           return {
-            studentId: score.studentId,
+          studentId: score.studentId,
             scores: correctScores,
             total: total,
           };
@@ -438,7 +450,7 @@ export function GradingTable({
         });
 
         // Update local state
-        setScores((prev) => {
+    setScores((prev) => {
           const newScores = { ...prev };
           delete newScores[studentId];
           return newScores;
@@ -475,20 +487,20 @@ export function GradingTable({
 
   const calculateTotal = (scores: number[]): number => {
     if (!rubricDetails.length) return 0;
-
+    
     // Calculate the maximum possible score based on the scoring range
     const maxScore = Number(activeReport?.scoringRange) || 5;
 
     // Ensure we only use scores up to the number of rubrics
     const validScores = scores.slice(0, rubricDetails.length);
-
+    
     // Calculate weighted percentage for each rubric
     const weightedScores = validScores.map((score, index) => {
       const weight = rubricDetails[index]?.percentage || 0;
       // Convert score to percentage based on max score, then apply weight
       return (score / maxScore) * weight;
     });
-
+    
     // Sum up all weighted scores and round to 2 decimal places
     return Number(
       weightedScores.reduce((sum, score) => sum + score, 0).toFixed(2),
@@ -1041,6 +1053,34 @@ export function GradingTable({
     });
   };
 
+  const getPaginatedStudents = (students: Student[]) => {
+    const filteredStudents = students.filter((student) => {
+      const name = `${student.lastName || ''} ${student.firstName || ''} ${student.middleInitial || ''}`.toLowerCase();
+      const nameMatch = name.includes(searchQuery.toLowerCase());
+      return nameMatch && studentMatchesFilter(student);
+    });
+
+    const startIndex = (currentPage - 1) * studentsPerPage;
+    const endIndex = startIndex + studentsPerPage;
+    return {
+      paginatedStudents: filteredStudents.slice(startIndex, endIndex),
+      totalPages: Math.ceil(filteredStudents.length / studentsPerPage),
+      totalStudents: filteredStudents.length
+    };
+  };
+
+  // Add useEffect to update pagination state
+  useEffect(() => {
+    const filteredStudents = students.filter((student) => {
+      const name = `${student.lastName || ''} ${student.firstName || ''} ${student.middleInitial || ''}`.toLowerCase();
+      const nameMatch = name.includes(searchQuery.toLowerCase());
+      return nameMatch && studentMatchesFilter(student);
+    });
+    
+    setTotalPages(Math.ceil(filteredStudents.length / studentsPerPage));
+    setTotalStudents(filteredStudents.length);
+  }, [students, searchQuery, gradeFilter, studentsPerPage]);
+
   return (
     <div className='min-h-screen w-full p-0'>
       <Toaster
@@ -1091,6 +1131,21 @@ export function GradingTable({
         <div className='bg-white rounded-lg shadow-md'>
           {/* Card Header */}
           <div className='flex items-center gap-2 px-4 py-3 border-b'>
+            <Button
+              variant='ghost'
+              className='h-9 w-9 p-0 hover:bg-gray-100'
+              onClick={() => window.history.back()}
+            >
+              <svg
+                className='h-5 w-5 text-gray-500'
+                fill='none'
+                stroke='currentColor'
+                strokeWidth='2'
+                viewBox='0 0 24 24'
+              >
+                <path d='M15 18l-6-6 6-6' />    
+              </svg>
+            </Button>
             <div className='flex flex-col mr-4'>
               <span className='text-lg font-bold text-[#124A69] leading-tight'>
                 {courseCode}
@@ -1149,7 +1204,7 @@ export function GradingTable({
                         >
                           Passed
                         </label>
-                      </div>
+            </div>
                       <div className='flex items-center space-x-2'>
                         <Checkbox
                           id='failed'
@@ -1243,7 +1298,7 @@ export function GradingTable({
                   <path d='M12 5v14m7-7H5' />
                 </svg>
                 Export to Excel
-              </Button>
+            </Button>
             </div>
           </div>
           <Dialog open={showCriteriaDialog} onOpenChange={handleDialogClose}>
@@ -1301,7 +1356,7 @@ export function GradingTable({
                             <SelectContent>
                               {savedReports
                                 .filter((report) => {
-                                  if (!selectedDate) return false;
+                                if (!selectedDate) return false;
 
                                   // Convert both dates to local midnight for accurate comparison
                                   const reportDate = new Date(report.date);
@@ -1335,11 +1390,11 @@ export function GradingTable({
                                       key={report.id}
                                       value={report.id}
                                     >
-                                      {report.name}
+                                  {report.name}
                                       <span className='text-sm text-gray-500 ml-2'>
                                         ({ungradedCount} students ungraded)
-                                      </span>
-                                    </SelectItem>
+                                  </span>
+                                </SelectItem>
                                   );
                                 })}
                             </SelectContent>
@@ -1431,61 +1486,61 @@ export function GradingTable({
                         </div>
 
                         <div className='grid grid-cols-2 gap-4'>
-                          <div className='grid gap-2'>
+                        <div className='grid gap-2'>
                             <label
                               htmlFor='scoringRange'
                               className='text-sm font-medium text-gray-700'
                             >
                               Scoring Range
                             </label>
-                            <Select
-                              value={newReport.scoringRange}
-                              onValueChange={(value) =>
-                                setNewReport((prev) => ({
-                                  ...prev,
-                                  scoringRange: value,
-                                }))
-                              }
-                            >
+                          <Select
+                            value={newReport.scoringRange}
+                            onValueChange={(value) =>
+                              setNewReport((prev) => ({
+                                ...prev,
+                                scoringRange: value,
+                              }))
+                            }
+                          >
                               <SelectTrigger className='bg-gray-50 border-gray-200'>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value='5'>1-5</SelectItem>
-                                <SelectItem value='10'>1-10</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value='5'>1-5</SelectItem>
+                              <SelectItem value='10'>1-10</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
 
-                          <div className='grid gap-2'>
+                        <div className='grid gap-2'>
                             <label
                               htmlFor='passingScore'
                               className='text-sm font-medium text-gray-700'
                             >
                               Passing Score (%)
                             </label>
-                            <Select
-                              value={newReport.passingScore}
-                              onValueChange={(value) =>
-                                setNewReport((prev) => ({
-                                  ...prev,
-                                  passingScore: value,
-                                }))
-                              }
-                            >
+                          <Select
+                            value={newReport.passingScore}
+                            onValueChange={(value) =>
+                              setNewReport((prev) => ({
+                                ...prev,
+                                passingScore: value,
+                              }))
+                            }
+                          >
                               <SelectTrigger className='bg-gray-50 border-gray-200'>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
                                 <SelectItem value='60'>60%</SelectItem>
                                 <SelectItem value='65'>65%</SelectItem>
                                 <SelectItem value='70'>70%</SelectItem>
-                                <SelectItem value='75'>75%</SelectItem>
-                                <SelectItem value='80'>80%</SelectItem>
+                              <SelectItem value='75'>75%</SelectItem>
+                              <SelectItem value='80'>80%</SelectItem>
                                 <SelectItem value='85'>85%</SelectItem>
                                 <SelectItem value='90'>90%</SelectItem>
-                              </SelectContent>
-                            </Select>
+                            </SelectContent>
+                          </Select>
                           </div>
                         </div>
 
@@ -1525,7 +1580,7 @@ export function GradingTable({
                                     <p className='text-xs text-gray-500 -mt-1 ml-auto'>
                                       {rubric.name.length}/15
                                     </p>
-                                  </div>
+                                </div>
                                 </div>
                                 <div className='relative w-[200px] -mt-4'>
                                   <div className='flex items-center gap-2'>
@@ -1542,20 +1597,20 @@ export function GradingTable({
                                       step={1}
                                       className='w-[100px]'
                                     />
-                                    <Input
-                                      value={rubric.weight}
-                                      onChange={(e) =>
-                                        updateRubricDetail(
-                                          index,
-                                          'weight',
-                                          parseInt(e.target.value),
-                                        )
-                                      }
+                                  <Input
+                                    value={rubric.weight}
+                                    onChange={(e) =>
+                                      updateRubricDetail(
+                                        index,
+                                        'weight',
+                                        parseInt(e.target.value),
+                                      )
+                                    }
                                       type='number'
                                       min={0}
                                       max={100}
                                       className='w-[60px] bg-gray-50 border-gray-200'
-                                    />
+                                  />
                                     <span className='text-sm text-gray-500'>
                                       %
                                     </span>
@@ -1584,8 +1639,8 @@ export function GradingTable({
                                 %
                               </span>
                             </p>
-                          </div>
                         </div>
+                      </div>
                       </div>
                       <DialogFooter className='gap-2 sm:gap-2'>
                         <Button
@@ -1613,7 +1668,7 @@ export function GradingTable({
           {!showCriteriaDialog && activeReport && (
             <div className='space-y-4 p-0'>
               {/* Grading Table */}
-              <div className='overflow-x-auto'>
+              <div className='overflow-x-auto max-h-[calc(100vh-300px)]'>
                 <table className='w-full border-separate border-spacing-0 table-fixed'>
                   <GradingTableHeader rubricDetails={rubricDetails} />
                   <tbody>
@@ -1626,7 +1681,7 @@ export function GradingTable({
                               idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F6FA]'
                             }
                           >
-                            <td className='sticky left-0 z-10 bg-white px-4 py-2 align-middle'>
+                            <td className='sticky left-0 z-10 bg-white px-4 py-2 align-middle w-[300px]'>
                               <div className='flex items-center gap-3'>
                                 <div className='w-8 h-8 rounded-full bg-gray-200 animate-pulse' />
                                 <div className='h-4 w-32 bg-gray-200 rounded animate-pulse' />
@@ -1635,47 +1690,33 @@ export function GradingTable({
                             {rubricDetails.map((_, rubricIdx) => (
                               <td
                                 key={rubricIdx}
-                                className='text-center px-4 py-2 align-middle'
+                                className='text-center px-4 py-2 align-middle w-[120px]'
                               >
                                 <div className='h-8 w-full bg-gray-200 rounded animate-pulse' />
                               </td>
                             ))}
-                            <td className='text-center px-4 py-2 align-middle'>
+                            <td className='text-center px-4 py-2 align-middle w-[100px]'>
                               <div className='h-4 w-16 bg-gray-200 rounded animate-pulse mx-auto' />
                             </td>
-                            <td className='text-center px-4 py-2 align-middle'>
+                            <td className='text-center px-4 py-2 align-middle w-[100px]'>
                               <div className='h-6 w-20 bg-gray-200 rounded-full animate-pulse mx-auto' />
                             </td>
                           </tr>
                         ))
                       : (() => {
-                          const filteredStudents = students.filter(
-                            (student) => {
-                              const name = `${student.lastName || ''} ${
-                                student.firstName || ''
-                              } ${student.middleInitial || ''}`.toLowerCase();
-                              const nameMatch = name.includes(
-                                searchQuery.toLowerCase(),
-                              );
+                          const { paginatedStudents, totalPages, totalStudents } = getPaginatedStudents(students);
 
-                              return nameMatch && studentMatchesFilter(student);
-                            },
-                          );
-
-                          if (filteredStudents.length === 0) {
+                          if (paginatedStudents.length === 0) {
                             return (
                               <tr>
-                                <td
-                                  colSpan={rubricDetails.length + 3}
-                                  className='text-center py-8 text-muted-foreground'
-                                >
+                                <td colSpan={rubricDetails.length + 3} className='text-center py-8 text-muted-foreground'>
                                   No students found
                                 </td>
                               </tr>
                             );
                           }
 
-                          return filteredStudents.map((student, idx) => {
+                          return paginatedStudents.map((student, idx) => {
                             const studentScore = scores[student.id] || {
                               studentId: student.id,
                               scores: new Array(rubricDetails.length).fill(0),
@@ -1698,49 +1739,54 @@ export function GradingTable({
                 </table>
               </div>
               {/* Footer Bar */}
-              <div className='flex items-center justify-between px-4 py-3 border-t bg-white'>
-                <div className='flex items-center gap-2'>
-                  <span className='text-sm text-gray-600'>Total Students:</span>
-                  <span className='font-medium text-[#124A69]'>
-                    {students.length}
-                  </span>
-                </div>
-                <div className='flex items-center gap-4'>
+              <div className='flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 border-t bg-white'>
+                <div className='flex flex-col sm:flex-row items-center gap-4 w-full'>
                   <div className='flex items-center gap-2'>
-                    <Button
-                      variant='outline'
-                      className='h-8 px-3 text-sm border-gray-200 text-gray-600 hover:bg-gray-50'
-                    >
-                      Previous
-                    </Button>
-                    <div className='flex items-center gap-1'>
-                      <Button
-                        variant='outline'
-                        className='h-8 w-8 p-0 text-sm border-gray-200 text-[#124A69] hover:bg-gray-50'
-                      >
-                        1
-                      </Button>
-                      <Button
-                        variant='outline'
-                        className='h-8 w-8 p-0 text-sm border-gray-200 text-gray-600 hover:bg-gray-50'
-                      >
-                        2
-                      </Button>
-                      <Button
-                        variant='outline'
-                        className='h-8 w-8 p-0 text-sm border-gray-200 text-gray-600 hover:bg-gray-50'
-                      >
-                        3
-                      </Button>
-                    </div>
-                    <Button
-                      variant='outline'
-                      className='h-8 px-3 text-sm border-gray-200 text-gray-600 hover:bg-gray-50'
-                    >
-                      Next
-                    </Button>
+                    <p className='text-sm text-gray-500 whitespace-nowrap'>
+                      {totalStudents > 0 ? (
+                        <>
+                          {currentPage * studentsPerPage - (studentsPerPage - 1)}-
+                          {Math.min(currentPage * studentsPerPage, totalStudents)} of{' '}
+                          {totalStudents} students
+                        </>
+                      ) : (
+                        'No students found'
+                      )}
+                    </p>
                   </div>
-                  <div className='h-6 w-px bg-gray-200'></div>
+                  <div className='flex-1 flex justify-center'>
+                    <Pagination>
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious
+                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                            className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'hover:bg-gray-100'}
+                          />
+                        </PaginationItem>
+                        {[...Array(totalPages)].map((_, i) => (
+                          <PaginationItem key={i}>
+                            <PaginationLink
+                              isActive={currentPage === i + 1}
+                              onClick={() => setCurrentPage(i + 1)}
+                              className={`${
+                                currentPage === i + 1 
+                                  ? 'bg-[#124A69] text-white hover:bg-[#0d3a56]' 
+                                  : 'hover:bg-gray-100'
+                              }`}
+                            >
+                              {i + 1}
+                            </PaginationLink>
+                          </PaginationItem>
+                        ))}
+                        <PaginationItem>
+                          <PaginationNext
+                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                            className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'hover:bg-gray-100'}
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                  </div>
                   <div className='flex items-center gap-2'>
                     <Button
                       variant='outline'

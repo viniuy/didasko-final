@@ -26,7 +26,7 @@ interface Course {
   semester: string;
   section: string;
   attendanceStats?: {
-    totalAbsents: number;
+    totalAbsent: number;
     lastAttendanceDate: string | null;
   };
 }
@@ -67,7 +67,7 @@ const CourseCard = ({
         <CardContent>
           <p className='text-sm'>Section {course.section}</p>
           <p className='text-sm font-semibold'>
-            Total Number of Absents: {course.attendanceStats?.totalAbsents || 0}
+            Total Number of Absents: {course.attendanceStats?.totalAbsent || 0}
           </p>
           <p className='text-xs text-gray-400'>
             {course.attendanceStats?.lastAttendanceDate

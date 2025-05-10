@@ -42,11 +42,41 @@ export async function GET(
 
     const params = await Promise.resolve(context.params);
     const { courseId } = params;
-    console.log('Fetching course with ID:', courseId);
+    console.log('Fetching course with ID/code:', courseId);
 
-    // Fetch course details first
-    const course = await prisma.course.findUnique({
+    // Try to find the course by ID first, then by code
+    let course = await prisma.course.findUnique({
       where: { id: courseId },
+      select: { id: true }
+    });
+
+    // If not found by ID, try by code
+    if (!course) {
+      course = await prisma.course.findFirst({
+        where: { code: courseId.toUpperCase() },
+        select: { id: true }
+      });
+    }
+
+    if (!course) {
+      console.log('Course not found in database');
+      return NextResponse.json({ error: 'Course not found' }, { status: 404 });
+    }
+
+    // Get today's date in UTC
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+
+    console.log('Date range for attendance:', {
+      start: today.toISOString(),
+      end: tomorrow.toISOString()
+    });
+
+    // Now fetch the course with students using the course ID
+    const courseWithStudents = await prisma.course.findUnique({
+      where: { id: course.id },
       include: {
         students: {
           select: {
@@ -57,26 +87,50 @@ export async function GET(
             image: true,
             attendance: {
               where: {
-                courseId: courseId,
+                courseId: course.id,
+                date: {
+                  gte: today,
+                  lt: tomorrow
+                }
               },
+              select: {
+                id: true,
+                status: true,
+                date: true,
+                courseId: true
+              },
+              orderBy: {
+                date: 'desc'
+              },
+              take: 1
             },
           },
         },
       },
     });
 
-    console.log('Course fetch result:', course ? 'Found' : 'Not found');
+    console.log('Course fetch result:', courseWithStudents ? 'Found' : 'Not found');
 
-    if (!course) {
+    if (!courseWithStudents) {
       console.log('Course not found in database');
       return NextResponse.json({ error: 'Course not found' }, { status: 404 });
     }
 
-    console.log('Number of students found:', course.students.length);
+    console.log('Number of students found:', courseWithStudents.students.length);
 
     // Transform the data to match the frontend interface
-    const students = course.students.map((student) => {
-      console.log('Processing student:', student.id);
+    const students = courseWithStudents.students.map((student) => {
+      console.log('Processing student:', {
+        id: student.id,
+        name: `${student.firstName} ${student.lastName}`,
+        attendanceCount: student.attendance.length,
+        attendanceStatus: student.attendance[0]?.status || 'NOT_SET',
+        attendanceDetails: student.attendance[0] ? {
+          date: student.attendance[0].date,
+          courseId: student.attendance[0].courseId
+        } : null
+      });
+      
       return {
         id: student.id,
         name: `${student.firstName} ${student.lastName}`,
@@ -93,8 +147,8 @@ export async function GET(
 
     return NextResponse.json({
       course: {
-        code: course.code,
-        section: course.section,
+        code: courseWithStudents.code,
+        section: courseWithStudents.section,
       },
       students,
     });

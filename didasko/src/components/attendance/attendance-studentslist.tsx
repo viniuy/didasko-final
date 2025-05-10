@@ -8,6 +8,8 @@ import {
   PaginationContent,
   PaginationItem,
   PaginationLink,
+  PaginationPrevious,
+  PaginationNext,
 } from '@/components/ui/pagination';
 import {
   Download,
@@ -40,7 +42,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { toast } from 'sonner';
+import toast, { Toaster } from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import { StudentCard } from './student-card';
 import { FilterSheet } from './filter-sheet';
@@ -184,11 +186,23 @@ export default function StudentList() {
     try {
       setIsLoading(true);
       const response = await axiosInstance.get(`/courses/${courseId}/students`);
-      setStudentList(response.data.students);
+      const students = response.data.students.map((student: any) => ({
+        ...student,
+        name: `${student.lastName}, ${student.firstName}${student.middleInitial ? ` ${student.middleInitial}.` : ''}`,
+        status: 'NOT_SET' as AttendanceStatusWithNotSet,
+        attendanceRecords: [],
+      }));
+      setStudentList(students);
       setCourseInfo(response.data.course);
+      
+      // Fetch attendance for the selected date after getting students
+      if (selectedDate) {
+        await fetchAttendance(selectedDate);
+      }
     } catch (error) {
       console.error('Error fetching students:', error);
       setStudentList([]);
+      toast.error('Failed to fetch students');
     } finally {
       setIsLoading(false);
     }
@@ -200,37 +214,45 @@ export default function StudentList() {
     try {
       setIsDateLoading(true);
       const dateStr = format(date, 'yyyy-MM-dd');
-      const attendanceResponse = await axiosInstance.get(
+      const attendanceResponse = await axiosInstance.get<{ attendance: AttendanceRecord[] }>(
         `/courses/${courseId}/attendance`,
         {
           params: {
             date: dateStr,
+            limit: 1000, // Increase limit to get all records
           },
         },
       );
 
       const attendanceData = attendanceResponse.data.attendance;
-      const attendanceMap = new Map(
-        attendanceData.map((record: AttendanceRecord) => [
-          record.studentId,
-          record.status,
-        ]),
+      const attendanceMap = new Map<string, AttendanceRecord>(
+        attendanceData.map((record) => [record.studentId, record])
       );
 
+      // Update the entire student list with attendance records
       setStudentList((prevStudents) =>
         prevStudents.map((student) => {
-          const attendanceRecord = attendanceMap.get(student.id) as
-            | AttendanceRecord
-            | undefined;
+          const record = attendanceMap.get(student.id);
           return {
             ...student,
-            status: attendanceRecord?.status || 'NOT_SET',
-            attendanceRecords: attendanceRecord ? [attendanceRecord] : [],
-          } satisfies Student;
+            status: record?.status || 'NOT_SET',
+            attendanceRecords: record ? [{
+              id: record.id,
+              studentId: student.id,
+              courseId: courseId,
+              status: record.status,
+              date: dateStr,
+              reason: record.reason,
+            }] : [],
+          };
         }),
       );
+
+      // Clear any unsaved changes when fetching new attendance
+      setUnsavedChanges({});
     } catch (error) {
       console.error('Error fetching attendance:', error);
+      toast.error('Failed to fetch attendance records');
     } finally {
       setIsDateLoading(false);
     }
@@ -255,12 +277,6 @@ export default function StudentList() {
       fetchAttendanceStats();
     }
   }, [courseId]);
-
-  useEffect(() => {
-    if (selectedDate) {
-      fetchAttendance(selectedDate);
-    }
-  }, [selectedDate]);
 
   // Get attendance records for the selected date
   const getAttendanceForDate = (student: Student, date: Date | undefined) => {
@@ -307,30 +323,144 @@ export default function StudentList() {
       });
   }, [studentList, searchQuery, selectedDate, filters.status]);
 
-  const totalPages = Math.ceil(filteredStudents.length / itemsPerPage);
+  const totalPages = useMemo(() => {
+    const filtered = studentList
+      .filter((student) =>
+        student.name.toLowerCase().includes(searchQuery.toLowerCase()),
+      )
+      .filter((student) => {
+        if (filters.status.length === 0) return true;
+        return filters.status.includes(student.status);
+      });
+    return Math.ceil(filtered.length / itemsPerPage);
+  }, [studentList, searchQuery, filters.status, itemsPerPage]);
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
     setCurrentPage(1);
   };
 
-  const updateStatus = (index: number, newStatus: AttendanceStatus) => {
-    const student = studentList[index];
-    setUnsavedChanges((prev) => ({
-      ...prev,
-      [student.id]: newStatus,
-    }));
+  const updateStatus = async (index: number, newStatus: AttendanceStatus) => {
+    const actualIndex = (currentPage - 1) * itemsPerPage + index;
+    const student = filteredStudents[actualIndex];
+    if (!student) return;
 
-    // Update local state for immediate UI feedback
-    setStudentList((prev) =>
-      prev.map((s, i) => (i === index ? { ...s, status: newStatus } : s)),
+    const promise = axiosInstance.post(
+      `/courses/${courseId}/attendance`,
+      {
+        date: selectedDate.toISOString(),
+        attendance: [{
+          studentId: student.id,
+          status: newStatus,
+        }],
+      },
     );
+
+    toast.promise(promise, {
+      loading: 'Updating attendance...',
+      success: 'Attendance updated',
+      error: 'Failed to update attendance',
+    }, {
+      style: {
+        background: '#fff',
+        color: '#124A69',
+        border: '1px solid #e5e7eb',
+        boxShadow:
+          '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+        borderRadius: '0.5rem',
+        padding: '1rem',
+      },
+      success: {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+        },
+        iconTheme: {
+          primary: '#124A69',
+          secondary: '#fff',
+        },
+      },
+      error: {
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+        iconTheme: {
+          primary: '#dc2626',
+          secondary: '#fff',
+        },
+      },
+      loading: {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+        },
+      },
+    });
+
+    try {
+      // Update local state immediately for better UX
+      setStudentList((prev) =>
+        prev.map((s) => (s.id === student.id ? { ...s, status: newStatus } : s)),
+      );
+
+      await promise;
+
+      // Update attendance records
+      const record: AttendanceRecord = {
+        id: crypto.randomUUID(),
+        studentId: student.id,
+        courseId: courseId!,
+        status: newStatus,
+        date: format(selectedDate, 'yyyy-MM-dd'),
+        reason: null,
+      };
+
+      setStudentList((prev) =>
+        prev.map((s) => 
+          s.id === student.id 
+            ? { ...s, status: newStatus, attendanceRecords: [record] }
+            : s
+        ),
+      );
+    } catch (error) {
+      console.error('Error saving attendance:', error);
+      // Revert local state on error
+      setStudentList((prev) =>
+        prev.map((s) => (s.id === student.id ? { ...s, status: 'NOT_SET' } : s)),
+      );
+    }
   };
 
-  const currentStudents = filteredStudents.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage,
-  );
+  const currentStudents = useMemo(() => {
+    const filtered = studentList
+      .filter((student) =>
+        student.name.toLowerCase().includes(searchQuery.toLowerCase()),
+      )
+      .filter((student) => {
+        if (filters.status.length === 0) return true;
+        return filters.status.includes(student.status);
+      })
+      .sort((a, b) => {
+        if (!sortDate) return 0;
+        const aAttendance = getAttendanceForDate(a, selectedDate);
+        const bAttendance = getAttendanceForDate(b, selectedDate);
+        if (sortDate === 'newest') {
+          return (bAttendance?.date || '').localeCompare(
+            aAttendance?.date || '',
+          );
+        }
+        return (aAttendance?.date || '').localeCompare(bAttendance?.date || '');
+      });
+
+    return filtered.slice(
+      (currentPage - 1) * itemsPerPage,
+      currentPage * itemsPerPage,
+    );
+  }, [studentList, searchQuery, filters.status, sortDate, selectedDate, currentPage, itemsPerPage]);
 
   const handleImageUpload = async (studentId: string, file: File) => {
     try {
@@ -413,13 +543,14 @@ export default function StudentList() {
         error instanceof Error ? error.message : 'Failed to save image',
         {
           duration: 3000,
-          position: 'top-center',
           style: {
-            background: '#EF4444',
-            color: 'white',
-            fontSize: '14px',
-            padding: '12px',
-            borderRadius: '8px',
+            background: '#fff',
+            color: '#dc2626',
+            border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
           },
         },
       );
@@ -468,29 +599,110 @@ export default function StudentList() {
     }
   };
 
-  const markAllAsPresent = () => {
-    if (!selectedDate) {
-      toast.error('Please select a date first');
+  const markAllAsPresent = async () => {
+    if (!selectedDate || !courseId) {
+      toast.error('Please select a date first', {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+          boxShadow:
+            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+          borderRadius: '0.5rem',
+          padding: '1rem',
+        },
+      });
       return;
     }
 
-    const newChanges: Record<string, AttendanceStatus> = {};
-    studentList.forEach((student) => {
-      newChanges[student.id] = 'PRESENT' as AttendanceStatus;
-    });
-    setUnsavedChanges((prev) => ({
-      ...prev,
-      ...newChanges,
+    const attendanceData = studentList.map(student => ({
+      studentId: student.id,
+      status: 'PRESENT' as AttendanceStatus,
     }));
 
-    // Update local state for immediate UI feedback
-    setStudentList((prev) =>
-      prev.map((student) => ({
-        ...student,
-        status: 'PRESENT' as AttendanceStatus,
-      })),
+    const promise = axiosInstance.post(
+      `/courses/${courseId}/attendance`,
+      {
+        date: selectedDate.toISOString(),
+        attendance: attendanceData,
+      },
     );
-    setShowMarkAllConfirm(false);
+
+    toast.promise(promise, {
+      loading: 'Marking all as present...',
+      success: 'All students marked as present',
+      error: 'Failed to update attendance',
+    }, {
+      style: {
+        background: '#fff',
+        color: '#124A69',
+        border: '1px solid #e5e7eb',
+        boxShadow:
+          '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+        borderRadius: '0.5rem',
+        padding: '1rem',
+      },
+      success: {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+        },
+        iconTheme: {
+          primary: '#124A69',
+          secondary: '#fff',
+        },
+      },
+      error: {
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+        iconTheme: {
+          primary: '#dc2626',
+          secondary: '#fff',
+        },
+      },
+      loading: {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+        },
+      },
+    });
+
+    try {
+      // Update local state immediately
+      setStudentList((prev) =>
+        prev.map((student) => ({
+          ...student,
+          status: 'PRESENT' as AttendanceStatus,
+          attendanceRecords: [{
+            id: crypto.randomUUID(),
+            studentId: student.id,
+            courseId: courseId,
+            status: 'PRESENT',
+            date: format(selectedDate, 'yyyy-MM-dd'),
+            reason: null,
+          }],
+        })),
+      );
+
+      await promise;
+      setShowMarkAllConfirm(false);
+    } catch (error) {
+      console.error('Error marking all as present:', error);
+      // Revert local state on error
+      setStudentList((prev) =>
+        prev.map((student) => ({
+          ...student,
+          status: 'NOT_SET',
+          attendanceRecords: [],
+        })),
+      );
+    }
   };
 
   const handleApplyFilters = () => {
@@ -501,9 +713,22 @@ export default function StudentList() {
     setIsFilterSheetOpen(false);
   };
 
+  const hasIncompleteAttendance = useMemo(() => {
+    return filteredStudents.some(student => student.status === 'NOT_SET');
+  }, [filteredStudents]);
+
+  const incompleteAttendanceCount = useMemo(() => {
+    return filteredStudents.filter(student => student.status === 'NOT_SET').length;
+  }, [filteredStudents]);
+
   const handleExport = () => {
     if (!selectedDate) {
       toast.error('Please select a date before exporting');
+      return;
+    }
+
+    if (hasIncompleteAttendance) {
+      toast.error('Please set attendance status for all students before exporting');
       return;
     }
 
@@ -683,46 +908,6 @@ export default function StudentList() {
     }
   };
 
-  const handleSaveChanges = async () => {
-    try {
-      const response = await axiosInstance.post(
-        `/courses/${courseId}/attendance`,
-        {
-          date: selectedDate.toISOString(),
-          records: Object.entries(unsavedChanges).map(
-            ([studentId, status]) => ({
-              studentId,
-              status,
-            }),
-          ),
-        },
-      );
-
-      // Update the attendance records with the saved changes
-      setStudentList((prev) =>
-        prev.map((student) => {
-          const newStatus = unsavedChanges[student.id] as AttendanceStatus;
-          return {
-            ...student,
-            status: newStatus,
-            attendanceRecords: student.attendanceRecords.map((record) =>
-              record.date === format(selectedDate, 'yyyy-MM-dd')
-                ? { ...record, status: newStatus }
-                : record,
-            ),
-          };
-        }),
-      );
-
-      // Clear unsaved changes
-      setUnsavedChanges({});
-      toast.success('Attendance saved successfully');
-    } catch (error) {
-      console.error('Error saving attendance:', error);
-      toast.error('Failed to save attendance');
-    }
-  };
-
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (hasUnsavedChanges) {
@@ -737,56 +922,141 @@ export default function StudentList() {
 
   const clearAllAttendance = async () => {
     if (!selectedDate || !courseId) {
-      toast.error('Please select a date before clearing attendance');
+      toast.error('Please select a date before clearing attendance', {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+          boxShadow:
+            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+          borderRadius: '0.5rem',
+          padding: '1rem',
+        },
+      });
       return;
     }
 
-    try {
-      setIsSaving(true);
-      const dateStr = format(selectedDate, 'yyyy-MM-dd');
+    const dateStr = format(selectedDate, 'yyyy-MM-dd');
+    
+    // Get all attendance records for the selected date
+    const recordsToDelete = studentList
+      .filter(student => student.status !== 'NOT_SET')
+      .map(student => {
+        const record = student.attendanceRecords.find(r => r.date === dateStr);
+        return record?.id;
+      })
+      .filter((id): id is string => id !== undefined);
 
-      // Get all existing record IDs for this date
-      const existingRecordIds = studentList
-        .map(
-          (student) =>
-            student.attendanceRecords.find(
-              (record) => record.date.split('T')[0] === dateStr,
-            )?.id,
-        )
-        .filter((id) => id) as string[];
+    if (recordsToDelete.length === 0) {
+      toast.error('No attendance records to clear', {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+          boxShadow:
+            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+          borderRadius: '0.5rem',
+          padding: '1rem',
+        },
+      });
+      return;
+    }
 
-      // Prepare the request payload - we'll send the record IDs to delete
-      const payload = {
+    const promise = axiosInstance.post(
+      `/courses/${courseId}/attendance/clear`,
+      {
         date: dateStr,
-        recordsToDelete: existingRecordIds,
-      };
+        recordsToDelete,
+      },
+    );
 
-      await axiosInstance.post(
-        `/courses/${courseId}/attendance/clear`,
-        payload,
-      );
+    toast.promise(promise, {
+      loading: 'Clearing attendance...',
+      success: 'Attendance cleared successfully',
+      error: 'Failed to clear attendance',
+    }, {
+      style: {
+        background: '#fff',
+        color: '#124A69',
+        border: '1px solid #e5e7eb',
+        boxShadow:
+          '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+        borderRadius: '0.5rem',
+        padding: '1rem',
+      },
+      success: {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+        },
+        iconTheme: {
+          primary: '#124A69',
+          secondary: '#fff',
+        },
+      },
+      error: {
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+        iconTheme: {
+          primary: '#dc2626',
+          secondary: '#fff',
+        },
+      },
+      loading: {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+        },
+      },
+    });
 
-      // Update the local state
-      setStudentList((prevStudents) =>
-        prevStudents.map((student) => ({
+    try {
+      // Update local state immediately for all students
+      setStudentList((prev) =>
+        prev.map((student) => ({
           ...student,
           status: 'NOT_SET',
           attendanceRecords: student.attendanceRecords.filter(
-            (record) => record.date !== format(selectedDate, 'yyyy-MM-dd'),
+            (record) => record.date !== dateStr,
           ),
         })),
       );
 
-      setUnsavedChanges({});
-      setHasUnsavedChanges(false);
-      toast.success('Attendance cleared successfully');
+      await promise;
+      setShowClearConfirm(false);
+      
+      // Reset to first page after clearing
+      setCurrentPage(1);
     } catch (error) {
       console.error('Error clearing attendance:', error);
-      toast.error('Failed to clear attendance');
-    } finally {
-      setIsSaving(false);
+      // Revert local state on error
+      setStudentList((prev) =>
+        prev.map((student) => ({
+          ...student,
+          status: student.attendanceRecords.find(
+            (record) => record.date === dateStr,
+          )?.status || 'NOT_SET',
+        })),
+      );
     }
   };
+
+  // Add useEffect to fetch attendance when date changes
+  useEffect(() => {
+    if (courseId && selectedDate) {
+      fetchAttendance(selectedDate);
+    }
+  }, [selectedDate, courseId]);
+
+  // Add useEffect to reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filters.status, sortDate]);
 
   if (isLoading) {
     return (
@@ -844,6 +1114,49 @@ export default function StudentList() {
 
   return (
     <div className='flex flex-col h-screen'>
+      <Toaster
+        toastOptions={{
+          className: '',
+          style: {
+            background: '#fff',
+            color: '#124A69',
+            border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
+          },
+          success: {
+            style: {
+              background: '#fff',
+              color: '#124A69',
+              border: '1px solid #e5e7eb',
+            },
+            iconTheme: {
+              primary: '#124A69',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            style: {
+              background: '#fff',
+              color: '#dc2626',
+              border: '1px solid #e5e7eb',
+            },
+            iconTheme: {
+              primary: '#dc2626',
+              secondary: '#fff',
+            },
+          },
+          loading: {
+            style: {
+              background: '#fff',
+              color: '#124A69',
+              border: '1px solid #e5e7eb',
+            },
+          },
+        }}
+      />
       <div className='flex items-center gap-4 p-4 border-b bg-white'>
         <Link href='/attendance'>
           <Button variant='ghost' size='icon' className='hover:bg-gray-100'>
@@ -950,19 +1263,6 @@ export default function StudentList() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button
-            className='bg-[#124A69] hover:bg-[#0D3A54] text-white rounded-full px-6 h-10'
-            onClick={handleSaveChanges}
-            disabled={isSaving || Object.keys(unsavedChanges).length === 0}
-          >
-            {isSaving ? (
-              <>
-                <span className='mr-2'>Saving...</span>
-              </>
-            ) : (
-              'Save Attendance'
-            )}
-          </Button>
           <div className='flex items-center gap-3 ml-auto'>
             <FilterSheet
               isOpen={isFilterSheetOpen}
@@ -1008,47 +1308,70 @@ export default function StudentList() {
                   </div>
                 </div>
               ))
-            : currentStudents.map((student, index) => (
-                <StudentCard
-                  key={student.id}
-                  student={{
-                    name: student.name,
-                    status: student.status,
-                    image: student.image,
-                  }}
-                  index={index}
-                  tempImage={tempImage}
-                  onImageUpload={(index) =>
-                    handleImageUpload(student.id, new File([], ''))
-                  }
-                  onSaveChanges={handleSaveImageChanges}
-                  onRemoveImage={() =>
-                    setImageToRemove({ index, name: student.name })
-                  }
-                  onStatusChange={(index, status: AttendanceStatus) =>
-                    updateStatus(index, status)
-                  }
-                  isSaving={isSaving}
-                />
-              ))}
+            : currentStudents.length > 0 ? (
+                currentStudents.map((student, index) => (
+                  <StudentCard
+                    key={student.id}
+                    student={{
+                      name: student.name,
+                      status: student.status,
+                      image: student.image,
+                    }}
+                    index={index}
+                    tempImage={tempImage}
+                    onImageUpload={(index) =>
+                      handleImageUpload(student.id, new File([], ''))
+                    }
+                    onSaveChanges={handleSaveImageChanges}
+                    onRemoveImage={() =>
+                      setImageToRemove({ index, name: student.name })
+                    }
+                    onStatusChange={(index, status: AttendanceStatus) =>
+                      updateStatus(index, status)
+                    }
+                    isSaving={isSaving}
+                  />
+                ))
+              ) : (
+                <div className="col-span-full flex flex-col items-center justify-center py-12">
+                  <div className="text-gray-500 text-lg font-medium mb-2">No students found</div>
+                  <p className="text-gray-400 text-sm">Try adjusting your search or filters</p>
+                </div>
+              )}
         </div>
 
-        {totalPages > 1 && (
-          <div className='mt-6'>
-            <Pagination>
+        {totalPages > 1 && currentStudents.length > 0 && (
+          <div className='flex justify-between items-center px-2 mt-10'>
+            <p className='text-sm text-gray-500 w-60  '>
+              {currentPage * itemsPerPage - (itemsPerPage - 1)}-
+              {Math.min(currentPage * itemsPerPage, filteredStudents.length)} out of{' '}
+              {filteredStudents.length} students
+            </p>
+            <Pagination className='flex justify-end'>
               <PaginationContent>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                  (page) => (
-                    <PaginationItem key={page}>
-                      <PaginationLink
-                        isActive={page === currentPage}
-                        onClick={() => setCurrentPage(page)}
-                      >
-                        {page}
-                      </PaginationLink>
-                    </PaginationItem>
-                  ),
-                )}
+                <PaginationItem>
+                  <PaginationPrevious
+                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                    className={currentPage === 1 ? 'pointer-events-none opacity-50' : ''}
+                  />
+                </PaginationItem>
+                {[...Array(totalPages)].map((_, i) => (
+                  <PaginationItem key={i}>
+                    <PaginationLink
+                      isActive={currentPage === i + 1}
+                      onClick={() => setCurrentPage(i + 1)}
+                      className={currentPage === i + 1 ? 'bg-[#124A69] text-white' : ''}
+                    >
+                      {i + 1}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
+                <PaginationItem>
+                  <PaginationNext
+                    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                    className={currentPage === totalPages ? 'pointer-events-none opacity-50 ' : ''}
+                  />
+                </PaginationItem>
               </PaginationContent>
             </Pagination>
           </div>
@@ -1093,6 +1416,11 @@ export default function StudentList() {
           </DialogHeader>
           {selectedDate ? (
             <>
+              {hasIncompleteAttendance && (
+                <div className="mt-2 text-sm text-red-500">
+                  {incompleteAttendanceCount} student{incompleteAttendanceCount !== 1 ? 's' : ''} {incompleteAttendanceCount !== 1 ? 'do' : 'does'} not have attendance set yet
+                </div>
+              )}
               <div className='mt-6 max-h-[400px] overflow-auto'>
                 <table className='w-full border-collapse'>
                   <thead className='bg-gray-50 sticky top-0'>
@@ -1129,9 +1457,9 @@ export default function StudentList() {
                 <Button
                   className='bg-[#124A69] hover:bg-[#0D3A54] text-white'
                   onClick={handleExport}
-                  disabled={!selectedDate}
+                  disabled={!selectedDate || hasIncompleteAttendance}
                 >
-                  Export to Excel
+                  {hasIncompleteAttendance ? 'Complete Attendance First' : 'Export to Excel'}
                 </Button>
               </div>
             </>
