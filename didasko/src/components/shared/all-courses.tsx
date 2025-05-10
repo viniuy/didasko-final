@@ -15,7 +15,7 @@ import {
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { format } from 'date-fns';
+import axiosInstance from '@/lib/axios';
 
 interface Course {
   id: string;
@@ -23,46 +23,57 @@ interface Course {
   code: string;
   description: string | null;
   semester: string;
-  room: string;
+  section: string;
+  attendanceStats?: {
+    totalAbsents: number;
+    lastAttendanceDate: string | null;
+  };
 }
 
-interface Schedule {
-  id: string;
-  courseId: string;
-  day: Date;
-  fromTime: string;
-  toTime: string;
+interface AllCoursesProps {
+  type: 'attendance' | 'grading';
+}
+
+const CourseCard = ({
+  course,
+  type,
+}: {
   course: Course;
-}
+  type: 'attendance' | 'grading';
+}) => {
+  const href =
+    type === 'attendance'
+      ? `/attendance/class?courseId=${course.id}`
+      : `/grading/reporting/${course.code}/${course.section}`;
 
-const CourseCard = ({ schedule }: { schedule: Schedule }) => {
   return (
-    <Card className='bg-[#124A69] text-white rounded-lg shadow-md p-4 w-full max-w-[400px] flex flex-col justify-between h-full'>
+    <Card className='bg-[#124A69] text-white rounded-lg shadow-md w-full max-w-[440px] flex flex-col justify-between h-45'>
       <div>
-        <CardHeader className='flex justify-between items-center'>
-          <CardTitle className='text-lg font-bold'>
-            {schedule.course.title}
-          </CardTitle>
+        <CardHeader className='-mt-4 flex justify-between items-center'>
+          <CardTitle className='text-2xl font-bold'>{course.title}</CardTitle>
           <BookOpenText size={50} />
         </CardHeader>
         <CardContent>
-          <p className='text-sm'>{schedule.course.code}</p>
-          <p className='text-sm font-semibold'>{schedule.course.room}</p>
+          <p className='text-sm'>Section {course.section}</p>
+          <p className='text-sm font-semibold'>
+            Total Number of Absents: {course.attendanceStats?.totalAbsents || 0}
+          </p>
           <p className='text-xs text-gray-400'>
-            Schedule: {format(new Date(schedule.day), 'EEEE')}{' '}
-            {schedule.fromTime} - {schedule.toTime}
+            {course.attendanceStats?.lastAttendanceDate
+              ? `Last attendance: ${new Date(
+                  course.attendanceStats.lastAttendanceDate,
+                ).toLocaleDateString()}`
+              : 'No attendance yet'}
           </p>
         </CardContent>
       </div>
-      <div className='flex justify-end mt-auto p-2'>
+      <div className='flex justify-end -mt-4 p-2'>
         <Button
           asChild
           variant='secondary'
           className='bg-[#FAEDCB] text-black text-sm'
         >
-          <Link href={`/attendance/class?courseId=${schedule.courseId}`}>
-            View Details
-          </Link>
+          <Link href={href}>View Details</Link>
         </Button>
       </div>
     </Card>
@@ -81,78 +92,67 @@ const LoadingSkeleton = ({ index }: { index: number }) => (
   </Card>
 );
 
-export default function FirstSemesterCourses() {
+export default function AllCourses({ type }: AllCoursesProps) {
   const router = useRouter();
   const { data: session, status } = useSession();
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 4;
+  const itemsPerPage = 3;
 
-  const fetchUserIdByEmail = async (email: string) => {
+  const fetchSchedules = async () => {
+    if (!session?.user?.id) {
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      const response = await fetch(`/api/users?email=${email}`);
-      if (!response.ok) throw new Error('Failed to fetch user');
-      const data = await response.json();
-      return data.id;
+      const response = await axiosInstance.get('/courses', {
+        params: {
+          facultyId: session.user.id,
+        },
+      });
+      const courses = response.data.courses || [];
+      const coursesWithStats = await Promise.all(
+        courses.map(async (course: Course) => {
+          const stats = await fetchAttendanceStats(course.id);
+          return {
+            ...course,
+            attendanceStats: stats,
+          };
+        }),
+      );
+      setCourses(coursesWithStats);
     } catch (error) {
-      console.error('Error fetching user:', error);
-      return null;
+      console.error('Error in fetchSchedules:', error);
+      setCourses([]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const fetchSchedules = async () => {
-    if (!session?.user?.email) {
-      setIsLoading(false);
-      router.push('/');
-      return;
-    }
-
-    const userId = await fetchUserIdByEmail(session.user.email);
-    if (!userId) {
-      setIsLoading(false);
-      router.push('/');
-      return;
-    }
-
+  const fetchAttendanceStats = async (courseId: string) => {
     try {
-      const response = await fetch(
-        `/api/courses/schedules?facultyId=${userId}`,
+      const response = await axiosInstance.get(
+        `/courses/${courseId}/attendance/stats`,
       );
-      const data = await response.json();
-      console.log('API Response:', data);
-      if (response.ok) {
-        // Filter for first semester courses with null checks
-        const firstSemesterSchedules = data.filter((schedule: Schedule) => {
-          console.log('Schedule semester:', schedule?.course?.semester);
-          return (
-            schedule?.course?.semester &&
-            schedule.course.semester.trim() === '1st Semester'
-          );
-        });
-        console.log(
-          'Filtered first semester schedules:',
-          firstSemesterSchedules,
-        );
-        setSchedules(firstSemesterSchedules);
-      }
+      if (response.status !== 200 || !response.data)
+        throw new Error('Failed to fetch attendance stats');
+      return response.data;
     } catch (error) {
-      console.error('Error in fetchSchedules:', error);
-    } finally {
-      setIsLoading(false);
+      console.error('Error fetching attendance stats:', error);
+      return null;
     }
   };
 
   useEffect(() => {
     if (status === 'authenticated') {
       fetchSchedules();
-    } else if (status === 'unauthenticated') {
-      router.push('/');
     }
-  }, [status, session?.user?.email, router]);
+  }, [status, session?.user?.id]);
 
-  const totalPages = Math.ceil(schedules.length / itemsPerPage);
-  const currentSchedules = schedules.slice(
+  const totalPages = Math.ceil(courses.length / itemsPerPage);
+  const currentCourses = courses.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage,
   );
@@ -160,7 +160,7 @@ export default function FirstSemesterCourses() {
   if (status === 'loading' || isLoading) {
     return (
       <Card className='p-4 shadow-md rounded-lg'>
-        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4'>
+        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3'>
           {[...Array(3)].map((_, index) => (
             <LoadingSkeleton key={index} index={index} />
           ))}
@@ -169,16 +169,14 @@ export default function FirstSemesterCourses() {
     );
   }
 
-  if (schedules.length === 0) {
+  if (courses.length === 0) {
     return (
       <Card className='p-4 shadow-md rounded-lg'>
         <div className='text-center py-8'>
           <BookOpenText className='mx-auto mb-4' size={50} />
-          <h2 className='text-xl font-semibold mb-2'>
-            No First Semester Courses
-          </h2>
+          <h2 className='text-xl font-semibold mb-2'>No Courses</h2>
           <p className='text-gray-500'>
-            You don't have any courses assigned for the first semester.
+            You don't have any courses assigned.
           </p>
         </div>
       </Card>
@@ -188,17 +186,17 @@ export default function FirstSemesterCourses() {
   return (
     <Card className='p-4 shadow-md rounded-lg'>
       <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
-        {currentSchedules.map((schedule) => (
-          <CourseCard key={schedule.id} schedule={schedule} />
+        {currentCourses.map((course) => (
+          <CourseCard key={course.id} course={course} type={type} />
         ))}
       </div>
 
-      {schedules.length > itemsPerPage && (
-        <div className='flex justify-between items-center px-2 mt-4'>
-          <p className='text-sm text-gray-500'>
+      {courses.length > itemsPerPage && (
+        <div className='flex justify-between items-center px-2 -mt-4'>
+          <p className='text-sm text-gray-500 w-100'>
             {currentPage * itemsPerPage - (itemsPerPage - 1)}-
-            {Math.min(currentPage * itemsPerPage, schedules.length)} of{' '}
-            {schedules.length} classes
+            {Math.min(currentPage * itemsPerPage, courses.length)} out of{' '}
+            {courses.length} classes
           </p>
           <Pagination className='flex justify-end'>
             <PaginationContent>
@@ -243,4 +241,4 @@ export default function FirstSemesterCourses() {
       )}
     </Card>
   );
-}
+} 

@@ -1,38 +1,95 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthCookie, verifyToken } from '@/lib/auth';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth-options';
 
 export async function GET(
-  request: NextRequest,
+  request: Request,
   { params }: { params: { courseId: string } },
 ) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
     const criteriaId = searchParams.get('criteriaId');
+    const courseCode = searchParams.get('courseCode');
+    const courseSection = searchParams.get('courseSection');
 
-    console.log('GET grades request params:', {
-      courseId: params.courseId,
-      date,
-      criteriaId,
-    });
+    if (!date) {
+      return NextResponse.json({ error: 'Date is required' }, { status: 400 });
+    }
 
-    if (!date || !criteriaId) {
-      console.log('Missing required parameters');
+    if (!courseCode || !courseSection) {
       return NextResponse.json(
-        { error: 'Date and criteriaId are required' },
+        { error: 'Course code and section are required' },
         { status: 400 },
       );
     }
 
+    // First find the course by code and section
+    const course = await prisma.course.findFirst({
+      where: {
+        code: courseCode,
+        section: courseSection,
+      },
+    });
+
+    if (!course) {
+      return NextResponse.json({ error: 'Course not found' }, { status: 404 });
+    }
+
+    // If criteriaId is provided, fetch specific grades
+    if (criteriaId) {
+      const grades = await prisma.grade.findMany({
+        where: {
+          courseId: course.id,
+          criteriaId: criteriaId,
+          date: {
+            gte: new Date(date + 'T00:00:00.000Z'),
+            lt: new Date(date + 'T23:59:59.999Z'),
+          },
+        },
+        include: {
+          student: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              middleInitial: true,
+              image: true,
+            },
+          },
+        },
+      });
+
+      console.log('Found grades:', grades);
+      return NextResponse.json(grades);
+    }
+
+    // If no criteriaId, fetch all grades for the date to check existing criteria
     const grades = await prisma.grade.findMany({
       where: {
-        courseId: params.courseId,
-        criteriaId: criteriaId,
-        date: new Date(date),
+        courseId: course.id,
+        date: {
+          gte: new Date(date + 'T00:00:00.000Z'),
+          lt: new Date(date + 'T23:59:59.999Z'),
+        },
       },
       include: {
-        student: true,
+        student: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            middleInitial: true,
+            image: true,
+          },
+        },
       },
     });
 
@@ -52,7 +109,8 @@ export async function POST(
   { params }: { params: { courseId: string } },
 ) {
   try {
-    const { date, criteriaId, grades } = await request.json();
+    const { date, criteriaId, grades, courseCode, courseSection } =
+      await request.json();
     const authCookie = getAuthCookie();
 
     console.log('POST grades request:', {
@@ -67,7 +125,14 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (!date || !criteriaId || !grades || !Array.isArray(grades)) {
+    if (
+      !date ||
+      !criteriaId ||
+      !grades ||
+      !Array.isArray(grades) ||
+      !courseCode ||
+      !courseSection
+    ) {
       console.log('Invalid request data');
       return NextResponse.json(
         { error: 'Invalid request data' },
@@ -75,13 +140,33 @@ export async function POST(
       );
     }
 
-    // Delete existing grades for this date and criteria
+    // First find the course by code and section
+    const course = await prisma.course.findFirst({
+      where: {
+        code: courseCode,
+        section: courseSection,
+      },
+    });
+
+    if (!course) {
+      return NextResponse.json({ error: 'Course not found' }, { status: 404 });
+    }
+
+    // Get all student IDs from the grades array
+    const studentIds = grades.map((grade) => grade.studentId);
+
+    // Delete existing grades for these students on this date
     console.log('Deleting existing grades');
     await prisma.grade.deleteMany({
       where: {
-        courseId: params.courseId,
-        criteriaId: criteriaId,
-        date: new Date(date),
+        courseId: course.id,
+        studentId: {
+          in: studentIds,
+        },
+        date: {
+          gte: new Date(date + 'T00:00:00.000Z'),
+          lt: new Date(date + 'T23:59:59.999Z'),
+        },
       },
     });
 
@@ -90,13 +175,13 @@ export async function POST(
     const createdGrades = await prisma.grade.createMany({
       data: grades.map(
         (grade: { studentId: string; scores: number[]; total: number }) => ({
-          courseId: params.courseId,
+          courseId: course.id,
           criteriaId: criteriaId,
           studentId: grade.studentId,
           value: grade.total,
           scores: grade.scores,
           total: grade.total,
-          date: new Date(date),
+          date: new Date(date + 'T00:00:00.000Z'),
         }),
       ),
     });

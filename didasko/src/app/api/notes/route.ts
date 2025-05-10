@@ -1,38 +1,58 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/prisma';
+import {
+  Note,
+  NoteCreateInput,
+  NoteUpdateInput,
+  NoteResponse,
+} from '@/types/note';
 
 export async function GET(request: Request) {
   try {
-    // Get session
     const session = await getServerSession(authOptions);
-    const userId = session?.user?.id;
-
-    if (!userId) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get all notes for this user
-    const notes = await prisma.note.findMany({
-      where: {
-        userId,
-      },
-      orderBy: {
-        date: 'desc',
-      },
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '10');
+    const skip = (page - 1) * limit;
+
+    // Get total count for pagination
+    const total = await prisma.note.count({
+      where: { userId: session.user.id },
     });
 
-    console.log(`Found ${notes.length} notes for user ${userId}`);
+    // Get notes with pagination
+    const notes = await prisma.note.findMany({
+      where: { userId: session.user.id },
+      orderBy: { date: 'desc' },
+      skip,
+      take: limit,
+    });
 
-    const formattedNotes = notes.map((note) => ({
+    // Transform dates to ISO strings
+    const transformedNotes: Note[] = notes.map((note) => ({
       ...note,
       date: note.date.toISOString(),
       createdAt: note.createdAt.toISOString(),
       updatedAt: note.updatedAt.toISOString(),
     }));
 
-    return NextResponse.json({ notes: formattedNotes });
+    const response: NoteResponse = {
+      notes: transformedNotes,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+
+    return NextResponse.json(response);
   } catch (error) {
     console.error('Error fetching notes:', error);
     return NextResponse.json(
@@ -44,29 +64,40 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-
-    // Get session
     const session = await getServerSession(authOptions);
-    const userId = session?.user?.id;
-
-    if (!userId) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { title, description, date } = body;
+    const body = await request.json();
+    const { title, description, date } = body as NoteCreateInput;
+
+    // Validate required fields
+    if (!title || !date) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 },
+      );
+    }
 
     const note = await prisma.note.create({
       data: {
         title,
         description,
         date: new Date(date),
-        userId,
+        userId: session.user.id,
       },
     });
 
-    console.log('Created note with ID:', note.id);
-    return NextResponse.json({ note });
+    // Transform dates to ISO strings
+    const transformedNote: Note = {
+      ...note,
+      date: note.date.toISOString(),
+      createdAt: note.createdAt.toISOString(),
+      updatedAt: note.updatedAt.toISOString(),
+    };
+
+    return NextResponse.json({ note: transformedNote });
   } catch (error) {
     console.error('Error creating note:', error);
     return NextResponse.json(
@@ -78,20 +109,26 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const { id, title, description, date } = await request.json();
-
-    // Get session
     const session = await getServerSession(authOptions);
-    const userId = session?.user?.id;
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    if (!userId) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    const body = await request.json();
+    const { id, title, description, date } = body as NoteUpdateInput;
+
+    // Validate required fields
+    if (!id || !title || !date) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 },
+      );
     }
 
     const note = await prisma.note.update({
       where: {
         id,
-        userId,
+        userId: session.user.id,
       },
       data: {
         title,
@@ -100,7 +137,15 @@ export async function PUT(request: Request) {
       },
     });
 
-    return NextResponse.json({ note });
+    // Transform dates to ISO strings
+    const transformedNote: Note = {
+      ...note,
+      date: note.date.toISOString(),
+      createdAt: note.createdAt.toISOString(),
+      updatedAt: note.updatedAt.toISOString(),
+    };
+
+    return NextResponse.json({ note: transformedNote });
   } catch (error) {
     console.error('Error updating note:', error);
     return NextResponse.json(
@@ -112,64 +157,41 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    console.log('Processing DELETE request for note');
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    // Parse the request body
     const body = await request.json();
-    console.log('Delete request body:', body);
-
     const { id } = body;
 
     if (!id) {
-      console.log('Error: Note ID is missing from request');
       return NextResponse.json(
         { error: 'Note ID is required' },
         { status: 400 },
       );
     }
 
-    // Get session
-    const session = await getServerSession(authOptions);
-    const userId = session?.user?.id;
-    console.log('Session user ID:', userId);
-
-    if (!userId) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    // Find the note first to check if it exists
+    // Find the note first to check if it exists and belongs to the user
     const noteToDelete = await prisma.note.findUnique({
-      where: {
-        id,
-      },
+      where: { id },
     });
 
     if (!noteToDelete) {
-      console.log(`Note with ID ${id} not found`);
       return NextResponse.json({ error: 'Note not found' }, { status: 404 });
     }
 
-    console.log(
-      `Found note to delete: ${noteToDelete.id}, owner: ${noteToDelete.userId}`,
-    );
-
-    // Check if the note belongs to the user
-    if (noteToDelete.userId !== userId) {
-      console.log(`Note belongs to user ${noteToDelete.userId}, not ${userId}`);
+    if (noteToDelete.userId !== session.user.id) {
       return NextResponse.json(
         { error: 'Not authorized to delete this note' },
         { status: 403 },
       );
     }
 
-    // Delete the note
     await prisma.note.delete({
-      where: {
-        id,
-      },
+      where: { id },
     });
 
-    console.log(`Successfully deleted note with ID ${id}`);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting note:', error);

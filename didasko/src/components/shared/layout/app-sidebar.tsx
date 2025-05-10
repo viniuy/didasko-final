@@ -67,8 +67,6 @@ const gradingSubItems = [
   { title: 'Quiz', url: '/grading/quiz', icon: NotebookPen },
 ];
 
-const settingsItem = { title: 'Settings', url: '/settings', icon: Settings };
-
 function SidebarSkeleton() {
   return (
     <Sidebar
@@ -116,11 +114,6 @@ export function AppSidebar() {
   const { open, setOpen } = useSidebar();
   const { data: session, status } = useSession();
   const pathname = usePathname();
-  const [userData, setUserData] = useState<{
-    name: string;
-    department: string;
-  } | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
 
   const isAdmin = session?.user?.role === 'ADMIN';
   const items = isAdmin ? adminItems : academicHeadItems;
@@ -130,67 +123,31 @@ export function AppSidebar() {
   };
 
   useEffect(() => {
-    const fetchUserData = async () => {
-      if (session?.user?.id) {
-        setIsLoading(true);
-        try {
-          const response = await fetch(
-            `/api/users/by-id?id=${session.user.id}`,
-          );
-          if (response.ok) {
-            const data = await response.json();
-            if (data.user) {
-              setUserData({
-                name: data.user.name,
-                department:
-                  data.user.department ||
-                  (isAdmin ? 'Administrator' : 'Academic Head'),
-              });
-            }
-          }
-        } catch (error) {
-          console.error('Error fetching user data:', error);
-        } finally {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    if (session?.user?.id) {
-      fetchUserData();
-    } else {
-      setIsLoading(false);
-    }
-  }, [session?.user?.id, isAdmin]);
-
-  useEffect(() => {
     if (!open) setIsGradingOpen(false);
   }, [open]);
 
-  if (status === 'loading' || isLoading) {
+  if (status === 'loading') {
     return <SidebarSkeleton />;
   }
 
-  const displayName = userData?.name || 'Loading...';
+  const displayName = session?.user?.name || 'Loading...';
   const displayDepartment =
-    userData?.department || (isAdmin ? 'Administrator' : 'Academic Head');
+    session?.user?.department || (isAdmin ? 'Administrator' : 'Academic Head');
   const avatarInitial = displayName.charAt(0);
+  const userImage = session?.user?.image || undefined;
 
   return (
     <Sidebar
       collapsible='icon'
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
-      className='fixed top-0 left-0 z-50 h-screen bg-[#124A69] text-white'
+      className='fixed top-0 left-0 z-50 h-screen bg-[#124A69] text-white border-[#124A69]'
     >
       <SidebarContent className='flex-1'>
         {/* User Profile */}
         <SidebarHeader className='flex flex-row items-center gap-3 px-2 mt-4'>
           <Avatar className='w-12 h-12 shrink-0'>
-            <AvatarImage
-              src={session?.user?.image || 'https://i.imgur.com/kT3j3Lf.jpeg'}
-              className='object-cover'
-            />
+            <AvatarImage src={userImage} className='object-cover' />
             <AvatarFallback className='text-xl'>{avatarInitial}</AvatarFallback>
           </Avatar>
           <div
@@ -208,7 +165,6 @@ export function AppSidebar() {
             </p>
           </div>
         </SidebarHeader>
-
         {/* Sidebar Menu */}
         <SidebarGroup>
           <SidebarGroupContent>
@@ -296,29 +252,6 @@ export function AppSidebar() {
                         </SidebarGroupContent>
                       </CollapsibleContent>
                     </Collapsible>
-                  </SidebarMenuItem>
-
-                  {/* Settings for non-admin users */}
-                  <SidebarMenuItem key={settingsItem.title}>
-                    <a
-                      href={settingsItem.url}
-                      className={`flex items-center gap-3 p-3 rounded hover:bg-gray-800 w-full ${
-                        pathname.startsWith(settingsItem.url)
-                          ? 'bg-gray-800'
-                          : ''
-                      }`}
-                    >
-                      <settingsItem.icon className='w-6 h-6 shrink-0' />
-                      <span
-                        className={`whitespace-nowrap transition-all duration-300 ${
-                          open
-                            ? 'opacity-100 translate-x-0 delay-200'
-                            : 'opacity-0 translate-x-[-10px] delay-0'
-                        }`}
-                      >
-                        {open && settingsItem.title}
-                      </span>
-                    </a>
                   </SidebarMenuItem>
                 </>
               )}

@@ -27,36 +27,49 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { Calendar as CalendarIcon, Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
+import toast, { Toaster } from 'react-hot-toast';
+import axiosInstance from '@/lib/axios';
+import GradingTableHeader from './grading-table-header';
+import GradingTableRow from './grading-table-row';
+import * as XLSX from 'xlsx';
+import { Slider } from '@/components/ui/slider';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationPrevious,
+  PaginationNext,
+} from '@/components/ui/pagination';
 
 interface Student {
   id: string;
-  name: string;
+  firstName: string;
+  lastName: string;
+  middleInitial?: string;
+  image?: string;
+  status?: string;
+  attendanceRecords?: any[];
 }
 
 interface GradingTableProps {
   courseId: string;
-  searchQuery: string;
+  courseCode: string;
+  courseSection: string;
   selectedDate: Date | undefined;
   onDateSelect?: (date: Date | undefined) => void;
 }
 
-interface GradingCriteria {
+interface GradingReport {
   id: string;
   name: string;
   courseId: string;
   userId: string;
-  rubrics: number;
-  scoringRange: number;
-  passingScore: number;
+  rubrics: RubricDetail[];
+  scoringRange: string;
+  passingScore: string;
+  date: string;
   createdAt: Date;
   updatedAt: Date;
   user?: {
@@ -77,22 +90,25 @@ interface GradingScore {
 
 export function GradingTable({
   courseId,
-  searchQuery,
+  courseCode,
+  courseSection,
   selectedDate,
   onDateSelect,
 }: GradingTableProps) {
   const { data: session } = useSession();
   const [students, setStudents] = useState<Student[]>([]);
   const [showCriteriaDialog, setShowCriteriaDialog] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [savedCriteria, setSavedCriteria] = useState<GradingCriteria[]>([]);
-  const [selectedCriteria, setSelectedCriteria] = useState<string>('');
-  const [activeCriteria, setActiveCriteria] = useState<GradingCriteria | null>(
-    null,
-  );
+  const [savedReports, setSavedReports] = useState<GradingReport[]>([]);
+  const [selectedReport, setSelectedReport] = useState<string>('');
+  const [activeReport, setActiveReport] = useState<GradingReport | null>(null);
   const [scores, setScores] = useState<Record<string, GradingScore>>({});
+  const [originalScores, setOriginalScores] = useState<
+    Record<string, GradingScore>
+  >({});
   const [rubricDetails, setRubricDetails] = useState<RubricDetail[]>([]);
-  const [newCriteria, setNewCriteria] = useState({
+  const [newReport, setNewReport] = useState({
     name: '',
     rubrics: '2',
     scoringRange: '5',
@@ -102,97 +118,176 @@ export function GradingTable({
       { name: '', weight: 50 },
     ],
   });
+  const [criteriaLoading, setCriteriaLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [gradeFilter, setGradeFilter] = useState<{
+    passed: boolean;
+    failed: boolean;
+    noGrades: boolean;
+  }>({
+    passed: false,
+    failed: false,
+    noGrades: false,
+  });
+  const [validationErrors, setValidationErrors] = useState<{
+    name?: string;
+    rubrics?: string[];
+  }>({});
+  const [showExportPreview, setShowExportPreview] = useState(false);
+  const [exportData, setExportData] = useState<{
+    header: string[][];
+    studentRows: string[][];
+  } | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const studentsPerPage = 10;
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalStudents, setTotalStudents] = useState(0);
 
   // Function to handle dialog close
   const handleDialogClose = () => {
     setShowCriteriaDialog(false);
-    // Clear the selected date if no criteria was selected
-    if (!activeCriteria) {
-      // Using the onDateSelect prop to clear the date in the parent component
-      onDateSelect?.(undefined);
-    }
   };
-
-  // Show criteria dialog when date is selected but no criteria is active
-  useEffect(() => {
-    if (selectedDate && !activeCriteria && !showCriteriaDialog) {
-      console.log('Date selected but no criteria - showing dialog');
-      setShowCriteriaDialog(true);
-    }
-  }, [selectedDate, activeCriteria, showCriteriaDialog]);
 
   // Fetch grades when both date and criteria are available
   useEffect(() => {
-    const fetchGrades = async () => {
-      if (!selectedDate || !activeCriteria) {
-        console.log('Missing required data:', {
-          selectedDate: selectedDate?.toISOString(),
-          activeCriteria: activeCriteria?.id,
-        });
-        return;
-      }
-
+    const fetchData = async () => {
+      if (!courseId || !selectedDate || !activeReport) return;
+      setIsLoading(true);
       try {
-        setIsLoading(true);
+        // 1. Fetch students
+        const studentsRes = await axiosInstance.get(
+          `/courses/${courseId}/students`,
+        );
+        const studentsData: Student[] = studentsRes.data.students || [];
+        setStudents(studentsData);
+
+        // 2. Fetch grades for the selected date/criteria
         const formattedDate = selectedDate.toISOString().split('T')[0];
-        console.log('Fetching grades for:', {
-          courseId,
-          date: formattedDate,
-          criteriaId: activeCriteria.id,
+        const gradesRes = await axiosInstance.get(
+          `/courses/${courseId}/grades`,
+          {
+          params: {
+            date: formattedDate,
+            courseCode,
+            courseSection,
+            criteriaId: activeReport.id,
+          },
+          },
+        );
+        const grades: GradingScore[] = gradesRes.data || [];
+        
+        // 3. Map grades by studentId
+        const gradesMap: Record<string, GradingScore> = {};
+        grades.forEach((grade: GradingScore) => {
+          gradesMap[grade.studentId] = grade;
         });
 
-        const response = await fetch(
-          `/api/courses/${courseId}/grades?date=${formattedDate}&criteriaId=${activeCriteria.id}`,
-        );
-
-        if (!response.ok) {
-          console.error('Failed to fetch grades:', response.status);
-          throw new Error('Failed to fetch grades');
-        }
-
-        const existingGrades = await response.json();
-        console.log('Received grades:', existingGrades);
-
-        if (existingGrades && existingGrades.length > 0) {
-          const gradesMap: Record<string, GradingScore> = {};
-          existingGrades.forEach((grade: any) => {
-            console.log('Processing grade:', grade);
-            gradesMap[grade.studentId] = {
-              studentId: grade.studentId,
-              scores: grade.scores,
-              total: grade.total,
-            };
-          });
-          setScores(gradesMap);
-          console.log('Updated scores state:', gradesMap);
-        } else {
-          console.log('No grades found for this date and criteria');
-          setScores({});
-        }
-      } catch (error) {
-        console.error('Error fetching grades:', error);
-        toast.error('Failed to fetch existing grades');
+        // 4. Initialize scores state for all students, even those without grades
+        const newScores: Record<string, GradingScore> = {};
+        studentsData.forEach((student: Student) => {
+          newScores[student.id] = {
+            studentId: student.id,
+            scores:
+              gradesMap[student.id]?.scores ||
+              new Array(rubricDetails.length).fill(0),
+            total: gradesMap[student.id]?.total || 0,
+          };
+        });
+        setScores(newScores);
+      } catch (error) { 
+        console.error('Error fetching students or grades:', error);
+        // Don't clear students on error, only clear scores
+        setScores({});
       } finally {
         setIsLoading(false);
       }
     };
+    fetchData();
+    // Only run when courseId, selectedDate, activeReport, or rubricDetails change
+  }, [
+    courseId,
+    selectedDate,
+    activeReport,
+    rubricDetails,
+    courseCode,
+    courseSection,
+  ]);
 
-    fetchGrades();
-  }, [selectedDate, activeCriteria, courseId]);
+  // Check for existing criteria when date is selected or on mount
+  useEffect(() => {
+    const checkExistingCriteria = async () => {
+      if (!selectedDate) {
+        setActiveReport(null);
+        setRubricDetails([]);
+        setSelectedReport('');
+        setShowCriteriaDialog(false);
+        return;
+      }
+      setCriteriaLoading(true);
+      setShowCriteriaDialog(false);
+      try {
+        const formattedDate = selectedDate.toISOString().split('T')[0];
+        // Fetch all criteria for this course
+        const response = await axiosInstance.get(
+          `/courses/${courseId}/criteria`,
+        );
+        const allReports = response.data;
+        // Find a criteria for this date
+        const found = allReports.find((c: any) => {
+          // If your criteria has a date field, compare it here
+          // If not, you may need to fetch grades for this date and get the criteriaId from there
+          return c.date === formattedDate;
+        });
+        if (found) {
+          setActiveReport(found);
+          setRubricDetails(found.rubrics);
+          setSelectedReport(found.id);
+          setShowCriteriaDialog(false);
+        } else {
+          setActiveReport(null);
+          setRubricDetails([]);
+          setSelectedReport('');
+          setShowCriteriaDialog(true);
+        }
+      } catch (error) {
+        setActiveReport(null);
+        setRubricDetails([]);
+        setSelectedReport('');
+        setShowCriteriaDialog(true);
+      } finally {
+        setCriteriaLoading(false);
+      }
+    };
+    checkExistingCriteria();
+  }, [selectedDate, courseId]);
+
+  // Reset scores when date changes
+  useEffect(() => {
+    setScores({});
+  }, [selectedDate]);
 
   // Fetch saved criteria on mount
   useEffect(() => {
     const fetchCriteria = async () => {
-      if (!session?.user?.id) console.log('No user ID');
+      if (!session?.user?.id) {
+        console.error('No user ID found in session');
+        return;
+      }
 
       try {
-        const response = await fetch(`/api/courses/${courseId}/criteria`);
-        if (!response.ok) throw new Error('Failed to fetch criteria');
-        const data = await response.json();
-        setSavedCriteria(data);
-      } catch (error) {
-        console.error('Error fetching criteria:', error);
-        toast.error('Failed to load saved criteria');
+        const response = await axiosInstance.get(
+          `/courses/${courseId}/criteria`,
+        );
+        setSavedReports(response.data);
+      } catch (error: any) {
+        console.error('Error fetching criteria:', {
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+        });
+        toast.error(
+          error.response?.data?.error || 'Failed to load saved criteria',
+        );
       }
     };
 
@@ -201,104 +296,179 @@ export function GradingTable({
     }
   }, [courseId, session?.user?.id]);
 
-  // Fetch students when needed
+  // Update originalScores when scores are first loaded
   useEffect(() => {
-    if (!showCriteriaDialog && activeCriteria && session?.user?.id) {
-      fetchStudents();
+    if (
+      Object.keys(scores).length > 0 &&
+      Object.keys(originalScores).length === 0
+    ) {
+      // Only set originalScores on initial load
+      setOriginalScores(JSON.parse(JSON.stringify(scores)));
     }
-  }, [courseId, showCriteriaDialog, activeCriteria, session?.user?.id]);
+  }, [activeReport, selectedDate, scores]);
 
-  const fetchStudents = async () => {
-    if (!session?.user?.id) return;
+  // Reset originalScores when changing report or date
+  useEffect(() => {
+    setOriginalScores({});
+  }, [activeReport, selectedDate]);
 
-    try {
-      const response = await fetch(`/api/courses/${courseId}/students`);
-      if (!response.ok) throw new Error('Failed to fetch students');
-      const data = await response.json();
-      setStudents(data);
-    } catch (error) {
-      console.error('Error fetching students:', error);
-    }
+  // Check if there are any changes
+  const hasChanges = () => {
+    // If we're still loading or no scores are loaded yet, return false
+    if (isLoading || Object.keys(scores).length === 0) return false;
+
+    if (Object.keys(scores).length !== Object.keys(originalScores).length)
+      return true;
+
+    return Object.entries(scores).some(([studentId, score]) => {
+      const originalScore = originalScores[studentId];
+      if (!originalScore) return true;
+
+      // Check if scores array is different
+      if (score.scores.length !== originalScore.scores.length) return true;
+      if (score.scores.some((s, i) => s !== originalScore.scores[i]))
+        return true;
+
+      // Check if total is different
+      return score.total !== originalScore.total;
+    });
   };
 
   const handleSaveGrades = async () => {
-    if (!session?.user?.id) return;
-
-    try {
-      setIsLoading(true);
-      const response = await fetch(`/api/courses/${courseId}/grades`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+    if (!session?.user?.id || !selectedDate || !activeReport) {
+      toast.error('Missing required information to save grades', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
         },
-        body: JSON.stringify({
-          date: selectedDate,
-          criteriaId: activeCriteria?.id,
-          grades: Object.values(scores).map((score) => ({
-            studentId: score.studentId,
-            scores: score.scores,
-            total: score.total,
-          })),
-        }),
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to save grades');
-      }
-
-      toast.success('Grades saved successfully');
-    } catch (error) {
-      console.error('Error saving grades:', error);
-      toast.error('Failed to save grades');
-    } finally {
-      setIsLoading(false);
+      return;
     }
+
+    const savePromise = new Promise<string>(async (resolve, reject) => {
+      try {
+        const formattedDate = selectedDate.toISOString().split('T')[0];
+
+        // Ensure all students have the correct number of scores
+        const gradesToSave = Object.values(scores).map((score) => {
+          const correctScores = new Array(activeReport.rubrics.length).fill(0);
+          score.scores.forEach((s, i) => {
+            if (i < correctScores.length) {
+              correctScores[i] = s;
+            }
+          });
+
+          const total = calculateTotal(correctScores);
+
+          return {
+          studentId: score.studentId,
+            scores: correctScores,
+            total: total,
+          };
+        });
+
+        const payload = {
+          date: formattedDate,
+          criteriaId: activeReport.id,
+          courseCode,
+          courseSection,
+          grades: gradesToSave,
+        };
+
+        const response = await axiosInstance.post(
+          `/courses/${courseId}/grades`,
+          payload,
+        );
+
+        if (response.data) {
+          // Update original scores after successful save
+          setOriginalScores(JSON.parse(JSON.stringify(scores)));
+          resolve('Grades saved successfully');
+        }
+      } catch (error: any) {
+        console.error('Error saving grades:', {
+          error,
+          message: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+        });
+
+        if (error.response?.status === 500) {
+          reject(
+            'Server error occurred while saving grades. Please try again.',
+          );
+        } else if (error.response?.data?.message) {
+          reject(error.response.data.message);
+        } else {
+          reject(
+            'Failed to save grades. Please check your data and try again.',
+          );
+        }
+      }
+    });
+
+    toast.promise(savePromise, {
+      loading: 'Saving Grades',
+      success: (message: string) => 'Grades saved successfully',
+      error: (err: string) => err,
+    });
   };
 
   const handleApplyCriteria = () => {
-    if (selectedCriteria) {
-      const selected = savedCriteria.find((c) => c.id === selectedCriteria);
+    if (selectedReport) {
+      const selected = savedReports.find((c) => c.id === selectedReport);
       if (selected) {
-        setActiveCriteria(selected);
-        // Create placeholders for rubrics with default names and evenly distributed percentages
-        const defaultRubrics = Array(selected.rubrics)
-          .fill(null)
-          .map((_, i) => {
-            let defaultName = '';
-            switch (i) {
-              case 0:
-                defaultName = 'Content';
-                break;
-              case 1:
-                defaultName = 'Organization';
-                break;
-              case 2:
-                defaultName = 'Delivery';
-                break;
-              case 3:
-                defaultName = 'Creativity';
-                break;
-              default:
-                defaultName = `Rubric ${i + 1}`;
-            }
-            return {
-              name: defaultName,
-              percentage: Math.floor(100 / selected.rubrics),
-            };
-          });
-        setRubricDetails(defaultRubrics);
+        setActiveReport(selected);
+        setRubricDetails(selected.rubrics);
       }
     }
     setShowCriteriaDialog(false);
   };
 
-  const handleScoreChange = (
+  const handleScoreChange = async (
     studentId: string,
     rubricIndex: number,
-    value: number,
+    value: number | '',
   ) => {
+    // If value is empty (Select Grade), delete the grades
+    if (value === '') {
+      try {
+        setIsLoading(true);
+        const formattedDate = selectedDate?.toISOString().split('T')[0];
+
+        // Delete grades for this student
+        await axiosInstance.delete(`/courses/${courseId}/grades`, {
+          data: {
+            date: formattedDate,
+            criteriaId: activeReport?.id,
+            studentId: studentId,
+            courseCode,
+            courseSection,
+          },
+        });
+
+        // Update local state
     setScores((prev) => {
-      const rubricCount = activeCriteria?.rubrics || 0;
+          const newScores = { ...prev };
+          delete newScores[studentId];
+          return newScores;
+        });
+
+        toast.success('Grades deleted successfully');
+      } catch (error: any) {
+        console.error('Error deleting grades:', error);
+        toast.error(error.response?.data?.message || 'Failed to delete grades');
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // Otherwise, update the grade as normal
+    setScores((prev) => {
+      const rubricCount = activeReport?.rubrics.length || 0;
       const studentScores =
         prev[studentId]?.scores || new Array(rubricCount).fill(0);
       const newScores = [...studentScores];
@@ -317,72 +487,85 @@ export function GradingTable({
 
   const calculateTotal = (scores: number[]): number => {
     if (!rubricDetails.length) return 0;
-    return scores.reduce((sum, score, index) => {
-      const percentage = rubricDetails[index]?.percentage || 0;
-      return sum + (score * percentage) / 100;
-    }, 0);
+    
+    // Calculate the maximum possible score based on the scoring range
+    const maxScore = Number(activeReport?.scoringRange) || 5;
+
+    // Ensure we only use scores up to the number of rubrics
+    const validScores = scores.slice(0, rubricDetails.length);
+    
+    // Calculate weighted percentage for each rubric
+    const weightedScores = validScores.map((score, index) => {
+      const weight = rubricDetails[index]?.percentage || 0;
+      // Convert score to percentage based on max score, then apply weight
+      return (score / maxScore) * weight;
+    });
+    
+    // Sum up all weighted scores and round to 2 decimal places
+    return Number(
+      weightedScores.reduce((sum, score) => sum + score, 0).toFixed(2),
+    );
   };
 
-  const handleCreateCriteria = async () => {
-    console.log('Button clicked!');
-    console.log('Current state:', {
-      name: newCriteria.name,
-      isLoading,
-      rubricNames: newCriteria.rubricDetails.map((r) => r.name),
-      totalWeight: newCriteria.rubricDetails.reduce(
-        (sum, r) => sum + r.weight,
-        0,
-      ),
-      session: session?.user?.id,
-    });
-
-    if (!session?.user?.id) {
-      console.log('No session user ID');
-      return;
+  const validateReportName = (name: string) => {
+    if (!name.trim()) {
+      return 'Report name is required';
     }
+    if (name.length > 25) {
+      return 'Report name must not exceed 25 characters';
+    }
+    if (!/^[a-zA-Z0-9\s]+$/.test(name)) {
+      return 'Report name can only contain letters, numbers, and spaces';
+    }
+    return '';
+  };
 
-    try {
-      setIsLoading(true);
-      const response = await fetch(`/api/courses/${courseId}/criteria`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: newCriteria.name,
-          rubrics: JSON.stringify(newCriteria.rubricDetails),
-          scoringRange: parseInt(newCriteria.scoringRange),
-          passingScore: parseInt(newCriteria.passingScore),
-          userId: session.user.id,
-        }),
-      });
+  const validateRubricName = (name: string) => {
+    if (!name.trim()) {
+      return 'Rubric name is required';
+    }
+    if (name.length > 15) {
+      return 'Rubric name must not exceed 15 characters';
+    }
+    if (!/^[a-zA-Z0-9\s]+$/.test(name)) {
+      return 'Rubric name can only contain letters, numbers, and spaces';
+    }
+    return '';
+  };
 
-      if (!response.ok) throw new Error('Failed to create criteria');
+  const handleReportNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    const error = validateReportName(value);
+    setValidationErrors((prev) => ({ ...prev, name: error }));
 
-      const created = await response.json();
-      setSavedCriteria((prev) => [created, ...prev]);
-      setSelectedCriteria(created.id);
-      setActiveCriteria(created);
-      setShowCriteriaDialog(false);
-      toast.success('Criteria created successfully');
-    } catch (error) {
-      console.error('Error creating criteria:', error);
-      toast.error('Failed to create criteria');
-    } finally {
-      setIsLoading(false);
+    if (value.length <= 25 && /^[a-zA-Z0-9\s]*$/.test(value)) {
+      setNewReport((prev) => ({
+        ...prev,
+        name: value,
+      }));
     }
   };
 
   const handleRubricCountChange = (value: string) => {
     const count = parseInt(value);
-    const defaultWeight = Math.floor(100 / count);
+    // Calculate the base weight and remainder
+    const baseWeight = Math.floor(100 / count);
+    const remainder = 100 % count;
+
+    // Create array of weights, distributing remainder to first elements
+    const weights = Array(count).fill(baseWeight);
+    for (let i = 0; i < remainder; i++) {
+      weights[i]++;
+    }
+
     const newRubricDetails = Array(count)
       .fill(null)
-      .map(() => ({
+      .map((_, index) => ({
         name: '',
-        weight: defaultWeight,
+        weight: weights[index],
       }));
-    setNewCriteria((prev) => ({
+
+    setNewReport((prev) => ({
       ...prev,
       rubrics: value,
       rubricDetails: newRubricDetails,
@@ -394,12 +577,38 @@ export function GradingTable({
     field: 'name' | 'weight',
     value: string | number,
   ) => {
-    setNewCriteria((prev) => {
+    setNewReport((prev) => {
       const newDetails = [...prev.rubricDetails];
-      newDetails[index] = {
-        ...newDetails[index],
-        [field]: value,
-      };
+
+      if (field === 'weight') {
+        // Ensure weight is a valid number between 1 and 100
+        const numValue = Number(value);
+        if (isNaN(numValue) || numValue < 1 || numValue > 100) {
+          return prev;
+        }
+        newDetails[index] = {
+          ...newDetails[index],
+          weight: numValue,
+        };
+      } else {
+        // Validate name input
+        const nameValue = value as string;
+        const error = validateRubricName(nameValue);
+        setValidationErrors((prev) => ({
+          ...prev,
+          rubrics: prev.rubrics
+            ? prev.rubrics.map((err, i) => (i === index ? error : err))
+            : new Array(newDetails.length).fill(''),
+        }));
+
+        if (nameValue.length <= 15 && /^[a-zA-Z0-9\s]*$/.test(nameValue)) {
+          newDetails[index] = {
+            ...newDetails[index],
+            name: nameValue,
+          };
+        }
+      }
+
       return {
         ...prev,
         rubricDetails: newDetails,
@@ -407,381 +616,1336 @@ export function GradingTable({
     });
   };
 
-  const filteredStudents = students.filter((student) =>
-    student.name.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
+  const handleCreateReport = async () => {
+    // Validate report name
+    const nameError = validateReportName(newReport.name);
+    if (nameError) {
+      setValidationErrors((prev) => ({ ...prev, name: nameError }));
+      toast.error(nameError, {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+      });
+      return;
+    }
+
+    // Validate all rubric names
+    const rubricErrors = newReport.rubricDetails.map((rubric) =>
+      validateRubricName(rubric.name),
+    );
+    const hasRubricErrors = rubricErrors.some((error) => error);
+    if (hasRubricErrors) {
+      setValidationErrors((prev) => ({ ...prev, rubrics: rubricErrors }));
+      toast.error('Please fix the rubric name errors', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+      });
+      return;
+    }
+
+    // Check if total weight equals 100%
+    const totalWeight = newReport.rubricDetails.reduce(
+      (sum, rubric) => sum + rubric.weight,
+      0,
+    );
+    if (totalWeight !== 100) {
+      toast.error('Total weight must equal 100%', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+      });
+      return;
+    }
+
+    if (!session?.user?.id) {
+      console.log('No session user ID');
+      return;
+    }
+
+    const loadingToast = toast.loading('Creating report...', {
+      position: 'top-center',
+      duration: Infinity,
+      style: {
+        background: '#fff',
+        color: '#124A69',
+        border: '1px solid #e5e7eb',
+      },
+    });
+
+    try {
+      setIsLoading(true);
+      // Prepare rubrics as array of { name, percentage }
+      const rubrics = newReport.rubricDetails.map((r) => ({
+        name: r.name,
+        percentage: r.weight, // Convert weight to percentage
+      }));
+
+      // Create criteria with rubrics in a single step
+      const response = await axiosInstance.post(
+        `/courses/${courseId}/criteria`,
+        {
+          name: newReport.name,
+          rubrics,
+          scoringRange: newReport.scoringRange,
+          passingScore: newReport.passingScore,
+          userId: session.user.id,
+          date: selectedDate ? selectedDate.toISOString() : undefined,
+        },
+      );
+      const created = response.data;
+
+      // Update the saved reports with the new report at the beginning of the array
+      setSavedReports((prev) => [created, ...prev]);
+
+      // Set the active report and rubric details
+      setActiveReport(created);
+      setRubricDetails(created.rubrics);
+      setSelectedReport(created.id);
+
+      // Close the dialog
+      setShowCriteriaDialog(false);
+
+      // Reset the form
+      setNewReport({
+        name: '',
+        rubrics: '2',
+        scoringRange: '5',
+        passingScore: '75',
+        rubricDetails: [
+          { name: '', weight: 50 },
+          { name: '', weight: 50 },
+        ],
+      });
+
+      // Clear validation errors
+      setValidationErrors({});
+
+      toast.dismiss(loadingToast);
+      toast.success('Report created successfully', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+        },
+      });
+    } catch (error) {
+      console.error('Error creating report:', error);
+      toast.dismiss(loadingToast);
+      toast.error('Failed to create report', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Add a new useEffect to fetch reports when dialog opens or date changes
+  useEffect(() => {
+    const fetchReports = async () => {
+      if (selectedDate) {
+        try {
+          const response = await axiosInstance.get(
+            `/courses/${courseId}/criteria`,
+          );
+          const allReports = response.data;
+          // Filter reports for the selected date
+          const filteredReports = allReports.filter((report: GradingReport) => {
+            const reportDate = new Date(report.date);
+            reportDate.setHours(0, 0, 0, 0);
+
+            const selected = new Date(selectedDate);
+            selected.setHours(0, 0, 0, 0);
+
+            return reportDate.getTime() === selected.getTime();
+          });
+          setSavedReports(filteredReports);
+        } catch (error) {
+          console.error('Error fetching reports:', error);
+          toast.error('Failed to load saved reports', {
+            duration: 3000,
+            style: {
+              background: '#fff',
+              color: '#dc2626',
+              border: '1px solid #e5e7eb',
+            },
+          });
+        }
+      }
+    };
+
+    fetchReports();
+  }, [selectedDate, courseId]);
+
+  const prepareExportData = () => {
+    if (!activeReport || !selectedDate) return null;
+
+    const formattedDate = selectedDate.toISOString().split('T')[0];
+
+    // Create header rows
+    const header = [
+      [`${courseCode} - ${courseSection} GRADING REPORT`],
+      [''],
+      ['Date:', formattedDate],
+      ['Grading Report:', activeReport.name],
+      [''],
+      // Column headers
+      [
+        'Student Name',
+        ...rubricDetails.map((r) => `${r.name} (${r.percentage}%)`),
+        'Total Grade',
+        'Remarks',
+      ],
+    ];
+
+    // Create student data rows
+    const studentRows = students.map((student) => {
+      const studentScore = scores[student.id] || {
+        studentId: student.id,
+        scores: new Array(rubricDetails.length).fill(0),
+        total: 0,
+      };
+
+      return [
+        `${student.lastName}, ${student.firstName}${
+          student.middleInitial ? ` ${student.middleInitial}.` : ''
+        }`,
+        ...studentScore.scores.map((score) =>
+          score ? score.toString() : '---',
+        ),
+        `${studentScore.total.toFixed(0)}%`,
+        studentScore.scores.some((score) => score === 0)
+          ? '---'
+          : studentScore.total >= Number(activeReport.passingScore)
+          ? 'PASSED'
+          : 'FAILED',
+      ];
+    });
+
+    return { header, studentRows };
+  };
+
+  const handleExport = () => {
+    if (!activeReport || !selectedDate) {
+      toast.error('Please select a date and grading report first', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+      });
+      return;
+    }
+
+    const data = prepareExportData();
+    if (!data) return;
+
+    setExportData(data);
+    setShowExportPreview(true);
+  };
+
+  const handleConfirmExport = () => {
+    if (!exportData) return;
+
+    try {
+      const { header, studentRows } = exportData;
+      const ws = XLSX.utils.aoa_to_sheet([...header, ...studentRows]);
+
+      // Configure column widths
+      ws['!cols'] = [
+        { wch: 30 }, // Student Name
+        ...rubricDetails.map(() => ({ wch: 15 })), // Rubric scores
+        { wch: 15 }, // Total Grade
+        { wch: 15 }, // Remarks
+      ];
+
+      // Style configurations
+      const headerStyle = {
+        fill: { fgColor: { rgb: '124A69' } }, // Dark blue background
+        font: { color: { rgb: 'FFFFFF' }, bold: true }, // White bold text
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: {
+          top: { style: 'thin', color: { rgb: '000000' } },
+          bottom: { style: 'thin', color: { rgb: '000000' } },
+          left: { style: 'thin', color: { rgb: '000000' } },
+          right: { style: 'thin', color: { rgb: '000000' } },
+        },
+      };
+
+      const subHeaderStyle = {
+        fill: { fgColor: { rgb: 'F5F6FA' } }, // Light gray background
+        font: { bold: true },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: {
+          top: { style: 'thin', color: { rgb: '000000' } },
+          bottom: { style: 'thin', color: { rgb: '000000' } },
+          left: { style: 'thin', color: { rgb: '000000' } },
+          right: { style: 'thin', color: { rgb: '000000' } },
+        },
+      };
+
+      const cellStyle = {
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: {
+          top: { style: 'thin', color: { rgb: '000000' } },
+          bottom: { style: 'thin', color: { rgb: '000000' } },
+          left: { style: 'thin', color: { rgb: '000000' } },
+          right: { style: 'thin', color: { rgb: '000000' } },
+        },
+      };
+
+      // Apply styles to cells
+      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+
+      // Style the title row
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cellRef = XLSX.utils.encode_cell({ r: 0, c: C });
+        if (!ws[cellRef]) ws[cellRef] = { v: '' };
+        ws[cellRef].s = headerStyle;
+      }
+
+      // Style the subheader row (column headers)
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cellRef = XLSX.utils.encode_cell({ r: 5, c: C });
+        if (!ws[cellRef]) ws[cellRef] = { v: '' };
+        ws[cellRef].s = subHeaderStyle;
+      }
+
+      // Style all other cells
+      for (let R = 6; R <= range.e.r; ++R) {
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+          const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+          if (!ws[cellRef]) ws[cellRef] = { v: '' };
+
+          // Special styling for remarks column
+          if (C === range.e.c) {
+            const value = ws[cellRef].v;
+            if (value === 'PASSED') {
+              ws[cellRef].s = {
+                ...cellStyle,
+                font: { color: { rgb: '008000' }, bold: true }, // Green for PASSED
+              };
+            } else if (value === 'FAILED') {
+              ws[cellRef].s = {
+                ...cellStyle,
+                font: { color: { rgb: 'FF0000' }, bold: true }, // Red for FAILED
+              };
+            } else {
+              ws[cellRef].s = cellStyle;
+            }
+          } else {
+            ws[cellRef].s = cellStyle;
+          }
+        }
+      }
+
+      // Merge cells for title and info rows
+      ws['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: range.e.c } }, // Title row
+        { s: { r: 1, c: 0 }, e: { r: 1, c: range.e.c } }, // Empty row
+        { s: { r: 2, c: 1 }, e: { r: 2, c: range.e.c } }, // Date row
+        { s: { r: 3, c: 1 }, e: { r: 3, c: range.e.c } }, // Report name row
+        { s: { r: 4, c: 0 }, e: { r: 4, c: range.e.c } }, // Empty row
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Grades');
+
+      // Generate filename with date
+      const formattedDate = selectedDate?.toISOString().split('T')[0];
+      const filename = `${courseCode}-${courseSection}-${formattedDate}-grades.xlsx`;
+      XLSX.writeFile(wb, filename);
+
+      setShowExportPreview(false);
+      toast.success('Grades exported successfully', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+        },
+      });
+    } catch (error) {
+      console.error('Error exporting grades:', error);
+      toast.error('Failed to export grades', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+      });
+    }
+  };
+
+  // Function to handle filter changes
+  const handleFilterChange = (key: keyof typeof gradeFilter) => {
+    const newFilter = {
+      ...gradeFilter,
+      [key]: !gradeFilter[key],
+    };
+
+    // If all options are checked, set all to true
+    if (Object.values(newFilter).every(Boolean)) {
+      setGradeFilter({
+        passed: true,
+        failed: true,
+        noGrades: true,
+      });
+    } else {
+      setGradeFilter(newFilter);
+    }
+  };
+
+  // Function to check if a student matches the current filters
+  const studentMatchesFilter = (student: Student) => {
+    // If no filters are checked, show all students
+    if (!gradeFilter.passed && !gradeFilter.failed && !gradeFilter.noGrades) {
+      return true;
+    }
+
+    const studentScore = scores[student.id];
+    const total = studentScore?.total || 0;
+    const hasGrades = studentScore?.scores.some((score) => score > 0) || false;
+
+    if (
+      gradeFilter.passed &&
+      hasGrades &&
+      total >= Number(activeReport?.passingScore)
+    )
+      return true;
+    if (
+      gradeFilter.failed &&
+      hasGrades &&
+      total < Number(activeReport?.passingScore)
+    )
+      return true;
+    if (gradeFilter.noGrades && !hasGrades) return true;
+    return false;
+  };
+
+  const handleResetGrades = () => {
+    setScores({});
+    setShowResetDialog(false);
+    toast.success('Grades reset successfully', {
+      duration: 3000,
+      style: {
+        background: '#fff',
+        color: '#124A69',
+        border: '1px solid #e5e7eb',
+      },
+    });
+  };
+
+  const getPaginatedStudents = (students: Student[]) => {
+    const filteredStudents = students.filter((student) => {
+      const name = `${student.lastName || ''} ${student.firstName || ''} ${student.middleInitial || ''}`.toLowerCase();
+      const nameMatch = name.includes(searchQuery.toLowerCase());
+      return nameMatch && studentMatchesFilter(student);
+    });
+
+    const startIndex = (currentPage - 1) * studentsPerPage;
+    const endIndex = startIndex + studentsPerPage;
+    return {
+      paginatedStudents: filteredStudents.slice(startIndex, endIndex),
+      totalPages: Math.ceil(filteredStudents.length / studentsPerPage),
+      totalStudents: filteredStudents.length
+    };
+  };
+
+  // Add useEffect to update pagination state
+  useEffect(() => {
+    const filteredStudents = students.filter((student) => {
+      const name = `${student.lastName || ''} ${student.firstName || ''} ${student.middleInitial || ''}`.toLowerCase();
+      const nameMatch = name.includes(searchQuery.toLowerCase());
+      return nameMatch && studentMatchesFilter(student);
+    });
+    
+    setTotalPages(Math.ceil(filteredStudents.length / studentsPerPage));
+    setTotalStudents(filteredStudents.length);
+  }, [students, searchQuery, gradeFilter, studentsPerPage]);
 
   return (
-    <>
-      <Dialog open={showCriteriaDialog} onOpenChange={handleDialogClose}>
-        <DialogContent className='sm:max-w-[450px]'>
-          <DialogHeader>
-            <DialogTitle>Grading Criteria</DialogTitle>
-            <DialogDescription>
-              Select existing criteria or create new ones
-            </DialogDescription>
-          </DialogHeader>
-
-          <Tabs defaultValue='existing' className='w-full'>
-            <TabsList className='grid w-full grid-cols-2'>
-              <TabsTrigger value='existing'>Use Existing</TabsTrigger>
-              <TabsTrigger value='new'>Create New</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value='existing'>
-              <div className='space-y-4 py-4'>
-                {savedCriteria.length > 0 ? (
-                  <>
-                    <Select
-                      value={selectedCriteria}
-                      onValueChange={setSelectedCriteria}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder='Select saved criteria' />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {savedCriteria.map((criteria) => (
-                          <SelectItem key={criteria.id} value={criteria.id}>
-                            {criteria.name}
-                            <span className='text-sm text-muted-foreground ml-2'>
-                              (by {criteria.user?.name || 'Unknown'})
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {selectedCriteria && (
-                      <div className='text-sm text-muted-foreground'>
-                        Created by:{' '}
-                        {savedCriteria.find((c) => c.id === selectedCriteria)
-                          ?.user?.name || 'Unknown'}
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className='text-sm text-muted-foreground text-center py-4'>
-                    No saved criteria found. Create new ones in the other tab.
-                  </p>
-                )}
-                <DialogFooter>
-                  <Button variant='outline' onClick={handleDialogClose}>
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleApplyCriteria}
-                    disabled={!selectedCriteria}
-                  >
-                    Apply Selected Criteria
-                  </Button>
-                </DialogFooter>
+    <div className='min-h-screen w-full p-0'>
+      <Toaster
+        toastOptions={{
+          className: '',
+          style: {
+            background: '#fff',
+            color: '#124A69',
+            border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
+          },
+          success: {
+            style: {
+              background: '#fff',
+              color: '#124A69',
+              border: '1px solid #e5e7eb',
+            },
+            iconTheme: {
+              primary: '#124A69',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            style: {
+              background: '#fff',
+              color: '#dc2626',
+              border: '1px solid #e5e7eb',
+            },
+            iconTheme: {
+              primary: '#dc2626',
+              secondary: '#fff',
+            },
+          },
+          loading: {
+            style: {
+              background: '#fff',
+              color: '#124A69',
+              border: '1px solid #e5e7eb',
+            },
+          },
+        }}
+      />
+      <div className='max-w-6xl mx-auto'>
+        {/* x */}
+        <div className='bg-white rounded-lg shadow-md'>
+          {/* Card Header */}
+          <div className='flex items-center gap-2 px-4 py-3 border-b'>
+            <Button
+              variant='ghost'
+              className='h-9 w-9 p-0 hover:bg-gray-100'
+              onClick={() => window.history.back()}
+            >
+              <svg
+                className='h-5 w-5 text-gray-500'
+                fill='none'
+                stroke='currentColor'
+                strokeWidth='2'
+                viewBox='0 0 24 24'
+              >
+                <path d='M15 18l-6-6 6-6' />    
+              </svg>
+            </Button>
+            <div className='flex flex-col mr-4'>
+              <span className='text-lg font-bold text-[#124A69] leading-tight'>
+                {courseCode}
+              </span>
+              <span className='text-sm text-gray-500'>{courseSection}</span>
+            </div>
+            <div className='flex-1 flex items-center gap-2'>
+              <div className='relative w-64'>
+                <svg
+                  className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400'
+                  fill='none'
+                  stroke='currentColor'
+                  strokeWidth='2'
+                  viewBox='0 0 24 24'
+                >
+                  <circle cx='11' cy='11' r='8' />
+                  <path d='m21 21-4.3-4.3' />
+                </svg>
+                <Input
+                  placeholder='Search a name'
+                  className='w-full pl-9 rounded-full border-gray-200 h-9 bg-[#F5F6FA]'
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
               </div>
-            </TabsContent>
-
-            <TabsContent value='new'>
-              <div className='space-y-4 py-4'>
-                <div className='grid gap-4'>
-                  <div className='grid gap-2'>
-                    <label htmlFor='name'>Criteria Name</label>
-                    <Input
-                      id='name'
-                      value={newCriteria.name}
-                      onChange={(e) =>
-                        setNewCriteria((prev) => ({
-                          ...prev,
-                          name: e.target.value,
-                        }))
-                      }
-                      placeholder='e.g., Midterm Exam'
-                    />
-                  </div>
-                  <div className='grid gap-2'>
-                    <label htmlFor='rubrics'>Number of Rubrics</label>
-                    <Select
-                      value={newCriteria.rubrics}
-                      onValueChange={handleRubricCountChange}
+              <div className='flex items-center gap-2'>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant='outline'
+                      className='w-[140px] h-9 rounded-full border-gray-200 bg-[#F5F6FA] justify-between'
                     >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value='2'>2 Rubrics</SelectItem>
-                        <SelectItem value='3'>3 Rubrics</SelectItem>
-                        <SelectItem value='4'>4 Rubrics</SelectItem>
-                      </SelectContent>
-                    </Select>
+                      <span>Filter</span>
+                      <svg
+                        className='h-4 w-4 text-gray-500'
+                        fill='none'
+                        stroke='currentColor'
+                        strokeWidth='2'
+                        viewBox='0 0 24 24'
+                      >
+                        <path d='M19 9l-7 7-7-7' />
+                      </svg>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className='w-[200px] p-4'>
+                    <div className='space-y-3'>
+                      <div className='flex items-center space-x-2'>
+                        <Checkbox
+                          id='passed'
+                          checked={gradeFilter.passed}
+                          onCheckedChange={() => handleFilterChange('passed')}
+                        />
+                        <label
+                          htmlFor='passed'
+                          className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+                        >
+                          Passed
+                        </label>
+            </div>
+                      <div className='flex items-center space-x-2'>
+                        <Checkbox
+                          id='failed'
+                          checked={gradeFilter.failed}
+                          onCheckedChange={() => handleFilterChange('failed')}
+                        />
+                        <label
+                          htmlFor='failed'
+                          className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+                        >
+                          Failed
+                        </label>
+                      </div>
+                      <div className='flex items-center space-x-2'>
+                        <Checkbox
+                          id='noGrades'
+                          checked={gradeFilter.noGrades}
+                          onCheckedChange={() => handleFilterChange('noGrades')}
+                        />
+                        <label
+                          htmlFor='noGrades'
+                          className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+                        >
+                          No Grades
+                        </label>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+                {Object.entries(gradeFilter).some(([_, value]) => !value) && (
+                  <div className='flex items-center gap-1.5'>
+                    {gradeFilter.passed && (
+                      <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700'>
+                        Passed
+                      </span>
+                    )}
+                    {gradeFilter.failed && (
+                      <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700'>
+                        Failed
+                      </span>
+                    )}
+                    {gradeFilter.noGrades && (
+                      <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700'>
+                        No Grades
+                      </span>
+                    )}
                   </div>
+                )}
+              </div>
+            </div>
+            <div className='flex items-center gap-2'>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={'outline'}
+                    className={cn(
+                      'w-[200px] justify-start text-left font-normal h-9',
+                      !selectedDate && 'text-muted-foreground',
+                    )}
+                  >
+                    <CalendarIcon className='mr-2 h-4 w-4' />
+                    {selectedDate ? (
+                      format(selectedDate, 'PPP')
+                    ) : (
+                      <span>Pick a date</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className='w-auto p-0' align='end'>
+                  <Calendar
+                    mode='single'
+                    selected={selectedDate}
+                    onSelect={onDateSelect}
+                    initialFocus
+                    disabled={(date) => date > new Date()}
+                    defaultMonth={new Date()}
+                  />
+                </PopoverContent>
+              </Popover>
+              <Button
+                onClick={handleExport}
+                className='ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center gap-2'
+              >
+                <svg
+                  className='w-4 h-4'
+                  fill='none'
+                  stroke='currentColor'
+                  strokeWidth='2'
+                  viewBox='0 0 24 24'
+                >
+                  <path d='M12 5v14m7-7H5' />
+                </svg>
+                Export to Excel
+            </Button>
+            </div>
+          </div>
+          <Dialog open={showCriteriaDialog} onOpenChange={handleDialogClose}>
+            <DialogContent className='sm:max-w-[450px]'>
+              <DialogHeader>
+                <DialogTitle className='text-[#124A69] text-2xl font-bold'>
+                  Grading Report
+                </DialogTitle>
+                <DialogDescription className='text-gray-500'>
+                  Select existing report or create new ones
+                </DialogDescription>
+              </DialogHeader>
+              {criteriaLoading ? (
+                <div className='flex justify-center items-center py-8'>
+                  <Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
+                </div>
+              ) : (
+                <Tabs defaultValue='existing' className='w-full'>
+                  <TabsList className='grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg'>
+                    <TabsTrigger
+                      value='existing'
+                      className='data-[state=active]:bg-white data-[state=active]:shadow-sm'
+                    >
+                      Use Existing
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value='new'
+                      className='data-[state=active]:bg-white data-[state=active]:shadow-sm'
+                    >
+                      Create New
+                    </TabsTrigger>
+                  </TabsList>
+                  <TabsContent value='existing'>
+                    <div className='space-y-4 py-4'>
+                      {savedReports.filter((report) => {
+                        if (!selectedDate) return false;
 
-                  <div className='grid gap-4 mt-2'>
-                    <label className='text-sm font-medium'>
-                      Rubric Details
-                    </label>
-                    <div className='space-y-4 max-h-[200px] overflow-y-auto pr-2'>
-                      {newCriteria.rubricDetails.map((rubric, index) => (
-                        <div key={index} className='flex items-center gap-2'>
-                          <div className='relative w-[400px]'>
-                            <Input
-                              value={rubric.name}
-                              onChange={(e) =>
-                                updateRubricDetail(
-                                  index,
-                                  'name',
-                                  e.target.value.slice(0, 15),
-                                )
-                              }
-                              placeholder={`Rubric ${index + 1} name`}
-                              className='pr-20'
-                              maxLength={15}
-                            />
-                            <div className='absolute right-1 top-1 bottom-1 flex items-center'>
-                              <span className='text-xs text-gray-400 mr-2'>
-                                {rubric.name.length}/15
-                              </span>
-                              <Input
-                                type='number'
-                                value={rubric.weight}
-                                onChange={(e) =>
-                                  updateRubricDetail(
-                                    index,
-                                    'weight',
-                                    parseInt(e.target.value) || 0,
-                                  )
-                                }
-                                min={0}
-                                max={100}
-                                className='w-14 h-7 px-1 text-right'
-                              />
-                              <span className='text-sm text-gray-500 ml-0.5 mr-2'>
-                                %
-                              </span>
+                        // Convert both dates to local midnight for accurate comparison
+                        const reportDate = new Date(report.date);
+                        reportDate.setHours(0, 0, 0, 0);
+
+                        const selected = new Date(selectedDate);
+                        selected.setHours(0, 0, 0, 0);
+
+                        return reportDate.getTime() === selected.getTime();
+                      }).length > 0 ? (
+                        <div className='flex flex-col items-center'>
+                          <Select
+                            value={selectedReport}
+                            onValueChange={setSelectedReport}
+                          >
+                            <SelectTrigger className='bg-gray-50 border-gray-200 w-full max-w-[400px]'>
+                              <SelectValue placeholder='Select saved report' />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {savedReports
+                                .filter((report) => {
+                                if (!selectedDate) return false;
+
+                                  // Convert both dates to local midnight for accurate comparison
+                                  const reportDate = new Date(report.date);
+                                  reportDate.setHours(0, 0, 0, 0);
+
+                                  const selected = new Date(selectedDate);
+                                  selected.setHours(0, 0, 0, 0);
+
+                                  return (
+                                    reportDate.getTime() === selected.getTime()
+                                  );
+                                })
+                                .map((report) => {
+                                  // Count students without grades for this report
+                                  const ungradedCount = students.filter(
+                                    (student) => {
+                                      const studentScore = scores[student.id];
+                                      // Check if student has no scores or if any of their scores are 0
+                                      return (
+                                        !studentScore ||
+                                        studentScore.scores.length === 0 ||
+                                        studentScore.scores.every(
+                                          (score) => score === 0,
+                                        )
+                                      );
+                                    },
+                                  ).length;
+
+                                  return (
+                                    <SelectItem
+                                      key={report.id}
+                                      value={report.id}
+                                    >
+                                  {report.name}
+                                      <span className='text-sm text-gray-500 ml-2'>
+                                        ({ungradedCount} students ungraded)
+                                  </span>
+                                </SelectItem>
+                                  );
+                                })}
+                            </SelectContent>
+                          </Select>
+                          {selectedReport && (
+                            <div className='text-sm text-gray-500 mt-2'>
+                              Created by:{' '}
+                              {savedReports.find((c) => c.id === selectedReport)
+                                ?.user?.name || 'Unknown'}
                             </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p className='text-sm text-gray-500 text-center py-4'>
+                          No saved reports found for this date.
+                          <br />
+                          Create new ones in the other tab.
+                        </p>
+                      )}
+                      <DialogFooter className='gap-2 sm:gap-2'>
+                        <Button
+                          variant='outline'
+                          onClick={handleDialogClose}
+                          className='border-gray-200'
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={handleApplyCriteria}
+                          disabled={!selectedReport}
+                          className='bg-[#124A69] hover:bg-[#0d3a56]'
+                        >
+                          Apply Selected Report
+                        </Button>
+                      </DialogFooter>
+                    </div>
+                  </TabsContent>
+                  <TabsContent value='new'>
+                    <div className='space-y-4 py-4'>
+                      <div className='grid gap-4'>
+                        <div className='grid gap-2'>
+                          <label
+                            htmlFor='name'
+                            className='text-sm font-medium text-gray-700'
+                          >
+                            Report Name
+                          </label>
+                          <Input
+                            id='name'
+                            value={newReport.name}
+                            onChange={handleReportNameChange}
+                            placeholder='e.g., Midterm Exam'
+                            maxLength={25}
+                            className={`bg-gray-50 border-gray-200 ${
+                              validationErrors.name ? 'border-red-500' : ''
+                            }`}
+                          />
+                          <div className='flex justify-between mt-1'>
+                            {validationErrors.name && (
+                              <p className='text-sm text-red-500'>
+                                {validationErrors.name}
+                              </p>
+                            )}
+                            <p className='text-xs text-gray-500 -mt-2 ml-auto'>
+                              {newReport.name.length}/25
+                            </p>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                    <div className='text-sm text-gray-500 flex justify-end items-center gap-1.5 w-[400px]'>
-                      <span>Total:</span>
-                      <span
-                        className={cn(
-                          'font-medium',
-                          newCriteria.rubricDetails.reduce(
-                            (sum, r) => sum + r.weight,
-                            0,
-                          ) === 100
-                            ? 'text-green-600'
-                            : 'text-red-600',
-                        )}
-                      >
-                        {newCriteria.rubricDetails.reduce(
-                          (sum, r) => sum + r.weight,
-                          0,
-                        )}
-                        %
-                      </span>
-                    </div>
-                  </div>
+                        <div className='grid gap-2'>
+                          <label
+                            htmlFor='rubrics'
+                            className='text-sm font-medium text-gray-700'
+                          >
+                            Number of Rubrics
+                          </label>
+                          <Select
+                            value={newReport.rubrics}
+                            onValueChange={handleRubricCountChange}
+                          >
+                            <SelectTrigger className='bg-gray-50 border-gray-200'>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value='2'>2 Rubrics</SelectItem>
+                              <SelectItem value='3'>3 Rubrics</SelectItem>
+                              <SelectItem value='4'>4 Rubrics</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
 
-                  <div className='grid gap-2'>
-                    <label htmlFor='scoringRange'>Scoring Range</label>
-                    <Select
-                      value={newCriteria.scoringRange}
-                      onValueChange={(value) =>
-                        setNewCriteria((prev) => ({
-                          ...prev,
-                          scoringRange: value,
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value='5'>1-5</SelectItem>
-                        <SelectItem value='10'>1-10</SelectItem>
-                      </SelectContent>
-                    </Select>
+                        <div className='grid grid-cols-2 gap-4'>
+                        <div className='grid gap-2'>
+                            <label
+                              htmlFor='scoringRange'
+                              className='text-sm font-medium text-gray-700'
+                            >
+                              Scoring Range
+                            </label>
+                          <Select
+                            value={newReport.scoringRange}
+                            onValueChange={(value) =>
+                              setNewReport((prev) => ({
+                                ...prev,
+                                scoringRange: value,
+                              }))
+                            }
+                          >
+                              <SelectTrigger className='bg-gray-50 border-gray-200'>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value='5'>1-5</SelectItem>
+                              <SelectItem value='10'>1-10</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className='grid gap-2'>
+                            <label
+                              htmlFor='passingScore'
+                              className='text-sm font-medium text-gray-700'
+                            >
+                              Passing Score (%)
+                            </label>
+                          <Select
+                            value={newReport.passingScore}
+                            onValueChange={(value) =>
+                              setNewReport((prev) => ({
+                                ...prev,
+                                passingScore: value,
+                              }))
+                            }
+                          >
+                              <SelectTrigger className='bg-gray-50 border-gray-200'>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value='60'>60%</SelectItem>
+                                <SelectItem value='65'>65%</SelectItem>
+                                <SelectItem value='70'>70%</SelectItem>
+                              <SelectItem value='75'>75%</SelectItem>
+                              <SelectItem value='80'>80%</SelectItem>
+                                <SelectItem value='85'>85%</SelectItem>
+                                <SelectItem value='90'>90%</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          </div>
+                        </div>
+
+                        <div className='grid gap-4 mt-2'>
+                          <label className='text-sm font-medium text-gray-700'>
+                            Rubric Details
+                          </label>
+                          <div className='space-y-4 max-h-[200px] overflow-y-auto pr-2'>
+                            {newReport.rubricDetails.map((rubric, index) => (
+                              <div
+                                key={index}
+                                className='flex items-center gap-2'
+                              >
+                                <div className='relative w-[400px]'>
+                                  <Input
+                                    value={rubric.name}
+                                    onChange={(e) =>
+                                      updateRubricDetail(
+                                        index,
+                                        'name',
+                                        e.target.value,
+                                      )
+                                    }
+                                    placeholder={`Rubric ${index + 1} name`}
+                                    className={`bg-gray-50 border-gray-200 ${
+                                      validationErrors.rubrics?.[index]
+                                        ? 'border-red-500'
+                                        : ''
+                                    }`}
+                                  />
+                                  <div className='flex justify-between mt-1'>
+                                    {validationErrors.rubrics?.[index] && (
+                                      <p className='text-sm text-red-500'>
+                                        {validationErrors.rubrics[index]}
+                                      </p>
+                                    )}
+                                    <p className='text-xs text-gray-500 -mt-1 ml-auto'>
+                                      {rubric.name.length}/15
+                                    </p>
+                                </div>
+                                </div>
+                                <div className='relative w-[200px] -mt-4'>
+                                  <div className='flex items-center gap-2'>
+                                    <Slider
+                                      value={[rubric.weight]}
+                                      onValueChange={(value: number[]) =>
+                                        updateRubricDetail(
+                                          index,
+                                          'weight',
+                                          value[0],
+                                        )
+                                      }
+                                      max={100}
+                                      step={1}
+                                      className='w-[100px]'
+                                    />
+                                  <Input
+                                    value={rubric.weight}
+                                    onChange={(e) =>
+                                      updateRubricDetail(
+                                        index,
+                                        'weight',
+                                        parseInt(e.target.value),
+                                      )
+                                    }
+                                      type='number'
+                                      min={0}
+                                      max={100}
+                                      className='w-[60px] bg-gray-50 border-gray-200'
+                                  />
+                                    <span className='text-sm text-gray-500'>
+                                      %
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className='flex justify-end mt-2'>
+                            <p className='text-sm font-medium'>
+                              Total Weight:{' '}
+                              <span
+                                className={
+                                  newReport.rubricDetails.reduce(
+                                    (sum, r) => sum + r.weight,
+                                    0,
+                                  ) === 100
+                                    ? 'text-green-600'
+                                    : 'text-red-500'
+                                }
+                              >
+                                {newReport.rubricDetails.reduce(
+                                  (sum, r) => sum + r.weight,
+                                  0,
+                                )}
+                                %
+                              </span>
+                            </p>
+                        </div>
+                      </div>
+                      </div>
+                      <DialogFooter className='gap-2 sm:gap-2'>
+                        <Button
+                          variant='outline'
+                          onClick={handleDialogClose}
+                          className='border-gray-200'
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={handleCreateReport}
+                          disabled={!newReport.name || !newReport.rubrics}
+                          className='bg-[#124A69] hover:bg-[#0d3a56]'
+                        >
+                          Create New Report
+                        </Button>
+                      </DialogFooter>
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              )}
+            </DialogContent>
+          </Dialog>
+
+          {!showCriteriaDialog && activeReport && (
+            <div className='space-y-4 p-0'>
+              {/* Grading Table */}
+              <div className='overflow-x-auto max-h-[calc(100vh-300px)]'>
+                <table className='w-full border-separate border-spacing-0 table-fixed'>
+                  <GradingTableHeader rubricDetails={rubricDetails} />
+                  <tbody>
+                    {isLoading
+                      ? // Loading skeleton
+                        Array.from({ length: 5 }).map((_, idx) => (
+                          <tr
+                            key={idx}
+                            className={
+                              idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F6FA]'
+                            }
+                          >
+                            <td className='sticky left-0 z-10 bg-white px-4 py-2 align-middle w-[300px]'>
+                              <div className='flex items-center gap-3'>
+                                <div className='w-8 h-8 rounded-full bg-gray-200 animate-pulse' />
+                                <div className='h-4 w-32 bg-gray-200 rounded animate-pulse' />
+                              </div>
+                            </td>
+                            {rubricDetails.map((_, rubricIdx) => (
+                              <td
+                                key={rubricIdx}
+                                className='text-center px-4 py-2 align-middle w-[120px]'
+                              >
+                                <div className='h-8 w-full bg-gray-200 rounded animate-pulse' />
+                              </td>
+                            ))}
+                            <td className='text-center px-4 py-2 align-middle w-[100px]'>
+                              <div className='h-4 w-16 bg-gray-200 rounded animate-pulse mx-auto' />
+                            </td>
+                            <td className='text-center px-4 py-2 align-middle w-[100px]'>
+                              <div className='h-6 w-20 bg-gray-200 rounded-full animate-pulse mx-auto' />
+                            </td>
+                          </tr>
+                        ))
+                      : (() => {
+                          const { paginatedStudents, totalPages, totalStudents } = getPaginatedStudents(students);
+
+                          if (paginatedStudents.length === 0) {
+                            return (
+                              <tr>
+                                <td colSpan={rubricDetails.length + 3} className='text-center py-8 text-muted-foreground'>
+                                  No students found
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          return paginatedStudents.map((student, idx) => {
+                            const studentScore = scores[student.id] || {
+                              studentId: student.id,
+                              scores: new Array(rubricDetails.length).fill(0),
+                              total: 0,
+                            };
+                            return (
+                              <GradingTableRow
+                                key={student.id}
+                                student={student}
+                                rubricDetails={rubricDetails}
+                                activeReport={activeReport}
+                                studentScore={studentScore}
+                                handleScoreChange={handleScoreChange}
+                                idx={idx}
+                              />
+                            );
+                          });
+                        })()}
+                  </tbody>
+                </table>
+              </div>
+              {/* Footer Bar */}
+              <div className='flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 border-t bg-white'>
+                <div className='flex flex-col sm:flex-row items-center gap-4 w-full'>
+                  <div className='flex items-center gap-2'>
+                    <p className='text-sm text-gray-500 whitespace-nowrap'>
+                      {totalStudents > 0 ? (
+                        <>
+                          {currentPage * studentsPerPage - (studentsPerPage - 1)}-
+                          {Math.min(currentPage * studentsPerPage, totalStudents)} of{' '}
+                          {totalStudents} students
+                        </>
+                      ) : (
+                        'No students found'
+                      )}
+                    </p>
                   </div>
-                  <div className='grid gap-2'>
-                    <label htmlFor='passingScore'>Passing Score (%)</label>
-                    <Select
-                      value={newCriteria.passingScore}
-                      onValueChange={(value) =>
-                        setNewCriteria((prev) => ({
-                          ...prev,
-                          passingScore: value,
-                        }))
-                      }
+                  <div className='flex-1 flex justify-center'>
+                    <Pagination>
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious
+                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                            className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'hover:bg-gray-100'}
+                          />
+                        </PaginationItem>
+                        {[...Array(totalPages)].map((_, i) => (
+                          <PaginationItem key={i}>
+                            <PaginationLink
+                              isActive={currentPage === i + 1}
+                              onClick={() => setCurrentPage(i + 1)}
+                              className={`${
+                                currentPage === i + 1 
+                                  ? 'bg-[#124A69] text-white hover:bg-[#0d3a56]' 
+                                  : 'hover:bg-gray-100'
+                              }`}
+                            >
+                              {i + 1}
+                            </PaginationLink>
+                          </PaginationItem>
+                        ))}
+                        <PaginationItem>
+                          <PaginationNext
+                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                            className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'hover:bg-gray-100'}
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                  </div>
+                  <div className='flex items-center gap-2'>
+                    <Button
+                      variant='outline'
+                      onClick={() => setShowResetDialog(true)}
+                      className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
                     >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value='75'>75%</SelectItem>
-                        <SelectItem value='80'>80%</SelectItem>
-                      </SelectContent>
-                    </Select>
+                      Reset
+                    </Button>
+                    <Button
+                      onClick={handleSaveGrades}
+                      disabled={isLoading || !hasChanges()}
+                      className='h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] disabled:opacity-50 disabled:cursor-not-allowed'
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                          Saving...
+                        </>
+                      ) : (
+                        'Save Grades'
+                      )}
+                    </Button>
                   </div>
                 </div>
-                <DialogFooter>
-                  <Button variant='outline' onClick={handleDialogClose}>
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleCreateCriteria}
-                    disabled={
-                      !newCriteria.name ||
-                      isLoading ||
-                      newCriteria.rubricDetails.some((r) => !r.name) ||
-                      newCriteria.rubricDetails.reduce(
-                        (sum, r) => sum + r.weight,
-                        0,
-                      ) !== 100
-                    }
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                        Creating...
-                      </>
-                    ) : (
-                      'Create & Apply'
-                    )}
-                  </Button>
-                </DialogFooter>
               </div>
-            </TabsContent>
-          </Tabs>
+            </div>
+          )}
+          {!showCriteriaDialog && !activeReport && (
+            <div className='flex flex-col items-center justify-center py-12 text-center'>
+              {criteriaLoading ? (
+                <div className='flex flex-col items-center gap-4'>
+                  <Loader2 className='h-8 w-8 animate-spin text-[#124A69]' />
+                  <p className='text-gray-500'>Loading grading criteria...</p>
+                </div>
+              ) : (
+                <>
+                  <div className='text-2xl font-semibold text-[#124A69] mb-2'>
+                    No Report Selected
+                  </div>
+                  <p className='text-gray-500'>
+                    Please select a date and create or choose a grading report
+                    to begin.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Reset Confirmation Dialog */}
+      <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <DialogContent className='sm:max-w-[425px]'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              Reset Grades
+            </DialogTitle>
+            <DialogDescription className='text-gray-500'>
+              Are you sure you want to reset all grades? This action cannot be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className='gap-2 sm:gap-2'>
+            <Button
+              variant='outline'
+              onClick={() => setShowResetDialog(false)}
+              className='border-gray-200'
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleResetGrades}
+              className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+            >
+              Reset Grades
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {!showCriteriaDialog && activeCriteria && (
-        <div className='space-y-4'>
-          <div className='flex items-center justify-between'>
-            <div className='flex items-center gap-2 text-sm text-muted-foreground'>
-              <span>Created by: {activeCriteria.user?.name || 'You'}</span>
-              <span>•</span>
-              <span>Rubrics: {activeCriteria.rubrics}</span>
-              <span>•</span>
-              <span>Scoring: 1-{activeCriteria.scoringRange}</span>
-              <span>•</span>
-              <span>Passing: {activeCriteria.passingScore}%</span>
-            </div>
-            <Button onClick={handleSaveGrades} disabled={isLoading}>
-              {isLoading ? (
-                <>
-                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                  Saving...
-                </>
-              ) : (
-                'Save Grades'
-              )}
-            </Button>
-          </div>
+      {/* Export Preview Dialog */}
+      <Dialog open={showExportPreview} onOpenChange={setShowExportPreview}>
+        <DialogContent className='sm:max-w-[800px] max-h-[80vh] overflow-y-auto'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              Export Preview
+            </DialogTitle>
+            <DialogDescription className='text-gray-500'>
+              Preview how your grades will look in the Excel file
+            </DialogDescription>
+          </DialogHeader>
 
-          <div className='relative overflow-x-auto'>
-            <div className='min-w-full inline-block align-middle'>
-              <div className='overflow-x-auto border rounded-lg'>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className='sticky left-0 bg-white z-10 min-w-[200px]'>
-                        Name
-                      </TableHead>
-                      {rubricDetails.map((rubric, i) => (
-                        <TableHead key={i} className='min-w-[150px]'>
-                          <Input
-                            value={rubric.name}
-                            onChange={(e) => {
-                              const newRubrics = [...rubricDetails];
-                              newRubrics[i] = {
-                                ...rubric,
-                                name: e.target.value,
-                              };
-                              setRubricDetails(newRubrics);
-                            }}
-                            className='w-full mb-1'
-                            placeholder={`Rubric ${i + 1}`}
-                          />
-                          <Input
-                            type='number'
-                            value={rubric.percentage}
-                            onChange={(e) => {
-                              const newRubrics = [...rubricDetails];
-                              newRubrics[i] = {
-                                ...rubric,
-                                percentage: parseInt(e.target.value) || 0,
-                              };
-                              setRubricDetails(newRubrics);
-                            }}
-                            className='w-full'
-                            min={0}
-                            max={100}
-                            placeholder='Percentage'
-                          />
-                        </TableHead>
+          {exportData && (
+            <div className='mt-4 overflow-x-auto'>
+              <table className='w-full border-collapse'>
+                <tbody>
+                  {exportData.header.map((row, rowIndex) => (
+                    <tr key={`header-${rowIndex}`}>
+                      {row.map((cell, cellIndex) => (
+                        <td
+                          key={`header-cell-${cellIndex}`}
+                          className={`border border-gray-200 p-2 ${
+                            rowIndex === 0
+                              ? 'bg-[#124A69] text-white text-center font-bold'
+                              : rowIndex === 5
+                              ? 'bg-gray-100 font-medium'
+                              : ''
+                          }`}
+                          colSpan={
+                            rowIndex === 0 ? exportData.header[5].length : 1
+                          }
+                        >
+                          {cell}
+                        </td>
                       ))}
-                      <TableHead className='min-w-[100px]'>Total</TableHead>
-                      <TableHead className='min-w-[100px]'>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredStudents.map((student) => {
-                      const studentScore = scores[student.id] || {
-                        studentId: student.id,
-                        scores: new Array(activeCriteria.rubrics).fill(0),
-                        total: 0,
-                      };
-
-                      return (
-                        <TableRow key={student.id}>
-                          <TableCell className='sticky left-0 bg-white z-10'>
-                            {student.name}
-                          </TableCell>
-                          {studentScore.scores.map((score, index) => (
-                            <TableCell key={index}>
-                              <Input
-                                type='number'
-                                min={1}
-                                max={activeCriteria.scoringRange}
-                                value={score}
-                                onChange={(e) =>
-                                  handleScoreChange(
-                                    student.id,
-                                    index,
-                                    parseInt(e.target.value) || 0,
-                                  )
-                                }
-                              />
-                            </TableCell>
-                          ))}
-                          <TableCell>
-                            {studentScore.total.toFixed(2)}%
-                          </TableCell>
-                          <TableCell>
-                            <span
-                              className={cn(
-                                'px-2 py-1 rounded-full text-xs font-medium',
-                                studentScore.total >=
-                                  Number(activeCriteria.passingScore)
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-red-100 text-red-800',
-                              )}
-                            >
-                              {studentScore.total >=
-                              Number(activeCriteria.passingScore)
-                                ? 'Pass'
-                                : 'Fail'}
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+                    </tr>
+                  ))}
+                  {exportData.studentRows.map((row, rowIndex) => (
+                    <tr key={`student-${rowIndex}`}>
+                      {row.map((cell, cellIndex) => (
+                        <td
+                          key={`student-cell-${cellIndex}`}
+                          className={`border border-gray-200 p-2 ${
+                            cellIndex === row.length - 1
+                              ? cell === 'PASSED'
+                                ? 'text-green-600 font-medium'
+                                : cell === 'FAILED'
+                                ? 'text-red-600 font-medium'
+                                : ''
+                              : ''
+                          }`}
+                        >
+                          {cell}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
-        </div>
-      )}
-    </>
+          )}
+
+          <DialogFooter className='gap-2 sm:gap-2 mt-4'>
+            <Button
+              variant='outline'
+              onClick={() => setShowExportPreview(false)}
+              className='border-gray-200'
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmExport}
+              className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+            >
+              Export to Excel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

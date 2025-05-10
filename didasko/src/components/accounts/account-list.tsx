@@ -2,6 +2,8 @@
 import React, { useEffect, useState } from 'react';
 import { Role, WorkType, Permission } from '@prisma/client';
 import { UserCircle2 } from 'lucide-react';
+import axiosInstance from '@/lib/axios';
+import { toast } from 'react-hot-toast';
 
 interface Account {
   id: string;
@@ -41,16 +43,11 @@ const AccountList: React.FC<AccountListProps> = ({
   useEffect(() => {
     const fetchAccounts = async () => {
       try {
-        const response = await fetch('/api/users');
-        if (!response.ok) {
-          throw new Error('Failed to fetch accounts');
-        }
-        const data = await response.json();
-        setAccounts(data.users);
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : 'Failed to fetch accounts',
-        );
+        const response = await axiosInstance.get('/api/users');
+        setAccounts(response.data.users);
+      } catch (error) {
+        console.error('Error fetching accounts:', error);
+        toast.error('Failed to fetch accounts');
       } finally {
         setIsLoading(false);
       }

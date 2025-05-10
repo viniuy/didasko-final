@@ -1,0 +1,108 @@
+import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { prisma } from '@/lib/prisma';
+import { auth } from '@/lib/auth';
+
+export async function POST(
+  request: Request,
+  context: { params: { courseId: string } }
+) {
+  try {
+    const session = await getServerSession(auth);
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const params = await Promise.resolve(context.params);
+    const { courseId } = params;
+
+    // First get the course ID using the course code
+    const course = await prisma.course.findFirst({
+      where: { code: courseId.toUpperCase() },
+      select: { id: true }
+    });
+
+    if (!course) {
+      return NextResponse.json({ error: 'Course not found' }, { status: 404 });
+    }
+
+    const body = await request.json();
+    const { groupNumber, groupName, studentIds, leaderId } = body;
+
+    // Create the group
+    const group = await prisma.group.create({
+      data: {
+        number: groupNumber,
+        name: groupName,
+        courseId: course.id,
+        leaderId: leaderId || null,
+        students: {
+          connect: studentIds.map((id: string) => ({ id }))
+        }
+      },
+      include: {
+        students: true,
+        leader: true
+      }
+    });
+
+    return NextResponse.json(group);
+  } catch (error) {
+    console.error('Error creating group:', error);
+    return NextResponse.json(
+      { error: 'Failed to create group' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET(
+  request: Request,
+  context: { params: { courseId: string } }
+) {
+  try {
+    const session = await getServerSession(auth);
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const params = await Promise.resolve(context.params);
+    const { courseId } = params;
+
+    // First get the course ID using the course code
+    const course = await prisma.course.findFirst({
+      where: { code: courseId.toUpperCase() },
+      select: { id: true }
+    });
+
+    if (!course) {
+      return NextResponse.json({ error: 'Course not found' }, { status: 404 });
+    }
+
+    // Get all groups for the course
+    const groups = await prisma.group.findMany({
+      where: {
+        courseId: course.id
+      },
+      include: {
+        students: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            middleInitial: true,
+            image: true
+          }
+        }
+      }
+    });
+
+    return NextResponse.json(groups);
+  } catch (error) {
+    console.error('Error fetching groups:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch groups' },
+      { status: 500 }
+    );
+  }
+} 

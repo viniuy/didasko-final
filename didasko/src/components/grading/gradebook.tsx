@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import axiosInstance from '@/lib/axios';
 
 interface Student {
   id: string;
@@ -43,10 +44,8 @@ export function TableDemo() {
 
   const fetchGrades = async () => {
     try {
-      const response = await fetch(`/api/courses/${courseId}/grades`);
-      if (!response.ok) throw new Error('Failed to fetch grades');
-      const data = await response.json();
-      setStudents(data);
+      const response = await axiosInstance.get(`/courses/${courseId}/grades`);
+      setStudents(response.data);
     } catch (error) {
       console.error('Error fetching grades:', error);
       toast({
@@ -73,19 +72,11 @@ export function TableDemo() {
         return;
       }
 
-      const response = await fetch(`/api/courses/${courseId}/grades`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          studentId,
-          gradeType,
-          value: numericValue,
-        }),
+      await axiosInstance.post(`/courses/${courseId}/grades`, {
+        studentId,
+        gradeType,
+        value: numericValue,
       });
-
-      if (!response.ok) throw new Error('Failed to update grade');
 
       fetchGrades();
       toast({

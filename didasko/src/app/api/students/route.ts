@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { Student, StudentCreateInput } from '@/types/student';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { lastName, firstName, middleInitial, image, courseId } = body;
+    const { lastName, firstName, middleInitial, image, courseId } =
+      body as StudentCreateInput;
 
     console.log('Creating student:', { lastName, firstName, courseId });
 
@@ -42,13 +44,20 @@ export async function POST(request: Request) {
         },
       },
       include: {
-        coursesEnrolled: true,
+        coursesEnrolled: {
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            section: true,
+          },
+        },
       },
     });
 
     console.log('Created student:', student);
 
-    return NextResponse.json(student);
+    return NextResponse.json(student as Student);
   } catch (error) {
     console.error('Error creating student:', error);
 

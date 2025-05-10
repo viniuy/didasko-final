@@ -8,6 +8,8 @@ import {
   PaginationContent,
   PaginationItem,
   PaginationLink,
+  PaginationPrevious,
+  PaginationNext,
 } from '@/components/ui/pagination';
 import {
   Download,
@@ -40,7 +42,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { toast } from 'sonner';
+import toast, { Toaster } from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import { StudentCard } from './student-card';
 import { FilterSheet } from './filter-sheet';
@@ -55,6 +57,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import axiosInstance from '@/lib/axios';
 
 // Add interface for Excel data
 interface ExcelRow {
@@ -156,7 +159,7 @@ export default function StudentList() {
   } | null>(null);
   const [showExportPreview, setShowExportPreview] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date>();
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [isLoading, setIsLoading] = useState(true);
   const [unsavedChanges, setUnsavedChanges] = useState<{
     [key: string]: AttendanceStatus;
@@ -175,40 +178,31 @@ export default function StudentList() {
   });
   const [showMarkAllConfirm, setShowMarkAllConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const fetchStudents = async () => {
     if (!courseId) return;
 
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/courses/${courseId}/students`, {
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch students');
+      const response = await axiosInstance.get(`/courses/${courseId}/students`);
+      const students = response.data.students.map((student: any) => ({
+        ...student,
+        name: `${student.lastName}, ${student.firstName}${student.middleInitial ? ` ${student.middleInitial}.` : ''}`,
+        status: 'NOT_SET' as AttendanceStatusWithNotSet,
+        attendanceRecords: [],
+      }));
+      setStudentList(students);
+      setCourseInfo(response.data.course);
+      
+      // Fetch attendance for the selected date after getting students
+      if (selectedDate) {
+        await fetchAttendance(selectedDate);
       }
-
-      const data = await response.json();
-
-      // Initialize students with empty attendance records
-      const studentsWithEmptyRecords: Student[] = data.students.map(
-        (student: ApiStudent) => ({
-          id: student.id,
-          name: student.name,
-          image: student.image,
-          status: 'NOT_SET' as const,
-          attendanceRecords: [],
-        }),
-      );
-      setStudentList(studentsWithEmptyRecords);
-      setCourseInfo(data.course);
     } catch (error) {
-      console.error('Error in fetchStudents:', error);
+      console.error('Error fetching students:', error);
       setStudentList([]);
+      toast.error('Failed to fetch students');
     } finally {
       setIsLoading(false);
     }
@@ -220,60 +214,58 @@ export default function StudentList() {
     try {
       setIsDateLoading(true);
       const dateStr = format(date, 'yyyy-MM-dd');
-      const attendanceResponse = await fetch(
-        `/api/courses/${courseId}/attendance?date=${dateStr}`,
+      const attendanceResponse = await axiosInstance.get<{ attendance: AttendanceRecord[] }>(
+        `/courses/${courseId}/attendance`,
         {
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
+          params: {
+            date: dateStr,
+            limit: 1000, // Increase limit to get all records
           },
         },
       );
 
-      if (attendanceResponse.ok) {
-        const attendanceData = await attendanceResponse.json();
-        const attendanceMap = new Map(
-          attendanceData.map((record: AttendanceRecord) => [
-            record.studentId,
-            record,
-          ]),
-        );
+      const attendanceData = attendanceResponse.data.attendance;
+      const attendanceMap = new Map<string, AttendanceRecord>(
+        attendanceData.map((record) => [record.studentId, record])
+      );
 
-        setStudentList((prevStudents) =>
-          prevStudents.map((student) => {
-            const attendanceRecord = attendanceMap.get(student.id) as
-              | AttendanceRecord
-              | undefined;
-            return {
-              ...student,
-              status: attendanceRecord?.status || 'NOT_SET',
-              attendanceRecords: attendanceRecord ? [attendanceRecord] : [],
-            } satisfies Student;
-          }),
-        );
-      } else {
-        // Reset attendance status if no records found
-        setStudentList((prevStudents) =>
-          prevStudents.map((student) => ({
+      // Update the entire student list with attendance records
+      setStudentList((prevStudents) =>
+        prevStudents.map((student) => {
+          const record = attendanceMap.get(student.id);
+          return {
             ...student,
-            status: 'NOT_SET',
-            attendanceRecords: [],
-          })),
-        );
-      }
+            status: record?.status || 'NOT_SET',
+            attendanceRecords: record ? [{
+              id: record.id,
+              studentId: student.id,
+              courseId: courseId,
+              status: record.status,
+              date: dateStr,
+              reason: record.reason,
+            }] : [],
+          };
+        }),
+      );
+
+      // Clear any unsaved changes when fetching new attendance
+      setUnsavedChanges({});
     } catch (error) {
       console.error('Error fetching attendance:', error);
+      toast.error('Failed to fetch attendance records');
     } finally {
       setIsDateLoading(false);
     }
   };
 
   const fetchAttendanceStats = async () => {
+    if (!courseId) return;
+
     try {
-      const response = await fetch(`/api/courses/${courseId}/attendance/stats`);
-      if (!response.ok) throw new Error('Failed to fetch attendance stats');
-      const data = await response.json();
-      setAttendanceStats(data);
+      const response = await axiosInstance.get(
+        `/courses/${courseId}/attendance/stats`,
+      );
+      setAttendanceStats(response.data);
     } catch (error) {
       console.error('Error fetching attendance stats:', error);
     }
@@ -285,12 +277,6 @@ export default function StudentList() {
       fetchAttendanceStats();
     }
   }, [courseId]);
-
-  useEffect(() => {
-    if (selectedDate) {
-      fetchAttendance(selectedDate);
-    }
-  }, [selectedDate]);
 
   // Get attendance records for the selected date
   const getAttendanceForDate = (student: Student, date: Date | undefined) => {
@@ -337,63 +323,185 @@ export default function StudentList() {
       });
   }, [studentList, searchQuery, selectedDate, filters.status]);
 
-  const totalPages = Math.ceil(filteredStudents.length / itemsPerPage);
+  const totalPages = useMemo(() => {
+    const filtered = studentList
+      .filter((student) =>
+        student.name.toLowerCase().includes(searchQuery.toLowerCase()),
+      )
+      .filter((student) => {
+        if (filters.status.length === 0) return true;
+        return filters.status.includes(student.status);
+      });
+    return Math.ceil(filtered.length / itemsPerPage);
+  }, [studentList, searchQuery, filters.status, itemsPerPage]);
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
     setCurrentPage(1);
   };
 
-  const updateStatus = (index: number, newStatus: AttendanceStatus) => {
-    const student = studentList[index];
-    setUnsavedChanges((prev) => ({
-      ...prev,
-      [student.id]: newStatus,
-    }));
+  const updateStatus = async (index: number, newStatus: AttendanceStatus) => {
+    const actualIndex = (currentPage - 1) * itemsPerPage + index;
+    const student = filteredStudents[actualIndex];
+    if (!student) return;
 
-    // Update local state for immediate UI feedback
-    setStudentList((prev) =>
-      prev.map((s, i) => (i === index ? { ...s, status: newStatus } : s)),
+    const promise = axiosInstance.post(
+      `/courses/${courseId}/attendance`,
+      {
+        date: selectedDate.toISOString(),
+        attendance: [{
+          studentId: student.id,
+          status: newStatus,
+        }],
+      },
     );
+
+    toast.promise(promise, {
+      loading: 'Updating attendance...',
+      success: 'Attendance updated',
+      error: 'Failed to update attendance',
+    }, {
+      style: {
+        background: '#fff',
+        color: '#124A69',
+        border: '1px solid #e5e7eb',
+        boxShadow:
+          '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+        borderRadius: '0.5rem',
+        padding: '1rem',
+      },
+      success: {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+        },
+        iconTheme: {
+          primary: '#124A69',
+          secondary: '#fff',
+        },
+      },
+      error: {
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+        iconTheme: {
+          primary: '#dc2626',
+          secondary: '#fff',
+        },
+      },
+      loading: {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+        },
+      },
+    });
+
+    try {
+      // Update local state immediately for better UX
+      setStudentList((prev) =>
+        prev.map((s) => (s.id === student.id ? { ...s, status: newStatus } : s)),
+      );
+
+      await promise;
+
+      // Update attendance records
+      const record: AttendanceRecord = {
+        id: crypto.randomUUID(),
+        studentId: student.id,
+        courseId: courseId!,
+        status: newStatus,
+        date: format(selectedDate, 'yyyy-MM-dd'),
+        reason: null,
+      };
+
+      setStudentList((prev) =>
+        prev.map((s) => 
+          s.id === student.id 
+            ? { ...s, status: newStatus, attendanceRecords: [record] }
+            : s
+        ),
+      );
+    } catch (error) {
+      console.error('Error saving attendance:', error);
+      // Revert local state on error
+      setStudentList((prev) =>
+        prev.map((s) => (s.id === student.id ? { ...s, status: 'NOT_SET' } : s)),
+      );
+    }
   };
 
-  const currentStudents = filteredStudents.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage,
-  );
+  const currentStudents = useMemo(() => {
+    const filtered = studentList
+      .filter((student) =>
+        student.name.toLowerCase().includes(searchQuery.toLowerCase()),
+      )
+      .filter((student) => {
+        if (filters.status.length === 0) return true;
+        return filters.status.includes(student.status);
+      })
+      .sort((a, b) => {
+        if (!sortDate) return 0;
+        const aAttendance = getAttendanceForDate(a, selectedDate);
+        const bAttendance = getAttendanceForDate(b, selectedDate);
+        if (sortDate === 'newest') {
+          return (bAttendance?.date || '').localeCompare(
+            aAttendance?.date || '',
+          );
+        }
+        return (aAttendance?.date || '').localeCompare(bAttendance?.date || '');
+      });
 
-  const handleImageUpload = (index: number) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/jpeg,image/png';
+    return filtered.slice(
+      (currentPage - 1) * itemsPerPage,
+      currentPage * itemsPerPage,
+    );
+  }, [studentList, searchQuery, filters.status, sortDate, selectedDate, currentPage, itemsPerPage]);
 
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          if (e.target?.result) {
-            setTempImage({
-              index,
-              dataUrl: e.target.result as string,
-            });
-          }
-        };
-        reader.readAsDataURL(file);
-      }
-    };
-    input.click();
+  const handleImageUpload = async (studentId: string, file: File) => {
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const response = await axiosInstance.post(
+        `/courses/${courseId}/students/${studentId}/image`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        },
+      );
+
+      // Update the student's image in the list
+      setStudentList((prev) =>
+        prev.map((student) =>
+          student.id === studentId
+            ? { ...student, image: response.data.image }
+            : student,
+        ),
+      );
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast.error('Failed to upload image');
+    }
   };
 
-  const handleSaveChanges = async (index: number) => {
+  const handleSaveImageChanges = async (index: number) => {
     if (!tempImage || tempImage.index !== index) return;
 
     try {
       setIsSaving(true);
       const formData = new FormData();
       // Convert base64 to blob
-      const base64Response = await fetch(tempImage.dataUrl);
-      const blob = await base64Response.blob();
+      const base64Response = await axiosInstance.get(tempImage.dataUrl, {
+        responseType: 'arraybuffer',
+      });
+      const blob = new Blob([base64Response.data]);
 
       // Get file extension from data URL
       const ext = tempImage.dataUrl.split(';')[0].split('/')[1];
@@ -403,31 +511,16 @@ export default function StudentList() {
       const file = new File([blob], fileName, { type: `image/${ext}` });
       formData.append('image', file);
 
-      const uploadResponse = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!uploadResponse.ok) {
-        const errorData = await uploadResponse.json();
-        throw new Error(errorData.error || 'Failed to upload image');
-      }
-
-      const { imageUrl } = await uploadResponse.json();
+      const uploadResponse = await axiosInstance.post('/upload', formData);
+      const { imageUrl } = uploadResponse.data;
 
       // Update the student's image in the database
       const student = studentList[index];
-      const updateResponse = await fetch(`/api/students/${student.id}/image`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ imageUrl }),
-      });
-
-      if (!updateResponse.ok) {
-        throw new Error('Failed to update student image in database');
-      }
+      const updateResponse = await axiosInstance.put(
+        `/students/${student.id}/image`,
+        { imageUrl },
+      );
+      const updatedStudent = updateResponse.data;
 
       // Update student list with new image URL
       setStudentList((prev) =>
@@ -450,13 +543,14 @@ export default function StudentList() {
         error instanceof Error ? error.message : 'Failed to save image',
         {
           duration: 3000,
-          position: 'top-center',
           style: {
-            background: '#EF4444',
-            color: 'white',
-            fontSize: '14px',
-            padding: '12px',
-            borderRadius: '8px',
+            background: '#fff',
+            color: '#dc2626',
+            border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
           },
         },
       );
@@ -472,34 +566,17 @@ export default function StudentList() {
 
         // Delete the image file from public/uploads
         if (student.image) {
-          const deleteResponse = await fetch('/api/upload', {
-            method: 'DELETE',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ imageUrl: student.image }),
+          const deleteResponse = await axiosInstance.delete('/upload', {
+            data: { imageUrl: student.image },
           });
-
-          if (!deleteResponse.ok) {
-            console.error('Failed to delete image file');
-          }
         }
 
         // Update the database
-        const updateResponse = await fetch(
-          `/api/students/${student.id}/image`,
-          {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ imageUrl: null }),
-          },
+        const updateResponse = await axiosInstance.put(
+          `/students/${student.id}/image`,
+          { imageUrl: null },
         );
-
-        if (!updateResponse.ok) {
-          throw new Error('Failed to remove image from database');
-        }
+        const updatedStudent = updateResponse.data;
 
         // Update local state
         setStudentList((prev) =>
@@ -522,29 +599,110 @@ export default function StudentList() {
     }
   };
 
-  const markAllAsPresent = () => {
-    if (!selectedDate) {
-      toast.error('Please select a date first');
+  const markAllAsPresent = async () => {
+    if (!selectedDate || !courseId) {
+      toast.error('Please select a date first', {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+          boxShadow:
+            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+          borderRadius: '0.5rem',
+          padding: '1rem',
+        },
+      });
       return;
     }
 
-    const newChanges: Record<string, AttendanceStatus> = {};
-    studentList.forEach((student) => {
-      newChanges[student.id] = 'PRESENT' as AttendanceStatus;
-    });
-    setUnsavedChanges((prev) => ({
-      ...prev,
-      ...newChanges,
+    const attendanceData = studentList.map(student => ({
+      studentId: student.id,
+      status: 'PRESENT' as AttendanceStatus,
     }));
 
-    // Update local state for immediate UI feedback
-    setStudentList((prev) =>
-      prev.map((student) => ({
-        ...student,
-        status: 'PRESENT' as AttendanceStatus,
-      })),
+    const promise = axiosInstance.post(
+      `/courses/${courseId}/attendance`,
+      {
+        date: selectedDate.toISOString(),
+        attendance: attendanceData,
+      },
     );
-    setShowMarkAllConfirm(false);
+
+    toast.promise(promise, {
+      loading: 'Marking all as present...',
+      success: 'All students marked as present',
+      error: 'Failed to update attendance',
+    }, {
+      style: {
+        background: '#fff',
+        color: '#124A69',
+        border: '1px solid #e5e7eb',
+        boxShadow:
+          '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+        borderRadius: '0.5rem',
+        padding: '1rem',
+      },
+      success: {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+        },
+        iconTheme: {
+          primary: '#124A69',
+          secondary: '#fff',
+        },
+      },
+      error: {
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+        iconTheme: {
+          primary: '#dc2626',
+          secondary: '#fff',
+        },
+      },
+      loading: {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+        },
+      },
+    });
+
+    try {
+      // Update local state immediately
+      setStudentList((prev) =>
+        prev.map((student) => ({
+          ...student,
+          status: 'PRESENT' as AttendanceStatus,
+          attendanceRecords: [{
+            id: crypto.randomUUID(),
+            studentId: student.id,
+            courseId: courseId,
+            status: 'PRESENT',
+            date: format(selectedDate, 'yyyy-MM-dd'),
+            reason: null,
+          }],
+        })),
+      );
+
+      await promise;
+      setShowMarkAllConfirm(false);
+    } catch (error) {
+      console.error('Error marking all as present:', error);
+      // Revert local state on error
+      setStudentList((prev) =>
+        prev.map((student) => ({
+          ...student,
+          status: 'NOT_SET',
+          attendanceRecords: [],
+        })),
+      );
+    }
   };
 
   const handleApplyFilters = () => {
@@ -555,9 +713,22 @@ export default function StudentList() {
     setIsFilterSheetOpen(false);
   };
 
+  const hasIncompleteAttendance = useMemo(() => {
+    return filteredStudents.some(student => student.status === 'NOT_SET');
+  }, [filteredStudents]);
+
+  const incompleteAttendanceCount = useMemo(() => {
+    return filteredStudents.filter(student => student.status === 'NOT_SET').length;
+  }, [filteredStudents]);
+
   const handleExport = () => {
     if (!selectedDate) {
       toast.error('Please select a date before exporting');
+      return;
+    }
+
+    if (hasIncompleteAttendance) {
+      toast.error('Please set attendance status for all students before exporting');
       return;
     }
 
@@ -666,22 +837,11 @@ export default function StudentList() {
     image?: string;
   }) => {
     try {
-      const response = await fetch('/api/students', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...student,
-          courseId,
-        }),
+      const response = await axiosInstance.post('/students', {
+        ...student,
+        courseId,
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to add student');
-      }
-
-      const newStudent = await response.json();
+      const newStudent = response.data;
 
       const fullName = `${newStudent.lastName}, ${newStudent.firstName}${
         newStudent.middleInitial ? ` ${newStudent.middleInitial}.` : ''
@@ -718,21 +878,13 @@ export default function StudentList() {
         courseId: courseId,
       });
 
-      const response = await fetch(`/api/courses/${courseId}/students`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const response = await axiosInstance.post(
+        `/courses/${courseId}/students`,
+        {
           studentId: student.id,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Error response:', errorData);
-        throw new Error(errorData.error || 'Failed to add existing student');
-      }
+        },
+      );
+      const addedStudent = response.data;
 
       const fullName = `${student.lastName}, ${student.firstName}${
         student.middleInitial ? ` ${student.middleInitial}.` : ''
@@ -756,74 +908,6 @@ export default function StudentList() {
     }
   };
 
-  const saveAttendanceChanges = async () => {
-    if (!selectedDate || Object.keys(unsavedChanges).length === 0) {
-      return;
-    }
-
-    try {
-      setIsSaving(true);
-      const response = await fetch(`/api/courses/${courseId}/attendance`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          date: format(selectedDate, 'yyyy-MM-dd'),
-          attendance: Object.entries(unsavedChanges).map(
-            ([studentId, status]) => {
-              const student = studentList.find((s) => s.id === studentId);
-              const existingRecord = student?.attendanceRecords.find(
-                (record) => record.date === format(selectedDate, 'yyyy-MM-dd'),
-              );
-              return {
-                studentId,
-                status,
-                id: existingRecord?.id,
-              };
-            },
-          ),
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to save attendance');
-      }
-
-      const updatedRecords = await response.json();
-
-      // Update the local state with the new/updated records
-      setStudentList((prev) =>
-        prev.map((student) => {
-          const updatedRecord = updatedRecords.records.find(
-            (record: any) => record.studentId === student.id,
-          );
-          if (updatedRecord) {
-            return {
-              ...student,
-              status: updatedRecord.status,
-              attendanceRecords: student.attendanceRecords.map((record) =>
-                record.date === updatedRecord.date ? updatedRecord : record,
-              ),
-            };
-          }
-          return student;
-        }),
-      );
-
-      // Clear unsaved changes after successful save
-      setUnsavedChanges({});
-      toast.success('Attendance saved successfully');
-    } catch (error) {
-      console.error('Error saving attendance:', error);
-      toast.error('Failed to save attendance');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const hasUnsavedChanges = Object.keys(unsavedChanges).length > 0;
-
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (hasUnsavedChanges) {
@@ -838,84 +922,141 @@ export default function StudentList() {
 
   const clearAllAttendance = async () => {
     if (!selectedDate || !courseId) {
-      toast.error('Please select a date before clearing attendance');
+      toast.error('Please select a date before clearing attendance', {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+          boxShadow:
+            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+          borderRadius: '0.5rem',
+          padding: '1rem',
+        },
+      });
       return;
     }
 
-    try {
-      setIsSaving(true);
-      const dateStr = format(selectedDate, 'yyyy-MM-dd');
+    const dateStr = format(selectedDate, 'yyyy-MM-dd');
+    
+    // Get all attendance records for the selected date
+    const recordsToDelete = studentList
+      .filter(student => student.status !== 'NOT_SET')
+      .map(student => {
+        const record = student.attendanceRecords.find(r => r.date === dateStr);
+        return record?.id;
+      })
+      .filter((id): id is string => id !== undefined);
 
-      // Get all existing record IDs for this date
-      const existingRecordIds = studentList
-        .map(
-          (student) =>
-            student.attendanceRecords.find(
-              (record) => record.date.split('T')[0] === dateStr,
-            )?.id,
-        )
-        .filter((id) => id) as string[];
-
-      // Prepare the request payload - we'll send the record IDs to delete
-      const payload = {
-        date: dateStr,
-        recordsToDelete: existingRecordIds,
-      };
-
-      const response = await fetch(
-        `/api/courses/${courseId}/attendance/clear`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify(payload),
+    if (recordsToDelete.length === 0) {
+      toast.error('No attendance records to clear', {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+          boxShadow:
+            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+          borderRadius: '0.5rem',
+          padding: '1rem',
         },
-      );
+      });
+      return;
+    }
 
-      const data = await response.json().catch(() => ({}));
+    const promise = axiosInstance.post(
+      `/courses/${courseId}/attendance/clear`,
+      {
+        date: dateStr,
+        recordsToDelete,
+      },
+    );
 
-      if (!response.ok) {
-        const errorMessage =
-          data.error ||
-          `Failed to clear attendance records (${response.status}: ${response.statusText})`;
-        throw new Error(errorMessage);
-      }
+    toast.promise(promise, {
+      loading: 'Clearing attendance...',
+      success: 'Attendance cleared successfully',
+      error: 'Failed to clear attendance',
+    }, {
+      style: {
+        background: '#fff',
+        color: '#124A69',
+        border: '1px solid #e5e7eb',
+        boxShadow:
+          '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+        borderRadius: '0.5rem',
+        padding: '1rem',
+      },
+      success: {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+        },
+        iconTheme: {
+          primary: '#124A69',
+          secondary: '#fff',
+        },
+      },
+      error: {
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+        iconTheme: {
+          primary: '#dc2626',
+          secondary: '#fff',
+        },
+      },
+      loading: {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+        },
+      },
+    });
 
-      // Update local state - remove all attendance records for this date
+    try {
+      // Update local state immediately for all students
       setStudentList((prev) =>
         prev.map((student) => ({
           ...student,
-          status: 'NOT_SET' as AttendanceStatusWithNotSet,
+          status: 'NOT_SET',
           attendanceRecords: student.attendanceRecords.filter(
-            (record) => record.date.split('T')[0] !== dateStr,
+            (record) => record.date !== dateStr,
           ),
         })),
       );
 
-      // Clear any unsaved changes
-      setUnsavedChanges({});
+      await promise;
       setShowClearConfirm(false);
-
-      toast.success(
-        `Successfully cleared attendance for ${format(
-          selectedDate,
-          'MMMM d, yyyy',
-        )}`,
-        { duration: 3000 },
-      );
+      
+      // Reset to first page after clearing
+      setCurrentPage(1);
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'An unexpected error occurred while clearing attendance. Please try again.',
-        { duration: 5000 },
+      console.error('Error clearing attendance:', error);
+      // Revert local state on error
+      setStudentList((prev) =>
+        prev.map((student) => ({
+          ...student,
+          status: student.attendanceRecords.find(
+            (record) => record.date === dateStr,
+          )?.status || 'NOT_SET',
+        })),
       );
-    } finally {
-      setIsSaving(false);
     }
   };
+
+  // Add useEffect to fetch attendance when date changes
+  useEffect(() => {
+    if (courseId && selectedDate) {
+      fetchAttendance(selectedDate);
+    }
+  }, [selectedDate, courseId]);
+
+  // Add useEffect to reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filters.status, sortDate]);
 
   if (isLoading) {
     return (
@@ -973,6 +1114,49 @@ export default function StudentList() {
 
   return (
     <div className='flex flex-col h-screen'>
+      <Toaster
+        toastOptions={{
+          className: '',
+          style: {
+            background: '#fff',
+            color: '#124A69',
+            border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
+          },
+          success: {
+            style: {
+              background: '#fff',
+              color: '#124A69',
+              border: '1px solid #e5e7eb',
+            },
+            iconTheme: {
+              primary: '#124A69',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            style: {
+              background: '#fff',
+              color: '#dc2626',
+              border: '1px solid #e5e7eb',
+            },
+            iconTheme: {
+              primary: '#dc2626',
+              secondary: '#fff',
+            },
+          },
+          loading: {
+            style: {
+              background: '#fff',
+              color: '#124A69',
+              border: '1px solid #e5e7eb',
+            },
+          },
+        }}
+      />
       <div className='flex items-center gap-4 p-4 border-b bg-white'>
         <Link href='/attendance'>
           <Button variant='ghost' size='icon' className='hover:bg-gray-100'>
@@ -1033,10 +1217,12 @@ export default function StudentList() {
                   mode='single'
                   selected={selectedDate}
                   onSelect={(date) => {
-                    setSelectedDate(date);
-                    const popover = document.querySelector('[role="dialog"]');
-                    if (popover) {
-                      (popover as HTMLElement).style.display = 'none';
+                    if (date) {
+                      setSelectedDate(date);
+                      const popover = document.querySelector('[role="dialog"]');
+                      if (popover) {
+                        (popover as HTMLElement).style.display = 'none';
+                      }
                     }
                   }}
                   disabled={(date) => {
@@ -1077,21 +1263,6 @@ export default function StudentList() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          {hasUnsavedChanges && (
-            <Button
-              className='bg-[#124A69] hover:bg-[#0D3A54] text-white rounded-full px-6 h-10'
-              onClick={saveAttendanceChanges}
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <>
-                  <span className='mr-2'>Saving...</span>
-                </>
-              ) : (
-                'Save Changes'
-              )}
-            </Button>
-          )}
           <div className='flex items-center gap-3 ml-auto'>
             <FilterSheet
               isOpen={isFilterSheetOpen}
@@ -1137,45 +1308,70 @@ export default function StudentList() {
                   </div>
                 </div>
               ))
-            : currentStudents.map((student, index) => (
-                <StudentCard
-                  key={student.id}
-                  student={{
-                    name: student.name,
-                    status: student.status,
-                    image: student.image,
-                  }}
-                  index={index}
-                  tempImage={tempImage}
-                  onImageUpload={(index) => handleImageUpload(index)}
-                  onSaveChanges={handleSaveChanges}
-                  onRemoveImage={() =>
-                    setImageToRemove({ index, name: student.name })
-                  }
-                  onStatusChange={(index, status: AttendanceStatus) =>
-                    updateStatus(index, status)
-                  }
-                  isSaving={isSaving}
-                />
-              ))}
+            : currentStudents.length > 0 ? (
+                currentStudents.map((student, index) => (
+                  <StudentCard
+                    key={student.id}
+                    student={{
+                      name: student.name,
+                      status: student.status,
+                      image: student.image,
+                    }}
+                    index={index}
+                    tempImage={tempImage}
+                    onImageUpload={(index) =>
+                      handleImageUpload(student.id, new File([], ''))
+                    }
+                    onSaveChanges={handleSaveImageChanges}
+                    onRemoveImage={() =>
+                      setImageToRemove({ index, name: student.name })
+                    }
+                    onStatusChange={(index, status: AttendanceStatus) =>
+                      updateStatus(index, status)
+                    }
+                    isSaving={isSaving}
+                  />
+                ))
+              ) : (
+                <div className="col-span-full flex flex-col items-center justify-center py-12">
+                  <div className="text-gray-500 text-lg font-medium mb-2">No students found</div>
+                  <p className="text-gray-400 text-sm">Try adjusting your search or filters</p>
+                </div>
+              )}
         </div>
 
-        {totalPages > 1 && (
-          <div className='mt-6'>
-            <Pagination>
+        {totalPages > 1 && currentStudents.length > 0 && (
+          <div className='flex justify-between items-center px-2 mt-10'>
+            <p className='text-sm text-gray-500 w-60  '>
+              {currentPage * itemsPerPage - (itemsPerPage - 1)}-
+              {Math.min(currentPage * itemsPerPage, filteredStudents.length)} out of{' '}
+              {filteredStudents.length} students
+            </p>
+            <Pagination className='flex justify-end'>
               <PaginationContent>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                  (page) => (
-                    <PaginationItem key={page}>
-                      <PaginationLink
-                        isActive={page === currentPage}
-                        onClick={() => setCurrentPage(page)}
-                      >
-                        {page}
-                      </PaginationLink>
-                    </PaginationItem>
-                  ),
-                )}
+                <PaginationItem>
+                  <PaginationPrevious
+                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                    className={currentPage === 1 ? 'pointer-events-none opacity-50' : ''}
+                  />
+                </PaginationItem>
+                {[...Array(totalPages)].map((_, i) => (
+                  <PaginationItem key={i}>
+                    <PaginationLink
+                      isActive={currentPage === i + 1}
+                      onClick={() => setCurrentPage(i + 1)}
+                      className={currentPage === i + 1 ? 'bg-[#124A69] text-white' : ''}
+                    >
+                      {i + 1}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
+                <PaginationItem>
+                  <PaginationNext
+                    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                    className={currentPage === totalPages ? 'pointer-events-none opacity-50 ' : ''}
+                  />
+                </PaginationItem>
               </PaginationContent>
             </Pagination>
           </div>
@@ -1220,6 +1416,11 @@ export default function StudentList() {
           </DialogHeader>
           {selectedDate ? (
             <>
+              {hasIncompleteAttendance && (
+                <div className="mt-2 text-sm text-red-500">
+                  {incompleteAttendanceCount} student{incompleteAttendanceCount !== 1 ? 's' : ''} {incompleteAttendanceCount !== 1 ? 'do' : 'does'} not have attendance set yet
+                </div>
+              )}
               <div className='mt-6 max-h-[400px] overflow-auto'>
                 <table className='w-full border-collapse'>
                   <thead className='bg-gray-50 sticky top-0'>
@@ -1256,9 +1457,9 @@ export default function StudentList() {
                 <Button
                   className='bg-[#124A69] hover:bg-[#0D3A54] text-white'
                   onClick={handleExport}
-                  disabled={!selectedDate}
+                  disabled={!selectedDate || hasIncompleteAttendance}
                 >
-                  Export to Excel
+                  {hasIncompleteAttendance ? 'Complete Attendance First' : 'Export to Excel'}
                 </Button>
               </div>
             </>

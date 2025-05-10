@@ -1,4 +1,5 @@
 import { normalizeDate } from '@/lib/date-utils';
+import axiosInstance from '@/lib/axios';
 
 interface NoteData {
   id?: string;
@@ -28,25 +29,11 @@ export async function handleSaveNewNote(
 
     const normalizedDate = normalizeDate(noteData.date);
 
-    const response = await fetch('/api/notes', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        title: noteData.title,
-        description: noteData.description,
-        date: normalizedDate,
-      }),
+    await axiosInstance.post('/notes', {
+      title: noteData.title,
+      description: noteData.description,
+      date: normalizedDate,
     });
-
-    if (!response.ok) {
-      const responseData = await response.json();
-      return {
-        success: false,
-        error: responseData.error || 'Failed to save note',
-      };
-    }
 
     onSuccess();
     return { success: true };
@@ -76,23 +63,12 @@ export async function handleUpdateNote(
 
     const normalizedDate = normalizeDate(noteData.date);
 
-    const response = await fetch('/api/notes', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        id: noteData.id,
-        title: noteData.title,
-        description: noteData.description,
-        date: normalizedDate,
-      }),
+    const response = await axiosInstance.put('/notes', {
+      id: noteData.id,
+      title: noteData.title,
+      description: noteData.description,
+      date: normalizedDate,
     });
-
-    if (!response.ok) {
-      const error = await response.json();
-      return { success: false, error: error.error || 'Failed to update note' };
-    }
 
     onSuccess();
     return { success: true };
@@ -115,35 +91,9 @@ export async function handleDeleteNote(
       return { success: false, error: 'Note ID is required' };
     }
 
-    const response = await fetch('/api/notes', {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ id: noteId }),
+    await axiosInstance.delete('/notes', {
+      data: { id: noteId },
     });
-
-    console.log('Delete response status:', response.status);
-
-    // For debugging - print response body
-    const responseText = await response.text();
-    console.log('Delete response body:', responseText);
-
-    let responseData;
-    try {
-      // Try to parse the response as JSON if possible
-      responseData = JSON.parse(responseText);
-    } catch (e) {
-      responseData = { error: 'Could not parse response' };
-    }
-
-    if (!response.ok) {
-      console.log('Error response:', responseData);
-      return {
-        success: false,
-        error: responseData.error || 'Failed to delete note',
-      };
-    }
 
     console.log('Note deleted successfully');
     onSuccess();

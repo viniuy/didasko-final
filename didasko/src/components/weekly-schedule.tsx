@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { CourseSchedule } from '@prisma/client';
+import axiosInstance from '@/lib/axios';
+import { ScheduleResponse } from '@/types/schedule';
 
 const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const START_HOUR = 7; // 7 AM
@@ -10,9 +12,12 @@ const TOTAL_HOURS = END_HOUR - START_HOUR;
 
 interface ScheduleWithCourse extends CourseSchedule {
   course: {
-    title: string;
+    id: string;
     code: string;
-    description: string;
+    title: string;
+    room: string;
+    semester: string;
+    section: string;
   };
 }
 
@@ -25,9 +30,10 @@ interface WeeklyScheduleProps {
 }
 
 export default function WeeklySchedule({ teacherInfo }: WeeklyScheduleProps) {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [schedules, setSchedules] = useState<ScheduleWithCourse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const currentDay = new Date().toLocaleDateString('en-US', {
     weekday: 'short',
   });
@@ -39,18 +45,39 @@ export default function WeeklySchedule({ teacherInfo }: WeeklyScheduleProps) {
       return;
     }
 
+    if (status === 'loading') {
+      return;
+    }
+
+    if (status === 'unauthenticated') {
+      setError('Please sign in to view schedules');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const response = await fetch(
-        `/api/courses/schedules?facultyId=${teacherInfo.id}`,
+      const response = await axiosInstance.get<ScheduleResponse>(
+        '/courses/schedules',
+        {
+          params: {
+            facultyId: teacherInfo.id,
+            limit: 100,
+          },
+        },
       );
-      const data = await response.json();
-      if (response.ok) {
-        setSchedules(data);
+
+      if (response.data && Array.isArray(response.data.schedules)) {
+        setSchedules(response.data.schedules as ScheduleWithCourse[]);
+        setError(null);
       } else {
-        console.error('Error fetching schedules:', data.error);
+        console.error('Error fetching schedules: Invalid response format');
+        setError('Failed to load schedules');
+        setSchedules([]);
       }
     } catch (error) {
       console.error('Error in fetchSchedules:', error);
+      setError('Failed to load schedules');
+      setSchedules([]);
     } finally {
       setLoading(false);
     }
@@ -59,7 +86,7 @@ export default function WeeklySchedule({ teacherInfo }: WeeklyScheduleProps) {
   useEffect(() => {
     setLoading(true);
     fetchSchedules();
-  }, [teacherInfo?.id]);
+  }, [teacherInfo?.id, status]);
 
   const getSchedulesForDay = (dayName: string) => {
     return schedules
@@ -112,6 +139,14 @@ export default function WeeklySchedule({ teacherInfo }: WeeklyScheduleProps) {
     );
   }
 
+  if (error) {
+    return (
+      <div className='bg-white rounded-lg shadow p-4'>
+        <div className='text-red-500 text-center'>{error}</div>
+      </div>
+    );
+  }
+
   return (
     <div className='bg-white rounded-lg shadow-sm'>
       <div className='p-4 border-b'>
@@ -145,13 +180,13 @@ export default function WeeklySchedule({ teacherInfo }: WeeklyScheduleProps) {
                 return (
                   <div
                     key={schedule.id}
-                    className='absolute w-[90%] bg-[#FAEDCB] rounded-lg p-2 text-[#124A69] shadow-sm'
+                    className='absolute w-[90%] bg-[#FAEDCB] rounded-lg p-1 text-[#124A69] shadow-sm items-center'
                     style={styles}
                   >
-                    <div className='font-bold text-1xl flex justify-center'>
+                    <div className='font-bold text-1xl flex justify-center items-center mt-3 md:text-sm '>
                       {schedule.course.title}
                     </div>
-                    <div className='text-sm mt-0.5 flex justify-center'>
+                    <div className='text-sm mt-0.5 flex justify-center md:text-xs'>
                       {formatTime(schedule.fromTime)} -{' '}
                       {formatTime(schedule.toTime)}
                     </div>

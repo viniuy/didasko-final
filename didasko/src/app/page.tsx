@@ -59,11 +59,8 @@ export default function AdminLogin() {
             transition={{ duration: 0.5 }}
           />
           <h1 className='text-3xl drop-shadow-md font-bold mb-4'>
-            Admin Portal
+            Welcome to Didasko
           </h1>
-          <p className='text-lg opacity-90'>
-            Access the administrative dashboard
-          </p>
         </div>
       </div>
 
