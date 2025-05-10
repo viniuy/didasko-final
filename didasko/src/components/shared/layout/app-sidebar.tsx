@@ -29,7 +29,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar';
-import { useSession, signOut, getSession } from 'next-auth/react';
+import { useSession, signOut } from 'next-auth/react';
 import {
   AlertDialog,
   AlertDialogTrigger,
@@ -48,7 +48,6 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { useEffect, useState } from 'react';
-import axiosInstance from '@/lib/axios';
 
 const adminItems = [
   { title: 'Home', url: '/dashboard/admin', icon: Home },
@@ -142,7 +141,7 @@ export function AppSidebar() {
       collapsible='icon'
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
-      className='fixed top-0 left-0 z-50 h-screen bg-[#124A69] text-white'
+      className='fixed top-0 left-0 z-50 h-screen bg-[#124A69] text-white border-[#124A69]'
     >
       <SidebarContent className='flex-1'>
         {/* User Profile */}
@@ -166,7 +165,6 @@ export function AppSidebar() {
             </p>
           </div>
         </SidebarHeader>
-
         {/* Sidebar Menu */}
         <SidebarGroup>
           <SidebarGroupContent>

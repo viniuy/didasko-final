@@ -57,8 +57,8 @@ export function EditUserSheet({ user, onClose, onSave }: EditUserSheetProps) {
   // Split the full name into parts
   const nameParts = user.name.split(' ');
   const initialFormData = {
-    lastName: nameParts[0] || '',
-    firstName: nameParts.length > 2 ? nameParts[2] : nameParts[1] || '',
+    firstName: nameParts[0] || '',
+    lastName: nameParts.length > 2 ? nameParts[2] : nameParts[1] || '',
     middleInitial: nameParts.length > 2 ? nameParts[1] : '',
     email: user.email,
     department: user.department,
@@ -107,10 +107,16 @@ export function EditUserSheet({ user, onClose, onSave }: EditUserSheetProps) {
 
     try {
       // Construct the full name in the correct order: Last, First M.
-      const fullName = `${formData.lastName} ${formData.firstName}${
+      const fullName = `${formData.firstName} ${
         formData.middleInitial ? ' ' + formData.middleInitial : ''
-      }`;
+      }${formData.lastName}`;
 
+      console.log('Full name parts:', {
+        firstName: formData.firstName,
+        middleInitial: formData.middleInitial,
+        lastName: formData.lastName,
+      });
+      console.log('Full name:', fullName);
       const updateData = {
         name: fullName,
         email: formData.email,

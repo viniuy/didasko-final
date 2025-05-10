@@ -102,10 +102,10 @@ const formatName = (fullName: string) => {
   const parts = fullName.split(' ');
   if (parts.length === 3) {
     // Last First Middle
-    return `${parts[0]}, ${parts[1]} ${parts[2].charAt(0)}.`;
+    return `${parts[1]}, ${parts[2]} ${parts[0].charAt(0)}.`;
   } else if (parts.length === 2) {
     // Last First
-    return `${parts[0]}, ${parts[1]}`;
+    return `${parts[1]}, ${parts[0]}`;
   }
   return fullName; // Return original if format is unexpected
 };

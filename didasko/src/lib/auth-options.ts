@@ -55,7 +55,7 @@ export const authOptions: NextAuthOptions = {
       // Always fetch fresh user data from the database
       const dbUser = await prisma.user.findUnique({
         where: { id: token.id as string },
-        select: { id: true, name: true, role: true, email: true }
+        select: { id: true, name: true, role: true, email: true },
       });
 
       if (dbUser) {
