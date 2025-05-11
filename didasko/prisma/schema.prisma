@@ -39,6 +39,7 @@ model User {
   workType   WorkType @map("work_type")
   role       Role
   permission Permission @default(DENIED)
+  image      String?   // Optional profile image URL/path
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
@@ -198,6 +199,7 @@ model Rubric {
   criteriaId String
   name       String
   percentage Int
+  isGroupCriteria Boolean @default(false)
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 

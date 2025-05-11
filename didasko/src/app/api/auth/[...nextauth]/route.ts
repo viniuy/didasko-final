@@ -1,6 +1,6 @@
 import NextAuth from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/prisma';
 import { Role } from '@/lib/types';
 const handler = NextAuth({
   providers: [
@@ -72,17 +72,19 @@ const handler = NextAuth({
         token.id = user.id;
         token.role = user.role;
         token.email = user.email;
+        token.image = user.image;
       } else if (token) {
         // If we have a token but no user, ensure the ID is preserved
         const dbUser = await prisma.user.findUnique({
           where: { email: token.email as string },
-          select: { name: true, id: true, role: true },
+          select: { name: true, id: true, role: true, image: true },
         });
 
         if (dbUser) {
           token.name = dbUser.name;
           token.id = dbUser.id;
           token.role = dbUser.role;
+          token.image = dbUser.image;
         }
       }
 
@@ -97,13 +99,14 @@ const handler = NextAuth({
           // Query the user from database using email
           const dbUser = await prisma.user.findUnique({
             where: { email: session.user.email },
-            select: { name: true, id: true, role: true },
+            select: { name: true, id: true, role: true, image: true },
           });
 
           if (dbUser) {
             session.user.name = dbUser.name;
             session.user.id = dbUser.id;
             session.user.role = dbUser.role;
+            session.user.image = dbUser.image;
             console.log('Found user in database:', dbUser);
           } else {
             console.log('User not found in database');

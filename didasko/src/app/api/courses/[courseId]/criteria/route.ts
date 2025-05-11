@@ -102,6 +102,7 @@ export async function POST(
             ? data.rubrics.map((r: any) => ({
                 name: r.name,
                 percentage: r.weight ?? r.percentage,
+                isGroupCriteria: r.isGroupCriteria ?? false,
               }))
             : [],
         },

@@ -868,7 +868,7 @@ export function AdminDataTable({
                     >
                       <TableCell className='flex items-center gap-3'>
                         <Avatar className='h-8 w-8'>
-                          <AvatarFallback className='bg-[#124A69] text-white'>
+                          <AvatarFallback className='bg-white border-2 border-[#124A69] text-[#124A69]'>
                             {getInitials(user.name)}
                           </AvatarFallback>
                         </Avatar>
