@@ -19,6 +19,7 @@ export async function GET(
     const criteria = await prisma.criteria.findMany({
       where: {
         courseId: courseId,
+        isGroupCriteria: false,
       },
       include: {
         user: {
@@ -26,12 +27,13 @@ export async function GET(
             name: true,
           },
         },
+        rubrics: true,
       },
       orderBy: {
         createdAt: 'desc',
       },
     });
-    // Fetch rubrics for each criteria
+    // Fetch rubrics for each filtered criteria (for consistent response)
     const criteriaWithRubrics = await Promise.all(
       criteria.map(async (c) => ({
         ...c,
@@ -97,12 +99,12 @@ export async function POST(
         date: new Date(data.date),
         scoringRange,
         passingScore,
+        isGroupCriteria: false,
         rubrics: {
           create: Array.isArray(data.rubrics)
             ? data.rubrics.map((r: any) => ({
                 name: r.name,
                 percentage: r.weight ?? r.percentage,
-                isGroupCriteria: r.isGroupCriteria ?? false,
               }))
             : [],
         },
@@ -113,16 +115,11 @@ export async function POST(
             name: true,
           },
         },
+        rubrics: true,
       },
     });
-    // Fetch rubrics for the created criteria
-    const rubrics = await prisma.rubric.findMany({
-      where: { criteriaId: criteria.id },
-    });
-    const criteriaWithRubrics = { ...criteria, rubrics };
-
-    console.log('Created criteria:', criteria.id);
-    return NextResponse.json(criteriaWithRubrics);
+    // Return criteria with rubrics included
+    return NextResponse.json(criteria);
   } catch (error) {
     let errorMessage = 'Unknown error';
     if (error instanceof Error) errorMessage = error.message;

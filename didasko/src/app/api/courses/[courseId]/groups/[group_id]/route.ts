@@ -5,7 +5,7 @@ import { authOptions } from '@/lib/auth-options';
 
 export async function GET(
   request: Request,
-  { params }: { params: { course_code: string; group_id: string } }
+  context: { params: { courseId: string; group_id: string } },
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -13,10 +13,13 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const params = await Promise.resolve(context.params);
+    const { courseId, group_id } = params;
+
     // First get the course ID using the course code
     const course = await prisma.course.findFirst({
-      where: { code: params.course_code.toUpperCase() },
-      select: { id: true }
+      where: { code: courseId.toUpperCase() },
+      select: { id: true },
     });
 
     if (!course) {
@@ -24,9 +27,10 @@ export async function GET(
     }
 
     // Get the specific group
-    const group = await prisma.group.findUnique({
+    const group = await prisma.group.findFirst({
       where: {
-        id: params.group_id
+        id: group_id,
+        courseId: course.id,
       },
       include: {
         students: {
@@ -35,28 +39,14 @@ export async function GET(
             firstName: true,
             lastName: true,
             middleInitial: true,
-            image: true
-          }
+            image: true,
+          },
         },
-        leader: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            middleInitial: true,
-            image: true
-          }
-        }
-      }
+      },
     });
 
     if (!group) {
       return NextResponse.json({ error: 'Group not found' }, { status: 404 });
-    }
-
-    // Verify that the group belongs to the course
-    if (group.courseId !== course.id) {
-      return NextResponse.json({ error: 'Group not found in this course' }, { status: 404 });
     }
 
     return NextResponse.json(group);
@@ -64,7 +54,7 @@ export async function GET(
     console.error('Error fetching group:', error);
     return NextResponse.json(
       { error: 'Failed to fetch group' },
-      { status: 500 }
+      { status: 500 },
     );
   }
-} 
+}

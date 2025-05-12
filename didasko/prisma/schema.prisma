@@ -109,33 +109,18 @@ model Class {
   @@map("classes")
 }
 
-model Group {
-  id          String   @id @default(uuid())
-  number      String
-  name        String?
-  courseId    String
-  course      Course   @relation(fields: [courseId], references: [id])
-  students    Student[] @relation("GroupStudents")
-  leaderId    String?  // Optional leader ID
-  leader      Student? @relation("GroupLeader", fields: [leaderId], references: [id])
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  @@map("groups")
-}
-
 model Student {
   id            String    @id @default(uuid())
-  studentId     String    @unique
   lastName      String
   firstName     String
   middleInitial String?
   image         String?
+  studentId     String    @unique
   grades        Grade[]
   attendance    Attendance[]
   coursesEnrolled Course[] @relation("StudentCourses")
-  groups        Group[]   @relation("GroupStudents")
-  leadingGroups Group[]   @relation("GroupLeader")
+  groups        Group[]    @relation("GroupStudents")
+  leadingGroups Group[]    @relation("GroupLeader")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
@@ -189,19 +174,19 @@ model Criteria {
   date         DateTime
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
+  isGroupCriteria Boolean @default(false)
 
   @@map("criteria")
 }
 
 model Rubric {
-  id         String    @id @default(uuid())
-  criteria   Criteria  @relation(fields: [criteriaId], references: [id])
-  criteriaId String
-  name       String
-  percentage Int
-  isGroupCriteria Boolean @default(false)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id             String    @id @default(uuid())
+  criteria       Criteria  @relation(fields: [criteriaId], references: [id])
+  criteriaId     String
+  name           String
+  percentage     Int
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@map("rubrics")
 }
@@ -283,4 +268,19 @@ model Attendance {
   @@index([studentId])
   @@index([courseId])
   @@index([date])
+}
+
+model Group {
+  id          String   @id @default(uuid())
+  number      String
+  name        String?
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id])
+  students    Student[] @relation("GroupStudents")
+  leaderId    String?  // Optional leader ID
+  leader      Student? @relation("GroupLeader", fields: [leaderId], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("groups")
 }

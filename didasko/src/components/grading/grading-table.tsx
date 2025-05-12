@@ -59,6 +59,8 @@ interface GradingTableProps {
   courseSection: string;
   selectedDate: Date | undefined;
   onDateSelect?: (date: Date | undefined) => void;
+  groupId?: string;
+  isGroupView?: boolean;
 }
 
 interface GradingReport {
@@ -94,6 +96,8 @@ export function GradingTable({
   courseSection,
   selectedDate,
   onDateSelect,
+  groupId,
+  isGroupView = false,
 }: GradingTableProps) {
   const { data: session } = useSession();
   const [students, setStudents] = useState<Student[]>([]);
@@ -155,9 +159,16 @@ export function GradingTable({
       setIsLoading(true);
       try {
         // 1. Fetch students
-        const studentsRes = await axiosInstance.get(
-          `/courses/${courseId}/students`,
-        );
+        let studentsRes;
+        if (isGroupView && groupId) {
+          studentsRes = await axiosInstance.get(
+            `/courses/${courseId}/groups/${groupId}/students`,
+          );
+        } else {
+          studentsRes = await axiosInstance.get(
+            `/courses/${courseId}/students`,
+          );
+        }
         const studentsData: Student[] = studentsRes.data.students || [];
         setStudents(studentsData);
 
@@ -166,16 +177,17 @@ export function GradingTable({
         const gradesRes = await axiosInstance.get(
           `/courses/${courseId}/grades`,
           {
-          params: {
-            date: formattedDate,
-            courseCode,
-            courseSection,
-            criteriaId: activeReport.id,
-          },
+            params: {
+              date: formattedDate,
+              courseCode,
+              courseSection,
+              criteriaId: activeReport.id,
+              groupId: isGroupView ? groupId : undefined,
+            },
           },
         );
         const grades: GradingScore[] = gradesRes.data || [];
-        
+
         // 3. Map grades by studentId
         const gradesMap: Record<string, GradingScore> = {};
         grades.forEach((grade: GradingScore) => {
@@ -194,23 +206,23 @@ export function GradingTable({
           };
         });
         setScores(newScores);
-      } catch (error) { 
-        console.error('Error fetching students or grades:', error);
-        // Don't clear students on error, only clear scores
-        setScores({});
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        toast.error('Failed to fetch data');
       } finally {
         setIsLoading(false);
       }
     };
+
     fetchData();
-    // Only run when courseId, selectedDate, activeReport, or rubricDetails change
   }, [
     courseId,
     selectedDate,
     activeReport,
-    rubricDetails,
     courseCode,
     courseSection,
+    groupId,
+    isGroupView,
   ]);
 
   // Check for existing criteria when date is selected or on mount
@@ -363,7 +375,7 @@ export function GradingTable({
           const total = calculateTotal(correctScores);
 
           return {
-          studentId: score.studentId,
+            studentId: score.studentId,
             scores: correctScores,
             total: total,
           };
@@ -450,7 +462,7 @@ export function GradingTable({
         });
 
         // Update local state
-    setScores((prev) => {
+        setScores((prev) => {
           const newScores = { ...prev };
           delete newScores[studentId];
           return newScores;
@@ -487,20 +499,20 @@ export function GradingTable({
 
   const calculateTotal = (scores: number[]): number => {
     if (!rubricDetails.length) return 0;
-    
+
     // Calculate the maximum possible score based on the scoring range
     const maxScore = Number(activeReport?.scoringRange) || 5;
 
     // Ensure we only use scores up to the number of rubrics
     const validScores = scores.slice(0, rubricDetails.length);
-    
+
     // Calculate weighted percentage for each rubric
     const weightedScores = validScores.map((score, index) => {
       const weight = rubricDetails[index]?.percentage || 0;
       // Convert score to percentage based on max score, then apply weight
       return (score / maxScore) * weight;
     });
-    
+
     // Sum up all weighted scores and round to 2 decimal places
     return Number(
       weightedScores.reduce((sum, score) => sum + score, 0).toFixed(2),
@@ -548,28 +560,60 @@ export function GradingTable({
 
   const handleRubricCountChange = (value: string) => {
     const count = parseInt(value);
-    // Calculate the base weight and remainder
-    const baseWeight = Math.floor(100 / count);
-    const remainder = 100 % count;
 
-    // Create array of weights, distributing remainder to first elements
-    const weights = Array(count).fill(baseWeight);
-    for (let i = 0; i < remainder; i++) {
-      weights[i]++;
-    }
+    if (isGroupView) {
+      // For group view: Reserve 20% for Participation
+      const baseWeight = Math.floor(80 / (count - 1));
+      const remainder = 80 % (count - 1);
 
-    const newRubricDetails = Array(count)
-      .fill(null)
-      .map((_, index) => ({
-        name: '',
-        weight: weights[index],
+      // Create array of weights, distributing remainder to first elements
+      const weights = Array(count - 1).fill(baseWeight);
+      for (let i = 0; i < remainder; i++) {
+        weights[i]++;
+      }
+
+      const newRubricDetails = [
+        ...Array(count - 1)
+          .fill(null)
+          .map((_, index) => ({
+            name: '',
+            weight: weights[index],
+          })),
+        {
+          name: 'Participation',
+          weight: 20, // Default 20% for Participation
+        },
+      ];
+
+      setNewReport((prev) => ({
+        ...prev,
+        rubrics: value,
+        rubricDetails: newRubricDetails,
       }));
+    } else {
+      // For individual view: Keep original behavior
+      const baseWeight = Math.floor(100 / count);
+      const remainder = 100 % count;
 
-    setNewReport((prev) => ({
-      ...prev,
-      rubrics: value,
-      rubricDetails: newRubricDetails,
-    }));
+      // Create array of weights, distributing remainder to first elements
+      const weights = Array(count).fill(baseWeight);
+      for (let i = 0; i < remainder; i++) {
+        weights[i]++;
+      }
+
+      const newRubricDetails = Array(count)
+        .fill(null)
+        .map((_, index) => ({
+          name: '',
+          weight: weights[index],
+        }));
+
+      setNewReport((prev) => ({
+        ...prev,
+        rubrics: value,
+        rubricDetails: newRubricDetails,
+      }));
+    }
   };
 
   const updateRubricDetail = (
@@ -577,6 +621,15 @@ export function GradingTable({
     field: 'name' | 'weight',
     value: string | number,
   ) => {
+    // For group view, only allow weight changes for the last rubric
+    if (
+      isGroupView &&
+      index === newReport.rubricDetails.length - 1 &&
+      field === 'name'
+    ) {
+      return;
+    }
+
     setNewReport((prev) => {
       const newDetails = [...prev.rubricDetails];
 
@@ -586,6 +639,29 @@ export function GradingTable({
         if (isNaN(numValue) || numValue < 1 || numValue > 100) {
           return prev;
         }
+
+        // For group view, when changing the last rubric's weight, adjust other weights proportionally
+        if (isGroupView && index === newReport.rubricDetails.length - 1) {
+          const remainingWeight = 100 - numValue;
+          const otherRubrics = newDetails.slice(0, -1);
+          const totalOtherWeight = otherRubrics.reduce(
+            (sum, r) => sum + r.weight,
+            0,
+          );
+
+          // Adjust other weights proportionally
+          otherRubrics.forEach((rubric, i) => {
+            const proportion = rubric.weight / totalOtherWeight;
+            newDetails[i].weight = Math.round(remainingWeight * proportion);
+          });
+
+          // Add any rounding errors to the first rubric
+          const actualTotal = newDetails.reduce((sum, r) => sum + r.weight, 0);
+          if (actualTotal !== 100) {
+            newDetails[0].weight += 100 - actualTotal;
+          }
+        }
+
         newDetails[index] = {
           ...newDetails[index],
           weight: numValue,
@@ -633,9 +709,13 @@ export function GradingTable({
     }
 
     // Validate all rubric names
-    const rubricErrors = newReport.rubricDetails.map((rubric) =>
-      validateRubricName(rubric.name),
-    );
+    const rubricErrors = newReport.rubricDetails.map((rubric, idx, arr) => {
+      if (isGroupView && idx === arr.length - 1) {
+        // Skip validation for Participation rubric in group view
+        return '';
+      }
+      return validateRubricName(rubric.name);
+    });
     const hasRubricErrors = rubricErrors.some((error) => error);
     if (hasRubricErrors) {
       setValidationErrors((prev) => ({ ...prev, rubrics: rubricErrors }));
@@ -685,23 +765,26 @@ export function GradingTable({
     try {
       setIsLoading(true);
       // Prepare rubrics as array of { name, percentage }
-      const rubrics = newReport.rubricDetails.map((r) => ({
-        name: r.name,
+      const rubrics = newReport.rubricDetails.map((r, idx, arr) => ({
+        name: isGroupView && idx === arr.length - 1 ? 'Participation' : r.name,
         percentage: r.weight, // Convert weight to percentage
       }));
 
-      // Create criteria with rubrics in a single step
-      const response = await axiosInstance.post(
-        `/courses/${courseId}/criteria`,
-        {
-          name: newReport.name,
-          rubrics,
-          scoringRange: newReport.scoringRange,
-          passingScore: newReport.passingScore,
-          userId: session.user.id,
-          date: selectedDate ? selectedDate.toISOString() : undefined,
-        },
-      );
+      // Choose endpoint and isGroupCriteria flag
+      const endpoint =
+        isGroupView && groupId
+          ? `/courses/${courseId}/groups/${groupId}/criteria`
+          : `/courses/${courseId}/criteria`;
+
+      const response = await axiosInstance.post(endpoint, {
+        name: newReport.name,
+        rubrics,
+        scoringRange: newReport.scoringRange,
+        passingScore: newReport.passingScore,
+        userId: session.user.id,
+        date: selectedDate ? selectedDate.toISOString() : undefined,
+        isGroupCriteria: isGroupView,
+      });
       const created = response.data;
 
       // Update the saved reports with the new report at the beginning of the array
@@ -1055,7 +1138,9 @@ export function GradingTable({
 
   const getPaginatedStudents = (students: Student[]) => {
     const filteredStudents = students.filter((student) => {
-      const name = `${student.lastName || ''} ${student.firstName || ''} ${student.middleInitial || ''}`.toLowerCase();
+      const name = `${student.lastName || ''} ${student.firstName || ''} ${
+        student.middleInitial || ''
+      }`.toLowerCase();
       const nameMatch = name.includes(searchQuery.toLowerCase());
       return nameMatch && studentMatchesFilter(student);
     });
@@ -1065,21 +1150,28 @@ export function GradingTable({
     return {
       paginatedStudents: filteredStudents.slice(startIndex, endIndex),
       totalPages: Math.ceil(filteredStudents.length / studentsPerPage),
-      totalStudents: filteredStudents.length
+      totalStudents: filteredStudents.length,
     };
   };
 
   // Add useEffect to update pagination state
   useEffect(() => {
     const filteredStudents = students.filter((student) => {
-      const name = `${student.lastName || ''} ${student.firstName || ''} ${student.middleInitial || ''}`.toLowerCase();
+      const name = `${student.lastName || ''} ${student.firstName || ''} ${
+        student.middleInitial || ''
+      }`.toLowerCase();
       const nameMatch = name.includes(searchQuery.toLowerCase());
       return nameMatch && studentMatchesFilter(student);
     });
-    
+
     setTotalPages(Math.ceil(filteredStudents.length / studentsPerPage));
     setTotalStudents(filteredStudents.length);
   }, [students, searchQuery, gradeFilter, studentsPerPage]);
+
+  // Add helper to get index of Participation rubric in group view
+  const participationIndex = isGroupView
+    ? newReport.rubricDetails.length - 1
+    : -1;
 
   return (
     <div className='min-h-screen w-full p-0'>
@@ -1143,7 +1235,7 @@ export function GradingTable({
                 strokeWidth='2'
                 viewBox='0 0 24 24'
               >
-                <path d='M15 18l-6-6 6-6' />    
+                <path d='M15 18l-6-6 6-6' />
               </svg>
             </Button>
             <div className='flex flex-col mr-4'>
@@ -1204,7 +1296,7 @@ export function GradingTable({
                         >
                           Passed
                         </label>
-            </div>
+                      </div>
                       <div className='flex items-center space-x-2'>
                         <Checkbox
                           id='failed'
@@ -1298,7 +1390,7 @@ export function GradingTable({
                   <path d='M12 5v14m7-7H5' />
                 </svg>
                 Export to Excel
-            </Button>
+              </Button>
             </div>
           </div>
           <Dialog open={showCriteriaDialog} onOpenChange={handleDialogClose}>
@@ -1356,7 +1448,7 @@ export function GradingTable({
                             <SelectContent>
                               {savedReports
                                 .filter((report) => {
-                                if (!selectedDate) return false;
+                                  if (!selectedDate) return false;
 
                                   // Convert both dates to local midnight for accurate comparison
                                   const reportDate = new Date(report.date);
@@ -1390,11 +1482,11 @@ export function GradingTable({
                                       key={report.id}
                                       value={report.id}
                                     >
-                                  {report.name}
+                                      {report.name}
                                       <span className='text-sm text-gray-500 ml-2'>
                                         ({ungradedCount} students ungraded)
-                                  </span>
-                                </SelectItem>
+                                      </span>
+                                    </SelectItem>
                                   );
                                 })}
                             </SelectContent>
@@ -1486,61 +1578,61 @@ export function GradingTable({
                         </div>
 
                         <div className='grid grid-cols-2 gap-4'>
-                        <div className='grid gap-2'>
+                          <div className='grid gap-2'>
                             <label
                               htmlFor='scoringRange'
                               className='text-sm font-medium text-gray-700'
                             >
                               Scoring Range
                             </label>
-                          <Select
-                            value={newReport.scoringRange}
-                            onValueChange={(value) =>
-                              setNewReport((prev) => ({
-                                ...prev,
-                                scoringRange: value,
-                              }))
-                            }
-                          >
+                            <Select
+                              value={newReport.scoringRange}
+                              onValueChange={(value) =>
+                                setNewReport((prev) => ({
+                                  ...prev,
+                                  scoringRange: value,
+                                }))
+                              }
+                            >
                               <SelectTrigger className='bg-gray-50 border-gray-200'>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value='5'>1-5</SelectItem>
-                              <SelectItem value='10'>1-10</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value='5'>1-5</SelectItem>
+                                <SelectItem value='10'>1-10</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
 
-                        <div className='grid gap-2'>
+                          <div className='grid gap-2'>
                             <label
                               htmlFor='passingScore'
                               className='text-sm font-medium text-gray-700'
                             >
                               Passing Score (%)
                             </label>
-                          <Select
-                            value={newReport.passingScore}
-                            onValueChange={(value) =>
-                              setNewReport((prev) => ({
-                                ...prev,
-                                passingScore: value,
-                              }))
-                            }
-                          >
+                            <Select
+                              value={newReport.passingScore}
+                              onValueChange={(value) =>
+                                setNewReport((prev) => ({
+                                  ...prev,
+                                  passingScore: value,
+                                }))
+                              }
+                            >
                               <SelectTrigger className='bg-gray-50 border-gray-200'>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
                                 <SelectItem value='60'>60%</SelectItem>
                                 <SelectItem value='65'>65%</SelectItem>
                                 <SelectItem value='70'>70%</SelectItem>
-                              <SelectItem value='75'>75%</SelectItem>
-                              <SelectItem value='80'>80%</SelectItem>
+                                <SelectItem value='75'>75%</SelectItem>
+                                <SelectItem value='80'>80%</SelectItem>
                                 <SelectItem value='85'>85%</SelectItem>
                                 <SelectItem value='90'>90%</SelectItem>
-                            </SelectContent>
-                          </Select>
+                              </SelectContent>
+                            </Select>
                           </div>
                         </div>
 
@@ -1556,7 +1648,13 @@ export function GradingTable({
                               >
                                 <div className='relative w-[400px]'>
                                   <Input
-                                    value={rubric.name}
+                                    value={
+                                      isGroupView &&
+                                      index ===
+                                        newReport.rubricDetails.length - 1
+                                        ? 'Participation'
+                                        : rubric.name
+                                    }
                                     onChange={(e) =>
                                       updateRubricDetail(
                                         index,
@@ -1569,18 +1667,27 @@ export function GradingTable({
                                       validationErrors.rubrics?.[index]
                                         ? 'border-red-500'
                                         : ''
+                                    } ${
+                                      isGroupView &&
+                                      index ===
+                                        newReport.rubricDetails.length - 1
+                                        ? 'bg-gray-100 cursor-not-allowed'
+                                        : ''
                                     }`}
+                                    disabled={
+                                      isGroupView &&
+                                      index ===
+                                        newReport.rubricDetails.length - 1
+                                    }
                                   />
-                                  <div className='flex justify-between mt-1'>
-                                    {validationErrors.rubrics?.[index] && (
-                                      <p className='text-sm text-red-500'>
-                                        {validationErrors.rubrics[index]}
-                                      </p>
-                                    )}
-                                    <p className='text-xs text-gray-500 -mt-1 ml-auto'>
-                                      {rubric.name.length}/15
+                                  {validationErrors.rubrics?.[index] && (
+                                    <p className='text-sm text-red-500'>
+                                      {validationErrors.rubrics[index]}
                                     </p>
-                                </div>
+                                  )}
+                                  <p className='text-xs text-gray-500 -mt-1 ml-auto'>
+                                    {rubric.name.length}/15
+                                  </p>
                                 </div>
                                 <div className='relative w-[200px] -mt-4'>
                                   <div className='flex items-center gap-2'>
@@ -1597,20 +1704,20 @@ export function GradingTable({
                                       step={1}
                                       className='w-[100px]'
                                     />
-                                  <Input
-                                    value={rubric.weight}
-                                    onChange={(e) =>
-                                      updateRubricDetail(
-                                        index,
-                                        'weight',
-                                        parseInt(e.target.value),
-                                      )
-                                    }
+                                    <Input
+                                      value={rubric.weight}
+                                      onChange={(e) =>
+                                        updateRubricDetail(
+                                          index,
+                                          'weight',
+                                          parseInt(e.target.value),
+                                        )
+                                      }
                                       type='number'
                                       min={0}
                                       max={100}
                                       className='w-[60px] bg-gray-50 border-gray-200'
-                                  />
+                                    />
                                     <span className='text-sm text-gray-500'>
                                       %
                                     </span>
@@ -1639,8 +1746,8 @@ export function GradingTable({
                                 %
                               </span>
                             </p>
+                          </div>
                         </div>
-                      </div>
                       </div>
                       <DialogFooter className='gap-2 sm:gap-2'>
                         <Button
@@ -1671,71 +1778,260 @@ export function GradingTable({
               <div className='overflow-x-auto max-h-[calc(100vh-300px)]'>
                 <table className='w-full border-separate border-spacing-0 table-fixed'>
                   <GradingTableHeader rubricDetails={rubricDetails} />
-                  <tbody>
-                    {isLoading
-                      ? // Loading skeleton
-                        Array.from({ length: 5 }).map((_, idx) => (
+                  {isGroupView ? (
+                    <tbody>
+                      {students.map((student, idx) => {
+                        const studentScore = scores[student.id] || {
+                          studentId: student.id,
+                          scores: new Array(rubricDetails.length).fill(0),
+                          total: 0,
+                        };
+                        return (
                           <tr
-                            key={idx}
+                            key={student.id}
                             className={
                               idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F6FA]'
                             }
                           >
                             <td className='sticky left-0 z-10 bg-white px-4 py-2 align-middle w-[300px]'>
                               <div className='flex items-center gap-3'>
-                                <div className='w-8 h-8 rounded-full bg-gray-200 animate-pulse' />
-                                <div className='h-4 w-32 bg-gray-200 rounded animate-pulse' />
+                                <img
+                                  src={student.image}
+                                  alt=''
+                                  className='w-8 h-8 rounded-full object-cover'
+                                />
+                                <span>{`${student.lastName}, ${
+                                  student.firstName
+                                }${
+                                  student.middleInitial
+                                    ? ` ${student.middleInitial}.`
+                                    : ''
+                                }`}</span>
                               </div>
                             </td>
-                            {rubricDetails.map((_, rubricIdx) => (
-                              <td
-                                key={rubricIdx}
-                                className='text-center px-4 py-2 align-middle w-[120px]'
-                              >
-                                <div className='h-8 w-full bg-gray-200 rounded animate-pulse' />
-                              </td>
-                            ))}
-                            <td className='text-center px-4 py-2 align-middle w-[100px]'>
-                              <div className='h-4 w-16 bg-gray-200 rounded animate-pulse mx-auto' />
+                            {rubricDetails.map((rubric, rubricIdx) => {
+                              if (rubricIdx !== participationIndex) {
+                                if (idx === 0) {
+                                  // Determine background color for group rubric cell
+                                  const groupValue =
+                                    students.length > 0 &&
+                                    scores[students[0].id]?.scores[
+                                      rubricIdx
+                                    ] !== undefined
+                                      ? scores[students[0].id].scores[rubricIdx]
+                                      : '';
+                                  let cellBg = '';
+                                  if (groupValue) {
+                                    if (groupValue <= 3) {
+                                      cellBg = 'bg-red-50';
+                                    } else {
+                                      cellBg = 'bg-green-50';
+                                    }
+                                  }
+                                  return (
+                                    <td
+                                      key={rubricIdx}
+                                      rowSpan={students.length}
+                                      className={`text-center px-4 py-2 align-middle w-[120px] ${cellBg}`}
+                                    >
+                                      <select
+                                        className='w-full border rounded px-2 py-1'
+                                        value={groupValue}
+                                        onChange={(e) => {
+                                          const value = Number(e.target.value);
+                                          setScores((prev) => {
+                                            const updated = { ...prev };
+                                            students.forEach((student) => {
+                                              const studentScores =
+                                                updated[student.id]?.scores ||
+                                                new Array(
+                                                  rubricDetails.length,
+                                                ).fill(0);
+                                              studentScores[rubricIdx] = value;
+                                              updated[student.id] = {
+                                                ...updated[student.id],
+                                                scores: studentScores,
+                                                total:
+                                                  calculateTotal(studentScores),
+                                              };
+                                            });
+                                            return updated;
+                                          });
+                                        }}
+                                      >
+                                        <option value=''>Select grade</option>
+                                        {Array.from(
+                                          {
+                                            length:
+                                              Number(
+                                                activeReport?.scoringRange,
+                                              ) || 5,
+                                          },
+                                          (_, i) => (
+                                            <option key={i + 1} value={i + 1}>
+                                              {i + 1}
+                                            </option>
+                                          ),
+                                        )}
+                                      </select>
+                                    </td>
+                                  );
+                                } else {
+                                  return null;
+                                }
+                              } else {
+                                // Participation: always per-student
+                                const value =
+                                  studentScore.scores[rubricIdx] || '';
+                                let cellBg = '';
+                                if (value) {
+                                  if (value <= 3) {
+                                    cellBg = 'bg-red-50';
+                                  } else {
+                                    cellBg = 'bg-green-50';
+                                  }
+                                }
+                                return (
+                                  <td
+                                    key={rubricIdx}
+                                    className={`text-center px-4 py-2 align-middle w-[120px] ${cellBg}`}
+                                  >
+                                    <select
+                                      className='w-full border rounded px-2 py-1'
+                                      value={value}
+                                      onChange={(e) => {
+                                        const v = Number(e.target.value);
+                                        handleScoreChange(
+                                          student.id,
+                                          rubricIdx,
+                                          v,
+                                        );
+                                      }}
+                                    >
+                                      <option value=''>Select grade</option>
+                                      {Array.from(
+                                        {
+                                          length:
+                                            Number(
+                                              activeReport?.scoringRange,
+                                            ) || 5,
+                                        },
+                                        (_, i) => (
+                                          <option key={i + 1} value={i + 1}>
+                                            {i + 1}
+                                          </option>
+                                        ),
+                                      )}
+                                    </select>
+                                  </td>
+                                );
+                              }
+                            })}
+                            <td className='text-center px-4 py-2 align-middle font-bold w-[100px]'>
+                              {studentScore.total
+                                ? `${studentScore.total.toFixed(0)}%`
+                                : '--'}
                             </td>
                             <td className='text-center px-4 py-2 align-middle w-[100px]'>
-                              <div className='h-6 w-20 bg-gray-200 rounded-full animate-pulse mx-auto' />
+                              {studentScore.scores.some(
+                                (score) => score === 0,
+                              ) ? (
+                                <span className='px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600'>
+                                  ---
+                                </span>
+                              ) : (
+                                <span
+                                  className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                    studentScore.total >=
+                                    Number(activeReport?.passingScore)
+                                      ? 'bg-green-100 text-green-800'
+                                      : 'bg-red-100 text-red-800'
+                                  }`}
+                                >
+                                  {studentScore.total >=
+                                  Number(activeReport?.passingScore)
+                                    ? 'PASSED'
+                                    : 'FAILED'}
+                                </span>
+                              )}
                             </td>
                           </tr>
-                        ))
-                      : (() => {
-                          const { paginatedStudents, totalPages, totalStudents } = getPaginatedStudents(students);
-
-                          if (paginatedStudents.length === 0) {
-                            return (
-                              <tr>
-                                <td colSpan={rubricDetails.length + 3} className='text-center py-8 text-muted-foreground'>
-                                  No students found
+                        );
+                      })}
+                    </tbody>
+                  ) : (
+                    <tbody>
+                      {isLoading
+                        ? Array.from({ length: 5 }).map((_, idx) => (
+                            <tr
+                              key={idx}
+                              className={
+                                idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F6FA]'
+                              }
+                            >
+                              <td className='sticky left-0 z-10 bg-white px-4 py-2 align-middle w-[300px]'>
+                                <div className='flex items-center gap-3'>
+                                  <div className='w-8 h-8 rounded-full bg-gray-200 animate-pulse' />
+                                  <div className='h-4 w-32 bg-gray-200 rounded animate-pulse' />
+                                </div>
+                              </td>
+                              {rubricDetails.map((_, rubricIdx) => (
+                                <td
+                                  key={rubricIdx}
+                                  className='text-center px-4 py-2 align-middle w-[120px]'
+                                >
+                                  <div className='h-8 w-full bg-gray-200 rounded animate-pulse' />
                                 </td>
-                              </tr>
-                            );
-                          }
+                              ))}
+                              <td className='text-center px-4 py-2 align-middle w-[100px]'>
+                                <div className='h-4 w-16 bg-gray-200 rounded animate-pulse mx-auto' />
+                              </td>
+                              <td className='text-center px-4 py-2 align-middle w-[100px]'>
+                                <div className='h-6 w-20 bg-gray-200 rounded-full animate-pulse mx-auto' />
+                              </td>
+                            </tr>
+                          ))
+                        : (() => {
+                            const {
+                              paginatedStudents,
+                              totalPages,
+                              totalStudents,
+                            } = getPaginatedStudents(students);
 
-                          return paginatedStudents.map((student, idx) => {
-                            const studentScore = scores[student.id] || {
-                              studentId: student.id,
-                              scores: new Array(rubricDetails.length).fill(0),
-                              total: 0,
-                            };
-                            return (
-                              <GradingTableRow
-                                key={student.id}
-                                student={student}
-                                rubricDetails={rubricDetails}
-                                activeReport={activeReport}
-                                studentScore={studentScore}
-                                handleScoreChange={handleScoreChange}
-                                idx={idx}
-                              />
-                            );
-                          });
-                        })()}
-                  </tbody>
+                            if (paginatedStudents.length === 0) {
+                              return (
+                                <tr>
+                                  <td
+                                    colSpan={rubricDetails.length + 3}
+                                    className='text-center py-8 text-muted-foreground'
+                                  >
+                                    No students found
+                                  </td>
+                                </tr>
+                              );
+                            }
+
+                            return paginatedStudents.map((student, idx) => {
+                              const studentScore = scores[student.id] || {
+                                studentId: student.id,
+                                scores: new Array(rubricDetails.length).fill(0),
+                                total: 0,
+                              };
+                              return (
+                                <GradingTableRow
+                                  key={student.id}
+                                  student={student}
+                                  rubricDetails={rubricDetails}
+                                  activeReport={activeReport}
+                                  studentScore={studentScore}
+                                  handleScoreChange={handleScoreChange}
+                                  idx={idx}
+                                />
+                              );
+                            });
+                          })()}
+                    </tbody>
+                  )}
                 </table>
               </div>
               {/* Footer Bar */}
@@ -1745,9 +2041,14 @@ export function GradingTable({
                     <p className='text-sm text-gray-500 whitespace-nowrap'>
                       {totalStudents > 0 ? (
                         <>
-                          {currentPage * studentsPerPage - (studentsPerPage - 1)}-
-                          {Math.min(currentPage * studentsPerPage, totalStudents)} of{' '}
-                          {totalStudents} students
+                          {currentPage * studentsPerPage -
+                            (studentsPerPage - 1)}
+                          -
+                          {Math.min(
+                            currentPage * studentsPerPage,
+                            totalStudents,
+                          )}{' '}
+                          of {totalStudents} students
                         </>
                       ) : (
                         'No students found'
@@ -1759,8 +2060,14 @@ export function GradingTable({
                       <PaginationContent>
                         <PaginationItem>
                           <PaginationPrevious
-                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                            className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'hover:bg-gray-100'}
+                            onClick={() =>
+                              setCurrentPage((prev) => Math.max(prev - 1, 1))
+                            }
+                            className={
+                              currentPage === 1
+                                ? 'pointer-events-none opacity-50'
+                                : 'hover:bg-gray-100'
+                            }
                           />
                         </PaginationItem>
                         {[...Array(totalPages)].map((_, i) => (
@@ -1769,8 +2076,8 @@ export function GradingTable({
                               isActive={currentPage === i + 1}
                               onClick={() => setCurrentPage(i + 1)}
                               className={`${
-                                currentPage === i + 1 
-                                  ? 'bg-[#124A69] text-white hover:bg-[#0d3a56]' 
+                                currentPage === i + 1
+                                  ? 'bg-[#124A69] text-white hover:bg-[#0d3a56]'
                                   : 'hover:bg-gray-100'
                               }`}
                             >
@@ -1780,8 +2087,16 @@ export function GradingTable({
                         ))}
                         <PaginationItem>
                           <PaginationNext
-                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                            className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'hover:bg-gray-100'}
+                            onClick={() =>
+                              setCurrentPage((prev) =>
+                                Math.min(prev + 1, totalPages),
+                              )
+                            }
+                            className={
+                              currentPage === totalPages
+                                ? 'pointer-events-none opacity-50'
+                                : 'hover:bg-gray-100'
+                            }
                           />
                         </PaginationItem>
                       </PaginationContent>

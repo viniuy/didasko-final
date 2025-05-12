@@ -1,25 +1,31 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppSidebar } from '@/components/shared/layout/app-sidebar';
 import Header from '@/components/shared/layout/header';
 import Rightsidebar from '@/components/shared/layout/right-sidebar';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import Link from 'next/link';
-import { ArrowLeft, Users, Loader2 } from 'lucide-react';
-import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Calendar } from '@/components/ui/calendar';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Calendar } from '@/components/ui/calendar';
-import { format } from 'date-fns';
-import { Calendar as CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
+import {
+  Calendar as CalendarIcon,
+  ArrowLeft,
+  Search,
+  Users,
+  Loader2,
+} from 'lucide-react';
+import Link from 'next/link';
+import axiosInstance from '@/lib/axios';
+import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -44,6 +50,7 @@ interface Course {
   id: string;
   code: string;
   title: string;
+  section: string;
   description: string | null;
 }
 
@@ -73,12 +80,22 @@ interface Group {
   } | null;
 }
 
-function AddGroupModal({ courseCode, excludedStudentIds = [], nextGroupNumber, onGroupAdded }: { courseCode: string; excludedStudentIds?: string[]; nextGroupNumber?: number; onGroupAdded?: () => void }) {
+function AddGroupModal({
+  courseCode,
+  excludedStudentIds = [],
+  nextGroupNumber,
+  onGroupAdded,
+}: {
+  courseCode: string;
+  excludedStudentIds?: string[];
+  nextGroupNumber?: number;
+  onGroupAdded?: () => void;
+}) {
   const [groupNumber, setGroupNumber] = React.useState('');
   const [groupName, setGroupName] = React.useState('');
   const [selectedStudents, setSelectedStudents] = React.useState<string[]>([]);
   const [selectedLeader, setSelectedLeader] = React.useState<string>('');
-  const [students, setStudents] = React.useState<Student[]>([]);  
+  const [students, setStudents] = React.useState<Student[]>([]);
   const [isLoading, setIsLoading] = React.useState(false);
   const [studentSearch, setStudentSearch] = React.useState('');
   const [open, setOpen] = React.useState(false);
@@ -109,7 +126,9 @@ function AddGroupModal({ courseCode, excludedStudentIds = [], nextGroupNumber, o
   }, [nextGroupNumber]);
 
   // Filter out students already in a group
-  const availableStudents = students.filter(student => !excludedStudentIds.includes(student.id));
+  const availableStudents = students.filter(
+    (student) => !excludedStudentIds.includes(student.id),
+  );
 
   // Filter students by name or attendance status
   const filteredStudents = availableStudents.filter((student) => {
@@ -123,7 +142,9 @@ function AddGroupModal({ courseCode, excludedStudentIds = [], nextGroupNumber, o
   // Multi-select logic
   const handleStudentSelect = (id: string) => {
     setSelectedStudents((prev) => {
-      const newSelected = prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id];
+      const newSelected = prev.includes(id)
+        ? prev.filter((sid) => sid !== id)
+        : [...prev, id];
       // If the leader is no longer in the selected students, clear the leader
       if (!newSelected.includes(selectedLeader)) {
         setSelectedLeader('');
@@ -267,7 +288,13 @@ function AddGroupModal({ courseCode, excludedStudentIds = [], nextGroupNumber, o
                 disabled={selectedStudents.length === 0}
               >
                 <SelectTrigger className='w-full'>
-                  <SelectValue placeholder={selectedStudents.length === 0 ? 'Select students first' : 'Select a leader'} />
+                  <SelectValue
+                    placeholder={
+                      selectedStudents.length === 0
+                        ? 'Select students first'
+                        : 'Select a leader'
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {filteredStudents
@@ -325,8 +352,8 @@ function AddGroupModal({ courseCode, excludedStudentIds = [], nextGroupNumber, o
                 )}
               </div>
               <div className='text-xs text-gray-500 mt-1'>
-                {selectedStudents.length} out of {filteredStudents.length} students
-                selected
+                {selectedStudents.length} out of {filteredStudents.length}{' '}
+                students selected
               </div>
             </div>
           </div>
@@ -360,6 +387,179 @@ function AddGroupModal({ courseCode, excludedStudentIds = [], nextGroupNumber, o
   );
 }
 
+// Client Component
+function GroupGradingContent({
+  course_code,
+  course_section,
+}: {
+  course_code: string;
+  course_section: string;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(
+    new Date(),
+  );
+  const [course, setCourse] = useState<Course | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [courseRes, groupsRes] = await Promise.all([
+          axiosInstance.get(
+            `/courses/${course_code}?section=${course_section}`,
+          ),
+          axiosInstance.get(`/courses/${course_code}/groups`),
+        ]);
+        setCourse(courseRes.data);
+        setGroups(groupsRes.data);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (course_code && course_section) {
+      fetchData();
+    }
+  }, [course_code, course_section]);
+
+  if (loading) {
+    return (
+      <SidebarProvider open={open} onOpenChange={setOpen}>
+        <div className='relative h-screen w-screen overflow-hidden'>
+          <AppSidebar />
+          <main className='h-full w-full lg:w-[calc(100%-22.5rem)] pl-[4rem] sm:pl-[5rem] transition-all'>
+            <div className='flex flex-col flex-grow px-4'>
+              <Header />
+              <div className='flex items-center justify-center h-full'>
+                <p className='text-muted-foreground'>
+                  Loading course information...
+                </p>
+              </div>
+            </div>
+          </main>
+        </div>
+      </SidebarProvider>
+    );
+  }
+
+  if (!course) {
+    return (
+      <SidebarProvider open={open} onOpenChange={setOpen}>
+        <div className='relative h-screen w-screen overflow-hidden'>
+          <AppSidebar />
+          <main className='h-full w-full lg:w-[calc(100%-22.5rem)] pl-[4rem] sm:pl-[5rem] transition-all'>
+            <div className='flex flex-col flex-grow px-4'>
+              <Header />
+              <div className='flex items-center justify-center h-full'>
+                <p className='text-muted-foreground'>Course not found</p>
+              </div>
+            </div>
+          </main>
+        </div>
+      </SidebarProvider>
+    );
+  }
+
+  // Filter groups based on search query
+  const filteredGroups = groups.filter((group) => {
+    const search = searchQuery.toLowerCase();
+    return (
+      group.number.toLowerCase().includes(search) ||
+      (group.name && group.name.toLowerCase().includes(search)) ||
+      group.students.some(
+        (student) =>
+          student.firstName.toLowerCase().includes(search) ||
+          student.lastName.toLowerCase().includes(search),
+      )
+    );
+  });
+
+  // Compute all student IDs already in a group
+  const excludedStudentIds = groups.flatMap((g) => g.students.map((s) => s.id));
+  // Compute next group number (max + 1)
+  const maxGroupNumber =
+    groups.length > 0
+      ? Math.max(...groups.map((g) => Number(g.number) || 0))
+      : 0;
+  const nextGroupNumber = maxGroupNumber + 1;
+
+  // Function to refresh groups after adding
+  const fetchGroups = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/courses/${course_code}/groups`);
+      if (!response.ok) throw new Error('Failed to fetch groups');
+      const data = await response.json();
+      setGroups(data);
+    } catch (error) {
+      console.error('Error fetching groups:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <SidebarProvider open={open} onOpenChange={setOpen}>
+      <div className='relative h-screen w-screen overflow-hidden'>
+        <AppSidebar />
+        <main className='h-full w-full lg:w-[calc(100%-22.5rem)] pl-[4rem] sm:pl-[5rem] transition-all'>
+          <div className='flex flex-col flex-grow px-4'>
+            <Header />
+            <div className='flex justify-between gap-4 mb-1 mt-1'>
+              <div className='flex items-center gap-4'>
+                <Link
+                  href={`/grading/reporting/${course_code}/${course_section}`}
+                >
+                  <Button variant='ghost' size='icon'>
+                    <ArrowLeft className='h-4 w-4' />
+                  </Button>
+                </Link>
+                <h1 className='text-3xl font-bold tracking-tight text-[#A0A0A0]'>
+                  Group Management
+                </h1>
+              </div>
+              <h1 className='text-2xl font-bold tracking-tight text-[#A0A0A0]'>
+                {format(new Date(), 'EEEE, MMMM d, yyyy')}
+              </h1>
+            </div>
+
+            <div className='flex-1 overflow-y-auto pb-6'>
+              <div className='bg-white rounded-lg shadow-md'>
+                <GroupHeader
+                  courseCode={course?.code || ''}
+                  courseSection={course_section}
+                  searchQuery={searchQuery}
+                  onSearchChange={setSearchQuery}
+                />
+
+                <div className='p-6'>
+                  <GroupGrid
+                    groups={filteredGroups}
+                    isLoading={loading}
+                    courseCode={course_code}
+                    courseSection={course_section}
+                    excludedStudentIds={excludedStudentIds}
+                    nextGroupNumber={nextGroupNumber}
+                    onGroupAdded={fetchGroups}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <Rightsidebar />
+        </main>
+      </div>
+    </SidebarProvider>
+  );
+}
+
+// Server Component
 export default function GroupGradingPage({
   params,
 }: {
@@ -375,7 +575,9 @@ export default function GroupGradingPage({
   React.useEffect(() => {
     const fetchCourse = async () => {
       try {
-        const response = await fetch(`/api/courses/${resolvedParams.course_code}`);
+        const response = await fetch(
+          `/api/courses/${resolvedParams.course_code}`,
+        );
         if (!response.ok) throw new Error('Failed to fetch course');
         const data = await response.json();
         setCourse(data);
@@ -387,7 +589,9 @@ export default function GroupGradingPage({
     const fetchGroups = async () => {
       try {
         setIsLoading(true);
-        const response = await fetch(`/api/courses/${resolvedParams.course_code}/groups`);
+        const response = await fetch(
+          `/api/courses/${resolvedParams.course_code}/groups`,
+        );
         if (!response.ok) throw new Error('Failed to fetch groups');
         const data = await response.json();
         setGroups(data);
@@ -413,7 +617,7 @@ export default function GroupGradingPage({
       group.students.some(
         (student) =>
           student.firstName.toLowerCase().includes(search) ||
-          student.lastName.toLowerCase().includes(search)
+          student.lastName.toLowerCase().includes(search),
       )
     );
   });
@@ -421,14 +625,19 @@ export default function GroupGradingPage({
   // Compute all student IDs already in a group
   const excludedStudentIds = groups.flatMap((g) => g.students.map((s) => s.id));
   // Compute next group number (max + 1)
-  const maxGroupNumber = groups.length > 0 ? Math.max(...groups.map((g) => Number(g.number) || 0)) : 0;
+  const maxGroupNumber =
+    groups.length > 0
+      ? Math.max(...groups.map((g) => Number(g.number) || 0))
+      : 0;
   const nextGroupNumber = maxGroupNumber + 1;
 
   // Function to refresh groups after adding
   const fetchGroups = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/courses/${resolvedParams.course_code}/groups`);
+      const response = await fetch(
+        `/api/courses/${resolvedParams.course_code}/groups`,
+      );
       if (!response.ok) throw new Error('Failed to fetch groups');
       const data = await response.json();
       setGroups(data);

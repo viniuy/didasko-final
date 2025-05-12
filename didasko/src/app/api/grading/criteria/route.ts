@@ -16,11 +16,25 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { name, courseId, rubrics, scoringRange, passingScore } =
-      body as CriteriaCreateInput;
+    const {
+      name,
+      courseId,
+      rubrics,
+      scoringRange,
+      passingScore,
+      date,
+      isGroupCriteria,
+    } = body as any;
 
     // Validate required fields
-    if (!name || !courseId || !rubrics || !scoringRange || !passingScore) {
+    if (
+      !name ||
+      !courseId ||
+      !rubrics ||
+      !scoringRange ||
+      !passingScore ||
+      !date
+    ) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 },
@@ -33,9 +47,16 @@ export async function POST(request: Request) {
         name,
         courseId,
         userId: session.user.id,
-        rubrics: JSON.stringify(rubrics),
         scoringRange,
         passingScore,
+        date: new Date(date),
+        isGroupCriteria: isGroupCriteria === true, // default to false if not provided
+        rubrics: {
+          create: rubrics.map((r: any) => ({
+            name: r.name,
+            percentage: r.weight ?? r.percentage,
+          })),
+        },
       },
       include: {
         user: {
@@ -44,16 +65,11 @@ export async function POST(request: Request) {
             email: true,
           },
         },
+        rubrics: true,
       },
     });
 
-    // Transform the response to match the Criteria type
-    const transformedCriteria: Criteria = {
-      ...criteria,
-      rubrics: JSON.parse(criteria.rubrics as string),
-    };
-
-    return NextResponse.json(transformedCriteria);
+    return NextResponse.json(criteria);
   } catch (error) {
     console.error('Error creating criteria:', error);
     return NextResponse.json(
@@ -97,20 +113,15 @@ export async function GET(request: Request) {
             email: true,
           },
         },
+        rubrics: true,
       },
       skip,
       take: limit,
       orderBy: { createdAt: 'desc' },
     });
 
-    // Transform the response to match the Criteria type
-    const transformedCriteria: Criteria[] = criteria.map((c) => ({
-      ...c,
-      rubrics: JSON.parse(c.rubrics as string),
-    }));
-
     const response: CriteriaResponse = {
-      criteria: transformedCriteria,
+      criteria,
       pagination: {
         total,
         page,
