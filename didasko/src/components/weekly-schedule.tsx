@@ -163,12 +163,13 @@ export default function WeeklySchedule({ teacherInfo }: WeeklyScheduleProps) {
         </div>
 
         {days.map((day) => (
-          <div key={day} className='relative'>
-            <div
-              className={`text-center font-semibold mb-4 text-[#124A69] ${
-                day === currentDay ? 'text-lg' : 'text-sm'
-              }`}
-            >
+          <div
+            key={day}
+            className={`relative ${
+              day === currentDay ? 'bg-blue-50 rounded-lg' : ''
+            }`}
+          >
+            <div className='text-center font-semibold mb-4 text-[#124A69] text-sm'>
               {day}
             </div>
             <div className='relative h-full flex justify-center'>

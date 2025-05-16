@@ -5,44 +5,14 @@ import { AppSidebar } from '@/components/shared/layout/app-sidebar';
 import Header from '@/components/shared/layout/header';
 import Rightsidebar from '@/components/shared/layout/right-sidebar';
 import { SidebarProvider } from '@/components/ui/sidebar';
-import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ArrowLeft, Users, Loader2, Plus } from 'lucide-react';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
-import { format } from 'date-fns';
-import { Calendar as CalendarIcon } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { toast } from 'react-hot-toast';
 import { Group } from '@/components/groups/types';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Slider } from '@/components/ui/slider';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { GradingTable } from '@/components/grading/grading-table';
-import { GroupGradingTable } from '@/components/groups/GroupGradingTable';
 import { useRouter } from 'next/navigation';
 import axiosInstance from '@/lib/axios';
-import { Checkbox } from '@/components/ui/checkbox';
+import { format } from 'date-fns';
 
 interface Course {
   id: string;
@@ -149,9 +119,12 @@ export default function GroupGradingPage({
             <div className='flex flex-col flex-grow px-4'>
               <Header />
               <div className='flex items-center justify-center h-full'>
-                <p className='text-muted-foreground'>
-                  Loading group information...
-                </p>
+                <div className='flex flex-col items-center gap-4'>
+                  <Loader2 className='h-8 w-8 animate-spin text-[#124A69]' />
+                  <p className='text-muted-foreground'>
+                    Loading group information...
+                  </p>
+                </div>
               </div>
             </div>
           </main>
@@ -169,7 +142,12 @@ export default function GroupGradingPage({
             <div className='flex flex-col flex-grow px-4'>
               <Header />
               <div className='flex items-center justify-center h-full'>
-                <p className='text-muted-foreground'>Group not found</p>
+                <div className='flex flex-col items-center gap-4'>
+                  <Loader2 className='h-8 w-8 animate-spin text-[#124A69]' />
+                  <p className='text-muted-foreground'>
+                    Loading group information...
+                  </p>
+                </div>
               </div>
             </div>
           </main>
@@ -187,16 +165,13 @@ export default function GroupGradingPage({
             <Header />
             <div className='flex items-center justify-between mb-8'>
               <div className='flex items-center gap-4'>
-                <Link
-                  href={`/grading/reporting/${course.code}/${course.section}`}
-                  className='flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors'
-                >
-                  <ArrowLeft className='h-4 w-4' />
-                  Back
-                </Link>
                 <h1 className='text-3xl font-bold tracking-tight text-[#A0A0A0]'>
-                  Group {group.number} - {group.name}
+                  Group {group.number}
+                  {group.name ? ` - ${group.name}` : ''}
                 </h1>
+              </div>
+              <div className='text-2xl font-bold tracking-tight text-[#A0A0A0]'>
+                {selectedDate && format(selectedDate, 'EEEE, MMMM d, yyyy')}
               </div>
             </div>
 

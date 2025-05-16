@@ -12,7 +12,7 @@ import {
   getEvents,
   updateEvent,
 } from './actions/events';
-import { startOfDay, isPast } from 'date-fns';
+import { startOfDay, isPast, isSameDay } from 'date-fns';
 
 // Function to normalize date by removing time portion
 function normalizeDate(date: Date): Date {
@@ -51,17 +51,71 @@ export async function handleSaveNewEvent({
   }
 
   // Check if trying to add an event in the past
-  if (newEvent.date && isPast(startOfDay(newEvent.date))) {
-    onError('Cannot add events in the past.');
-    return;
+  if (newEvent.date) {
+    const now = new Date();
+    const eventDate = new Date(newEvent.date);
+
+    // If it's today's date, check if the time is in the future
+    if (isSameDay(eventDate, now)) {
+      if (newEvent.fromTime) {
+        const [hours, minutes] = newEvent.fromTime.split(':').map(Number);
+        const eventTime = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          hours,
+          minutes,
+        );
+
+        // Add a 5-minute buffer
+        const bufferTime = new Date(now.getTime() + 5 * 60000);
+
+        if (eventTime.getTime() <= bufferTime.getTime()) {
+          onError('Event time must be at least 5 minutes in the future');
+          return;
+        }
+      }
+    } else if (isPast(startOfDay(eventDate))) {
+      onError('Cannot add events in the past');
+      return;
+    }
   }
 
   // Check if any additional dates are in the past
   for (let i = 0; i < newEvent.dates.length; i++) {
     const dateItem = newEvent.dates[i];
-    if (dateItem.date && isPast(startOfDay(dateItem.date))) {
-      onError(`Additional date #${i + 1} cannot be in the past.`);
-      return;
+    if (dateItem.date) {
+      const now = new Date();
+      const eventDate = new Date(dateItem.date);
+
+      // If it's today's date, check if the time is in the future
+      if (isSameDay(eventDate, now)) {
+        if (dateItem.fromTime) {
+          const [hours, minutes] = dateItem.fromTime.split(':').map(Number);
+          const eventTime = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate(),
+            hours,
+            minutes,
+          );
+
+          // Add a 5-minute buffer
+          const bufferTime = new Date(now.getTime() + 5 * 60000);
+
+          if (eventTime.getTime() <= bufferTime.getTime()) {
+            onError(
+              `Additional date #${
+                i + 1
+              } time must be at least 5 minutes in the future`,
+            );
+            return;
+          }
+        }
+      } else if (isPast(startOfDay(eventDate))) {
+        onError(`Additional date #${i + 1} cannot be in the past`);
+        return;
+      }
     }
   }
 
@@ -234,9 +288,34 @@ export async function handleUpdateEvent({
   }
 
   // Check if trying to update to a past date
-  if (isPast(startOfDay(editData.date))) {
-    onError('Cannot set event date to a past date.');
-    return;
+  if (editData.date) {
+    const now = new Date();
+    const eventDate = new Date(editData.date);
+
+    // If it's today's date, check if the time is in the future
+    if (isSameDay(eventDate, now)) {
+      if (editData.fromTime) {
+        const [hours, minutes] = editData.fromTime.split(':').map(Number);
+        const eventTime = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          hours,
+          minutes,
+        );
+
+        // Add a 5-minute buffer
+        const bufferTime = new Date(now.getTime() + 5 * 60000);
+
+        if (eventTime.getTime() <= bufferTime.getTime()) {
+          onError('Event time must be at least 5 minutes in the future');
+          return;
+        }
+      }
+    } else if (isPast(startOfDay(eventDate))) {
+      onError('Cannot set event date to a past date');
+      return;
+    }
   }
 
   // Validate times if provided

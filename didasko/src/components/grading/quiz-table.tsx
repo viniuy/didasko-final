@@ -1,0 +1,920 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Student } from '@/types/student';
+import { useSession } from 'next-auth/react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Calendar } from '@/components/ui/calendar';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { format, addDays } from 'date-fns';
+import { Calendar as CalendarIcon, Search, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import axios from 'axios';
+import { DateRange } from 'react-day-picker';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogClose,
+} from '@/components/ui/dialog';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationPrevious,
+  PaginationNext,
+} from '@/components/ui/pagination';
+import { toast } from 'react-hot-toast';
+import { Progress } from '@/components/ui/progress';
+
+interface QuizTableProps {
+  courseId: string;
+  courseCode: string;
+  courseSection: string;
+  selectedDate: Date | undefined;
+  onDateSelect?: (date: Date | undefined) => void;
+}
+
+interface QuizScore {
+  studentId: string;
+  quizScore: number;
+  attendance: 'PRESENT' | 'LATE' | 'ABSENT';
+  plusPoints: number;
+  totalGrade: number;
+  remarks: string;
+}
+
+interface AttendanceStats {
+  totalClasses: number;
+  studentStats: {
+    studentId: string;
+    firstName: string;
+    lastName: string;
+    middleInitial: string | null;
+    present: number;
+    late: number;
+    absent: number;
+    attendanceRate: number;
+    excused?: number;
+  }[];
+}
+
+export function QuizTable({
+  courseId,
+  courseCode,
+  courseSection,
+  selectedDate,
+  onDateSelect,
+}: QuizTableProps) {
+  const { data: session } = useSession();
+  const [scores, setScores] = useState<Record<string, QuizScore>>({});
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [studentsPerPage] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalStudents, setTotalStudents] = useState(0);
+  const [attendanceStats, setAttendanceStats] =
+    useState<AttendanceStats | null>(null);
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: selectedDate ? addDays(selectedDate, -30) : undefined,
+    to: selectedDate,
+  });
+  const [passingRate, setPassingRate] = useState<number>(75);
+  const [showSetupModal, setShowSetupModal] = useState(true);
+  const [quizName, setQuizName] = useState('');
+  const [quizDate, setQuizDate] = useState<Date | undefined>(selectedDate);
+  const [maxScore, setMaxScore] = useState<number>(100);
+  const [modalPassingRate, setModalPassingRate] = useState<number>(75);
+  const [modalDateRange, setModalDateRange] = useState<DateRange | undefined>(
+    dateRange,
+  );
+  const [selectedQuiz, setSelectedQuiz] = useState<any>(null);
+  const [quizzes, setQuizzes] = useState<any[]>([]);
+  const [modalTab, setModalTab] = useState('existing');
+  const datePickerButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Fetch quizzes for the course when modal opens
+  useEffect(() => {
+    if (showSetupModal && courseId) {
+      setLoadingMessage('Loading quizzes...');
+      axios.get(`/api/courses/${courseId}/quizzes`).then((res) => {
+        setQuizzes(res.data || []);
+        setLoadingMessage('');
+      });
+    }
+  }, [showSetupModal, courseId]);
+
+  // Only fetch students and attendance stats if a quiz is selected/created
+  useEffect(() => {
+    if (!selectedQuiz) return;
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        setLoadingMessage('Loading students...');
+
+        // Fetch students
+        const studentsResponse = await axios.get(
+          `/api/courses/${courseId}/students`,
+        );
+        if (Array.isArray(studentsResponse.data.students)) {
+          setStudents(studentsResponse.data.students);
+        } else {
+          console.error('Invalid students data format');
+          setStudents([]);
+        }
+
+        // Fetch attendance stats for the date range
+        if (dateRange?.from && dateRange?.to) {
+          setLoadingMessage('Loading attendance stats...');
+          const statsResponse = await axios.get(
+            `/api/courses/${courseId}/attendance/range?startDate=${dateRange.from.toISOString()}&endDate=${dateRange.to.toISOString()}`,
+          );
+          setAttendanceStats(statsResponse.data);
+        }
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        setStudents([]);
+        setAttendanceStats(null);
+      } finally {
+        setLoading(false);
+        setLoadingMessage('');
+      }
+    };
+
+    fetchData();
+  }, [selectedQuiz, courseId, dateRange]);
+
+  // Update date range when selected date changes
+  useEffect(() => {
+    if (selectedDate) {
+      setDateRange({
+        from: addDays(selectedDate, -30),
+        to: selectedDate,
+      });
+    }
+  }, [selectedDate]);
+
+  // Calculate plus points based on attendance rate
+  const calculatePlusPoints = (studentId: string): number => {
+    if (!attendanceStats) return 0;
+
+    const studentStat = attendanceStats.studentStats.find(
+      (stat) => stat.studentId === studentId,
+    );
+
+    if (!studentStat) return 0;
+
+    // Calculate plus points based on attendance rate
+    if (studentStat.attendanceRate >= 90) return 5; // 90% or higher
+    if (studentStat.attendanceRate >= 80) return 3; // 80-89%
+    if (studentStat.attendanceRate >= 70) return 2; // 70-79%
+    return 0; // Below 70%
+  };
+
+  // Calculate total grade
+  const calculateTotalGrade = (
+    quizScore: number,
+    plusPoints: number,
+    maxScore: number,
+  ): number => {
+    // Convert quiz score to percentage based on max score
+    const scorePercentage = (quizScore / maxScore) * 100;
+    // Add plus points and cap at 100%
+    return Math.min(100, scorePercentage + plusPoints);
+  };
+
+  // Handle score change
+  const handleScoreChange = (
+    studentId: string,
+    field: keyof QuizScore,
+    value: any,
+  ) => {
+    setScores((prev) => {
+      const currentScore = prev[studentId] || {
+        studentId,
+        quizScore: 0,
+        attendance: 'PRESENT',
+        plusPoints: calculatePlusPoints(studentId),
+        totalGrade: 0,
+        remarks: '',
+      };
+
+      let updatedScore = { ...currentScore, [field]: value };
+
+      // Recalculate total grade if quiz score changes
+      if (field === 'quizScore' && selectedQuiz) {
+        updatedScore.totalGrade = calculateTotalGrade(
+          value,
+          updatedScore.plusPoints,
+          selectedQuiz.maxScore,
+        );
+      }
+
+      // Save the score to the backend if a quiz is selected
+      if (selectedQuiz && selectedQuiz.id) {
+        axios
+          .post(`/api/quizzes/${selectedQuiz.id}/scores`, {
+            studentId,
+            score: updatedScore.quizScore,
+            attendance: updatedScore.attendance,
+            plusPoints: updatedScore.plusPoints,
+            totalGrade: updatedScore.totalGrade,
+            remarks: updatedScore.remarks,
+          })
+          .catch((error) => {
+            console.error('Error saving quiz score:', error);
+          });
+      }
+
+      return { ...prev, [studentId]: updatedScore };
+    });
+  };
+
+  // Get paginated students
+  const getPaginatedStudents = (students: Student[]) => {
+    if (!Array.isArray(students)) {
+      return {
+        paginatedStudents: [],
+        totalPages: 0,
+        totalStudents: 0,
+      };
+    }
+
+    const filteredStudents = students.filter((student) => {
+      const name = `${student.lastName || ''} ${student.firstName || ''} ${
+        student.middleInitial || ''
+      }`.toLowerCase();
+      return name.includes(searchQuery.toLowerCase());
+    });
+
+    const startIndex = (currentPage - 1) * studentsPerPage;
+    const endIndex = startIndex + studentsPerPage;
+    return {
+      paginatedStudents: filteredStudents.slice(startIndex, endIndex),
+      totalPages: Math.ceil(filteredStudents.length / studentsPerPage),
+      totalStudents: filteredStudents.length,
+    };
+  };
+
+  // Update pagination state
+  useEffect(() => {
+    if (!Array.isArray(students)) {
+      setTotalPages(0);
+      setTotalStudents(0);
+      return;
+    }
+
+    const filteredStudents = students.filter((student) => {
+      const name = `${student.lastName || ''} ${student.firstName || ''} ${
+        student.middleInitial || ''
+      }`.toLowerCase();
+      return name.includes(searchQuery.toLowerCase());
+    });
+
+    setTotalPages(Math.ceil(filteredStudents.length / studentsPerPage));
+    setTotalStudents(filteredStudents.length);
+  }, [students, searchQuery, studentsPerPage]);
+
+  // When a quiz is selected or created, set selectedQuiz and close modal
+  const handleSelectQuiz = (quiz: any) => {
+    setSelectedQuiz(quiz);
+    setShowSetupModal(false);
+    setQuizName(quiz.name);
+    setQuizDate(new Date(quiz.quizDate));
+    setMaxScore(quiz.maxScore);
+    setPassingRate(quiz.passingRate);
+    setDateRange({
+      from: new Date(quiz.attendanceRangeStart),
+      to: new Date(quiz.attendanceRangeEnd),
+    });
+    if (quiz.quizDate) onDateSelect?.(new Date(quiz.quizDate));
+  };
+
+  const handleChooseAnotherDate = () => {
+    setShowSetupModal(false);
+    setTimeout(() => {
+      datePickerButtonRef.current?.focus();
+    }, 100);
+  };
+
+  // Open modal when selectedDate changes and no quiz is selected for that date
+  useEffect(() => {
+    if (!selectedQuiz && selectedDate) {
+      setShowSetupModal(true);
+    }
+  }, [selectedDate]);
+
+  return (
+    <div className='max-w-6xl mx-auto'>
+      <div className='bg-white rounded-lg shadow-md'>
+        {/* Card Header */}
+        <div className='flex items-center justify-between px-4 py-3 border-b'>
+          <div className='flex items-center gap-2'>
+            <Button
+              variant='ghost'
+              className='h-9 w-9 p-0 hover:bg-gray-100'
+              onClick={() => window.history.back()}
+            >
+              <svg
+                className='h-5 w-5 text-gray-500'
+                fill='none'
+                stroke='currentColor'
+                strokeWidth='2'
+                viewBox='0 0 24 24'
+              >
+                <path d='M15 18l-6-6 6-6' />
+              </svg>
+            </Button>
+            <div className='flex flex-col mr-4'>
+              <span className='text-lg font-bold text-[#124A69] leading-tight'>
+                {courseCode}
+              </span>
+              <span className='text-sm text-gray-500'>{courseSection}</span>
+            </div>
+          </div>
+
+          {/* Remove attendance date range and passing rate from header controls */}
+
+          {/* Only show single date picker in header (for quiz selection) */}
+          <div className='flex items-center gap-4'>
+            <div className='relative'>
+              <Search className='absolute left-2 top-2.5 h-4 w-4 text-gray-500' />
+              <Input
+                placeholder='Search students...'
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className='pl-8 w-[200px]'
+              />
+            </div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  ref={datePickerButtonRef}
+                  variant='outline'
+                  className={cn(
+                    'w-[180px] justify-start text-left font-normal',
+                    !selectedDate && 'text-muted-foreground',
+                  )}
+                >
+                  <CalendarIcon className='mr-2 h-4 w-4' />
+                  {selectedDate
+                    ? format(selectedDate, 'PPP')
+                    : 'Pick a quiz date'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className='w-auto p-0' align='start'>
+                <Calendar
+                  mode='single'
+                  selected={selectedDate}
+                  onSelect={onDateSelect}
+                  initialFocus
+                  numberOfMonths={1}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className='overflow-x-auto max-h-[calc(100vh-300px)]'>
+          <table className='w-full border-separate border-spacing-0 table-fixed'>
+            <thead className='bg-white'>
+              <tr>
+                <th className='sticky left-0 z-10 bg-white border-b font-bold text-[#124A69] text-left px-4 py-3 w-[300px]'>
+                  Students
+                </th>
+                <th className='border-b font-bold text-[#124A69] text-center px-4 py-3 w-[120px]'>
+                  Quiz Score
+                  {selectedQuiz && (
+                    <div className='text-xs font-normal text-gray-500'>
+                      (Max: {selectedQuiz.maxScore})
+                    </div>
+                  )}
+                </th>
+                <th className='border-b font-bold text-[#124A69] text-center px-4 py-3 w-[180px]'>
+                  Attendance
+                  {attendanceStats && (
+                    <div className='text-xs font-normal text-gray-500'>
+                      ({attendanceStats.totalClasses} meetings)
+                    </div>
+                  )}
+                </th>
+                <th className='border-b font-bold text-[#124A69] text-center px-4 py-3 w-[120px]'>
+                  Plus Points
+                </th>
+                <th className='border-b font-bold text-[#124A69] text-center px-4 py-3 w-[120px]'>
+                  Total Grade
+                </th>
+                <th className='border-b font-bold text-[#124A69] text-center px-4 py-3 w-[150px]'>
+                  Remarks
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className='text-center py-8'>
+                    <div className='flex flex-col items-center gap-2'>
+                      <Loader2 className='h-8 w-8 animate-spin text-[#124A69]' />
+                      <p className='text-sm text-gray-600'>{loadingMessage}</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                (() => {
+                  const { paginatedStudents } = getPaginatedStudents(students);
+
+                  if (paginatedStudents.length === 0) {
+                    return (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className='text-center py-8 text-muted-foreground'
+                        >
+                          No students found
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  return paginatedStudents.map((student, idx) => {
+                    const studentScore = scores[student.id] || {
+                      studentId: student.id,
+                      quizScore: 0,
+                      attendance: 'PRESENT',
+                      plusPoints: calculatePlusPoints(student.id),
+                      totalGrade: 0,
+                      remarks: '',
+                    };
+
+                    const studentStat = attendanceStats?.studentStats.find(
+                      (stat) => stat.studentId === student.id,
+                    );
+
+                    return (
+                      <tr
+                        key={student.id}
+                        className={idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F6FA]'}
+                      >
+                        <td className='sticky left-0 z-10 bg-inherit px-4 py-3'>
+                          <div className='flex items-center gap-3'>
+                            {student.image ? (
+                              <img
+                                src={student.image}
+                                alt=''
+                                className='w-8 h-8 rounded-full object-cover'
+                              />
+                            ) : (
+                              <span className='inline-flex w-8 h-8 rounded-full bg-gray-200 text-gray-400 items-center justify-center'>
+                                <svg
+                                  width='20'
+                                  height='20'
+                                  fill='none'
+                                  stroke='currentColor'
+                                  strokeWidth='2'
+                                  viewBox='0 0 24 24'
+                                >
+                                  <circle cx='12' cy='8' r='4' />
+                                  <path d='M6 20c0-2.2 3.6-4 6-4s6 1.8 6 4' />
+                                </svg>
+                              </span>
+                            )}
+                            <span>{`${student.lastName}, ${student.firstName}${
+                              student.middleInitial
+                                ? ` ${student.middleInitial}.`
+                                : ''
+                            }`}</span>
+                          </div>
+                        </td>
+                        <td className='px-4 py-3 text-center'>
+                          <input
+                            type='number'
+                            min='0'
+                            max={selectedQuiz?.maxScore || 100}
+                            value={studentScore.quizScore}
+                            onChange={(e) => {
+                              const value = parseInt(e.target.value) || 0;
+                              const maxScore = selectedQuiz?.maxScore || 100;
+                              handleScoreChange(
+                                student.id,
+                                'quizScore',
+                                Math.min(value, maxScore),
+                              );
+                            }}
+                            className='w-20 p-1 border rounded text-center'
+                          />
+                        </td>
+                        <td className='px-4 py-3 text-center'>
+                          {(() => {
+                            if (!studentStat) return 'N/A';
+                            return (
+                              <div className='flex flex-col items-start gap-0.5 text-sm'>
+                                {studentStat.present > 0 && (
+                                  <span className='text-green-700 font-medium'>
+                                    Present: {studentStat.present}
+                                  </span>
+                                )}
+                                {studentStat.late > 0 && (
+                                  <span className='text-yellow-700 font-medium'>
+                                    Late: {studentStat.late}
+                                  </span>
+                                )}
+                                {studentStat.excused &&
+                                  studentStat.excused > 0 && (
+                                    <span className='text-blue-700 font-medium'>
+                                      Excused: {studentStat.excused}
+                                    </span>
+                                  )}
+                                {studentStat.absent > 0 && (
+                                  <span className='text-red-700 font-medium'>
+                                    Absent: {studentStat.absent}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </td>
+                        <td className='px-4 py-3 text-center'>
+                          {studentScore.plusPoints}
+                        </td>
+                        <td className='px-4 py-3 text-center font-semibold'>
+                          {studentScore.totalGrade
+                            ? studentScore.totalGrade.toFixed(1) + '%'
+                            : '---'}
+                        </td>
+                        <td className='px-4 py-3 text-center'>
+                          {studentScore.totalGrade ? (
+                            <span
+                              className={
+                                studentScore.totalGrade >= passingRate
+                                  ? 'text-green-700 font-semibold'
+                                  : 'text-red-700 font-semibold'
+                              }
+                            >
+                              {studentScore.totalGrade >= passingRate
+                                ? 'Passed'
+                                : 'Failed'}
+                            </span>
+                          ) : (
+                            '---'
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  });
+                })()
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer Bar */}
+        <div className='flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 border-t bg-white'>
+          <div className='flex items-center gap-2'>
+            <p className='text-sm text-gray-500 whitespace-nowrap'>
+              {totalStudents > 0 ? (
+                <>
+                  {currentPage * studentsPerPage - (studentsPerPage - 1)}-
+                  {Math.min(currentPage * studentsPerPage, totalStudents)} of{' '}
+                  {totalStudents} students
+                </>
+              ) : (
+                'No students found'
+              )}
+            </p>
+          </div>
+
+          {/* Pagination Controls */}
+          <div className='flex justify-end'>
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.max(prev - 1, 1))
+                    }
+                    className={
+                      currentPage === 1
+                        ? 'pointer-events-none opacity-50'
+                        : 'hover:bg-gray-100'
+                    }
+                  />
+                </PaginationItem>
+                {[...Array(totalPages)].map((_, i) => (
+                  <PaginationItem key={i}>
+                    <PaginationLink
+                      isActive={currentPage === i + 1}
+                      onClick={() => setCurrentPage(i + 1)}
+                      className={`${
+                        currentPage === i + 1
+                          ? 'bg-[#124A69] text-white hover:bg-[#0d3a56]'
+                          : 'hover:bg-gray-100'
+                      }`}
+                    >
+                      {i + 1}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
+                <PaginationItem>
+                  <PaginationNext
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                    }
+                    className={
+                      currentPage === totalPages
+                        ? 'pointer-events-none opacity-50'
+                        : 'hover:bg-gray-100'
+                    }
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
+
+          {/* Action Buttons */}
+          <div className='flex items-center gap-2'>
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={() => {
+                setScores({});
+                students.forEach((student) => {
+                  handleScoreChange(student.id, 'quizScore', 0);
+                });
+                toast.success('Grades reset successfully', {
+                  duration: 3000,
+                  style: {
+                    background: '#fff',
+                    color: '#124A69',
+                    border: '1px solid #e5e7eb',
+                  },
+                });
+              }}
+              className='h-8 px-3 text-sm border-gray-200 text-gray-600 hover:bg-gray-50'
+              disabled={loading}
+            >
+              Reset Grades
+            </Button>
+            <Button
+              variant='default'
+              size='sm'
+              className='h-8 px-3 text-sm bg-[#124A69] hover:bg-[#0d3a56] text-white'
+              onClick={() => {
+                Object.entries(scores).forEach(([studentId, score]) => {
+                  if (selectedQuiz?.id) {
+                    axios
+                      .post(`/api/quizzes/${selectedQuiz.id}/scores`, {
+                        studentId,
+                        score: score.quizScore,
+                        attendance: score.attendance,
+                        plusPoints: score.plusPoints,
+                        totalGrade: score.totalGrade,
+                        remarks: score.remarks,
+                      })
+                      .then(() => {
+                        toast.success('Grades saved successfully', {
+                          duration: 3000,
+                          style: {
+                            background: '#fff',
+                            color: '#124A69',
+                            border: '1px solid #e5e7eb',
+                          },
+                        });
+                      })
+                      .catch((error) => {
+                        console.error('Error saving quiz score:', error);
+                        toast.error('Failed to save grades', {
+                          duration: 3000,
+                          style: {
+                            background: '#fff',
+                            color: '#dc2626',
+                            border: '1px solid #e5e7eb',
+                          },
+                        });
+                      });
+                  }
+                });
+              }}
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                  Saving...
+                </>
+              ) : (
+                'Save Grades'
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Setup Modal with Tabs */}
+      <Dialog open={showSetupModal} onOpenChange={setShowSetupModal}>
+        <DialogContent className='sm:max-w-[450px]'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-2xl font-bold'>
+              Quiz Setup
+            </DialogTitle>
+            <div className='text-gray-500'>
+              Select an existing quiz or create a new one for this course.
+            </div>
+          </DialogHeader>
+          <Tabs value={modalTab} onValueChange={setModalTab} className='w-full'>
+            <TabsList className='grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg mb-4'>
+              <TabsTrigger
+                value='existing'
+                className='data-[state=active]:bg-white data-[state=active]:shadow-sm'
+              >
+                Existing Quizzes
+              </TabsTrigger>
+              <TabsTrigger
+                value='new'
+                className='data-[state=active]:bg-white data-[state=active]:shadow-sm'
+              >
+                Create New Quiz
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value='existing'>
+              <div className='space-y-4 py-4'>
+                {quizzes.length === 0 ? (
+                  <div className='text-gray-500 text-center'>
+                    No quizzes found.
+                  </div>
+                ) : (
+                  <div className='flex flex-col items-center gap-2'>
+                    {quizzes.map((quiz) => (
+                      <Button
+                        key={quiz.id}
+                        variant='outline'
+                        className='justify-between w-full max-w-[400px] bg-gray-50 border-gray-200'
+                        onClick={() => handleSelectQuiz(quiz)}
+                      >
+                        <span>{quiz.name}</span>
+                        <span className='text-xs text-gray-500'>
+                          {quiz.quizDate
+                            ? format(new Date(quiz.quizDate), 'PPP')
+                            : ''}
+                        </span>
+                      </Button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+            <TabsContent value='new'>
+              <div className='space-y-4 py-4'>
+                <div className='grid gap-4'>
+                  <div className='grid gap-2'>
+                    <label className='text-sm font-medium text-gray-700'>
+                      Quiz Name
+                    </label>
+                    <Input
+                      value={quizName}
+                      onChange={(e) => setQuizName(e.target.value)}
+                      placeholder='Enter quiz name'
+                      maxLength={50}
+                      className='bg-gray-50 border-gray-200'
+                    />
+                  </div>
+                  <div className='grid gap-2'>
+                    <label className='text-sm font-medium text-gray-700'>
+                      Attendance Date Range
+                    </label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant='outline'
+                          className='w-full justify-start text-left font-normal bg-gray-50 border-gray-200'
+                        >
+                          <CalendarIcon className='mr-2 h-4 w-4' />
+                          {modalDateRange?.from ? (
+                            modalDateRange.to ? (
+                              <>
+                                {format(modalDateRange.from, 'LLL dd, y')} -{' '}
+                                {format(modalDateRange.to, 'LLL dd, y')}
+                              </>
+                            ) : (
+                              format(modalDateRange.from, 'LLL dd, y')
+                            )
+                          ) : (
+                            <span>Pick a date range</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className='w-auto p-0' align='start'>
+                        <Calendar
+                          mode='range'
+                          selected={modalDateRange}
+                          onSelect={setModalDateRange}
+                          numberOfMonths={2}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
+                    <div className='grid gap-2'>
+                      <label className='text-sm font-medium text-gray-700'>
+                        Max Score
+                      </label>
+                      <Input
+                        type='number'
+                        min={1}
+                        value={maxScore}
+                        onChange={(e) => setMaxScore(Number(e.target.value))}
+                        className='bg-gray-50 border-gray-200'
+                      />
+                    </div>
+                    <div className='grid gap-2'>
+                      <label className='text-sm font-medium text-gray-700'>
+                        Passing Rate
+                      </label>
+                      <Select
+                        value={modalPassingRate.toString()}
+                        onValueChange={(v) => setModalPassingRate(Number(v))}
+                      >
+                        <SelectTrigger className='w-full bg-gray-50 border-gray-200'>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[50, 60, 70, 75, 80, 85, 90].map((rate) => (
+                            <SelectItem key={rate} value={rate.toString()}>
+                              {rate}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+                <DialogFooter className='gap-2 sm:gap-2 mt-4'>
+                  <DialogClose asChild>
+                    <Button
+                      type='button'
+                      className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+                      onClick={() => {
+                        // Create new quiz API call here, then set selectedQuiz
+                        const newQuiz = {
+                          name: quizName,
+                          maxScore,
+                          passingRate: modalPassingRate,
+                          attendanceRangeStart:
+                            modalDateRange?.from?.toISOString(),
+                          attendanceRangeEnd: modalDateRange?.to?.toISOString(),
+                          quizDate: selectedDate?.toISOString(),
+                        };
+
+                        // Save the quiz to the database
+                        axios
+                          .post(`/api/courses/${courseId}/quizzes`, newQuiz)
+                          .then((response) => {
+                            setSelectedQuiz(response.data);
+                            setShowSetupModal(false);
+                            setPassingRate(modalPassingRate);
+                            setDateRange(modalDateRange);
+                          })
+                          .catch((error) => {
+                            console.error('Error creating quiz:', error);
+                            // You might want to show an error message to the user here
+                          });
+                      }}
+                    >
+                      Save & Continue
+                    </Button>
+                  </DialogClose>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    onClick={handleChooseAnotherDate}
+                    className='border-gray-200'
+                  >
+                    Choose another date
+                  </Button>
+                </DialogFooter>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

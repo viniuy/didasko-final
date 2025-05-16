@@ -10,9 +10,13 @@ interface GroupCardProps {
   courseSection: string;
 }
 
-export function GroupCard({ group, courseCode, courseSection }: GroupCardProps) {
+export function GroupCard({
+  group,
+  courseCode,
+  courseSection,
+}: GroupCardProps) {
   return (
-    <Card className='w-80 h-90 p-6 flex flex-col items-center shadow-lg'>
+    <Card className='w-65 h-80 p-6 flex flex-col items-center shadow-lg'>
       <div className='mb-4'>
         <svg
           className='h-20 w-20 text-gray-400'
@@ -28,22 +32,27 @@ export function GroupCard({ group, courseCode, courseSection }: GroupCardProps) 
         </svg>
       </div>
       <h2 className='text-2xl font-bold text-[#124A69] text-center -mb-2'>
-        Group {group.number}:
+        Group {group.number}
       </h2>
       {group.name ? (
         <p className='text-xl text-[#124A69] font-sm text-center -mt-3'>
           {group.name}
         </p>
       ) : (
-        <div className='text-xl text-[#124A69] font-sm text-center -mt-3' style={{ visibility: 'hidden' }}>
+        <div
+          className='text-xl text-[#124A69] font-sm text-center -mt-3'
+          style={{ visibility: 'hidden' }}
+        >
           &nbsp;
         </div>
       )}
-      <Link href={`/grading/reporting/${courseCode}/${courseSection}/group/${group.id}`}>
-        <Button className='w-full bg-[#124A69] text-white font-semibold rounded mt-15'>
+      <Link
+        href={`/grading/reporting/${courseCode}/${courseSection}/group/${group.id}`}
+      >
+        <Button className='w-full bg-[#124A69] text-white font-semibold rounded mt-7'>
           View group
         </Button>
       </Link>
     </Card>
   );
-} 
+}
