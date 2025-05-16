@@ -77,7 +77,6 @@ interface GradingReport {
   user?: {
     name: string;
   };
-  grades?: GradingScore[];
 }
 
 interface RubricDetail {
@@ -105,7 +104,6 @@ export function GradingTable({
   const [showCriteriaDialog, setShowCriteriaDialog] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState<string>('');
   const [savedReports, setSavedReports] = useState<GradingReport[]>([]);
   const [selectedReport, setSelectedReport] = useState<string>('');
   const [activeReport, setActiveReport] = useState<GradingReport | null>(null);
@@ -289,52 +287,10 @@ export function GradingTable({
       }
 
       try {
-        // Fetch all criteria for this course
         const response = await axiosInstance.get(
           `/courses/${courseId}/criteria`,
         );
-        const allReports = response.data;
-
-        // For each report, fetch its grades if we have a selected date
-        if (selectedDate) {
-          const formattedDate = selectedDate.toISOString().split('T')[0];
-
-          // Fetch grades for each report
-          const reportsWithGrades = await Promise.all(
-            allReports.map(async (report: GradingReport) => {
-              try {
-                const gradesRes = await axiosInstance.get(
-                  `/courses/${courseId}/grades`,
-                  {
-                    params: {
-                      date: formattedDate,
-                      courseCode,
-                      courseSection,
-                      criteriaId: report.id,
-                      groupId: isGroupView ? groupId : undefined,
-                    },
-                  },
-                );
-                return {
-                  ...report,
-                  grades: gradesRes.data || [],
-                };
-              } catch (error) {
-                console.error(
-                  `Error fetching grades for report ${report.id}:`,
-                  error,
-                );
-                return {
-                  ...report,
-                  grades: [],
-                };
-              }
-            }),
-          );
-          setSavedReports(reportsWithGrades);
-        } else {
-          setSavedReports(allReports);
-        }
+        setSavedReports(response.data);
       } catch (error: any) {
         console.error('Error fetching criteria:', {
           message: error.message,
@@ -350,15 +306,7 @@ export function GradingTable({
     if (session?.user?.id) {
       fetchCriteria();
     }
-  }, [
-    courseId,
-    session?.user?.id,
-    selectedDate,
-    courseCode,
-    courseSection,
-    groupId,
-    isGroupView,
-  ]);
+  }, [courseId, session?.user?.id]);
 
   // Update originalScores when scores are first loaded
   useEffect(() => {
@@ -498,11 +446,35 @@ export function GradingTable({
   ) => {
     // If value is empty (Select Grade), delete the grades
     if (value === '') {
-      setScores((prev) => {
-        const newScores = { ...prev };
-        delete newScores[studentId];
-        return newScores;
-      });
+      try {
+        setIsLoading(true);
+        const formattedDate = selectedDate?.toISOString().split('T')[0];
+
+        // Delete grades for this student
+        await axiosInstance.delete(`/courses/${courseId}/grades`, {
+          data: {
+            date: formattedDate,
+            criteriaId: activeReport?.id,
+            studentId: studentId,
+            courseCode,
+            courseSection,
+          },
+        });
+
+        // Update local state
+        setScores((prev) => {
+          const newScores = { ...prev };
+          delete newScores[studentId];
+          return newScores;
+        });
+
+        toast.success('Grades deleted successfully');
+      } catch (error: any) {
+        console.error('Error deleting grades:', error);
+        toast.error(error.response?.data?.message || 'Failed to delete grades');
+      } finally {
+        setIsLoading(false);
+      }
       return;
     }
 
@@ -1201,340 +1173,1094 @@ export function GradingTable({
     ? newReport.rubricDetails.length - 1
     : -1;
 
-  // Add helper function to calculate ungraded count
-  const getUngradedCount = (report: GradingReport) => {
-    if (!report.grades) return students.length;
-
-    // Create a map of student IDs to their grades for quick lookup
-    const gradeMap = new Map(
-      (report.grades || []).map((grade: GradingScore) => [
-        grade.studentId,
-        grade,
-      ]),
-    );
-
-    // Count students who are either:
-    // 1. Not in the grades array at all
-    // 2. In the grades array but have no scores or all scores are 0/undefined
-    return students.filter((student) => {
-      const studentGrade = gradeMap.get(student.id);
-
-      // Case 1: No grade record exists
-      if (!studentGrade) return true;
-
-      // Case 2: Grade record exists but has no scores or all scores are 0/undefined
-      if (
-        !studentGrade.scores ||
-        studentGrade.scores.length === 0 ||
-        studentGrade.scores.every((score) => score === 0 || score === undefined)
-      ) {
-        return true;
-      }
-
-      return false;
-    }).length;
-  };
-
   return (
-    <div className='max-w-6xl mx-auto'>
-      <div className='bg-white rounded-lg shadow-md'>
-        {/* Card Header */}
-        <div className='flex items-center gap-2 px-4 py-3 border-b'>
-          <Button
-            variant='ghost'
-            className='h-9 w-9 p-0 hover:bg-gray-100'
-            onClick={() => window.history.back()}
-          >
-            <svg
-              className='h-5 w-5 text-gray-500'
-              fill='none'
-              stroke='currentColor'
-              strokeWidth='2'
-              viewBox='0 0 24 24'
+    <div className='min-h-screen w-full p-0'>
+      <Toaster
+        toastOptions={{
+          className: '',
+          style: {
+            background: '#fff',
+            color: '#124A69',
+            border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
+          },
+          success: {
+            style: {
+              background: '#fff',
+              color: '#124A69',
+              border: '1px solid #e5e7eb',
+            },
+            iconTheme: {
+              primary: '#124A69',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            style: {
+              background: '#fff',
+              color: '#dc2626',
+              border: '1px solid #e5e7eb',
+            },
+            iconTheme: {
+              primary: '#dc2626',
+              secondary: '#fff',
+            },
+          },
+          loading: {
+            style: {
+              background: '#fff',
+              color: '#124A69',
+              border: '1px solid #e5e7eb',
+            },
+          },
+        }}
+      />
+      <div className='max-w-6xl mx-auto'>
+        {/* x */}
+        <div className='bg-white rounded-lg shadow-md'>
+          {/* Card Header */}
+          <div className='flex items-center gap-2 px-4 py-3 border-b'>
+            <Button
+              variant='ghost'
+              className='h-9 w-9 p-0 hover:bg-gray-100'
+              onClick={() => window.history.back()}
             >
-              <path d='M15 18l-6-6 6-6' />
-            </svg>
-          </Button>
-          <div className='flex flex-col mr-4'>
-            <span className='text-lg font-bold text-[#124A69] leading-tight'>
-              {courseCode}
-            </span>
-            <span className='text-sm text-gray-500'>{courseSection}</span>
-          </div>
-          <div className='flex-1 flex items-center gap-2'>
-            <div className='relative w-64'>
               <svg
-                className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400'
+                className='h-5 w-5 text-gray-500'
                 fill='none'
                 stroke='currentColor'
                 strokeWidth='2'
                 viewBox='0 0 24 24'
               >
-                <circle cx='11' cy='11' r='8' />
-                <path d='m21 21-4.3-4.3' />
+                <path d='M15 18l-6-6 6-6' />
               </svg>
-              <Input
-                placeholder='Search a name'
-                className='w-full pl-9 rounded-full border-gray-200 h-9 bg-[#F5F6FA]'
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+            </Button>
+            <div className='flex flex-col mr-4'>
+              <span className='text-lg font-bold text-[#124A69] leading-tight'>
+                {courseCode}
+              </span>
+              <span className='text-sm text-gray-500'>{courseSection}</span>
+            </div>
+            <div className='flex-1 flex items-center gap-2'>
+              <div className='relative w-64'>
+                <svg
+                  className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400'
+                  fill='none'
+                  stroke='currentColor'
+                  strokeWidth='2'
+                  viewBox='0 0 24 24'
+                >
+                  <circle cx='11' cy='11' r='8' />
+                  <path d='m21 21-4.3-4.3' />
+                </svg>
+                <Input
+                  placeholder='Search a name'
+                  className='w-full pl-9 rounded-full border-gray-200 h-9 bg-[#F5F6FA]'
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              <div className='flex items-center gap-2'>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant='outline'
+                      className='w-[140px] h-9 rounded-full border-gray-200 bg-[#F5F6FA] justify-between'
+                    >
+                      <span>Filter</span>
+                      <svg
+                        className='h-4 w-4 text-gray-500'
+                        fill='none'
+                        stroke='currentColor'
+                        strokeWidth='2'
+                        viewBox='0 0 24 24'
+                      >
+                        <path d='M19 9l-7 7-7-7' />
+                      </svg>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className='w-[200px] p-4'>
+                    <div className='space-y-3'>
+                      <div className='flex items-center space-x-2'>
+                        <Checkbox
+                          id='passed'
+                          checked={gradeFilter.passed}
+                          onCheckedChange={() => handleFilterChange('passed')}
+                        />
+                        <label
+                          htmlFor='passed'
+                          className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+                        >
+                          Passed
+                        </label>
+                      </div>
+                      <div className='flex items-center space-x-2'>
+                        <Checkbox
+                          id='failed'
+                          checked={gradeFilter.failed}
+                          onCheckedChange={() => handleFilterChange('failed')}
+                        />
+                        <label
+                          htmlFor='failed'
+                          className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+                        >
+                          Failed
+                        </label>
+                      </div>
+                      <div className='flex items-center space-x-2'>
+                        <Checkbox
+                          id='noGrades'
+                          checked={gradeFilter.noGrades}
+                          onCheckedChange={() => handleFilterChange('noGrades')}
+                        />
+                        <label
+                          htmlFor='noGrades'
+                          className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+                        >
+                          No Grades
+                        </label>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+                {Object.entries(gradeFilter).some(([_, value]) => !value) && (
+                  <div className='flex items-center gap-1.5'>
+                    {gradeFilter.passed && (
+                      <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700'>
+                        Passed
+                      </span>
+                    )}
+                    {gradeFilter.failed && (
+                      <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700'>
+                        Failed
+                      </span>
+                    )}
+                    {gradeFilter.noGrades && (
+                      <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700'>
+                        No Grades
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
             <div className='flex items-center gap-2'>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
-                    variant='outline'
-                    className='w-[140px] h-9 rounded-full border-gray-200 bg-[#F5F6FA] justify-between'
+                    variant={'outline'}
+                    className={cn(
+                      'w-[200px] justify-start text-left font-normal h-9',
+                      !selectedDate && 'text-muted-foreground',
+                    )}
                   >
-                    <span>Filter</span>
-                    <svg
-                      className='h-4 w-4 text-gray-500'
-                      fill='none'
-                      stroke='currentColor'
-                      strokeWidth='2'
-                      viewBox='0 0 24 24'
-                    >
-                      <path d='M19 9l-7 7-7-7' />
-                    </svg>
+                    <CalendarIcon className='mr-2 h-4 w-4' />
+                    {selectedDate ? (
+                      format(selectedDate, 'PPP')
+                    ) : (
+                      <span>Pick a date</span>
+                    )}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className='w-[200px] p-4'>
-                  <div className='space-y-3'>
-                    <div className='flex items-center space-x-2'>
-                      <Checkbox
-                        id='passed'
-                        checked={gradeFilter.passed}
-                        onCheckedChange={() => handleFilterChange('passed')}
-                      />
-                      <label
-                        htmlFor='passed'
-                        className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
-                      >
-                        Passed
-                      </label>
-                    </div>
-                    <div className='flex items-center space-x-2'>
-                      <Checkbox
-                        id='failed'
-                        checked={gradeFilter.failed}
-                        onCheckedChange={() => handleFilterChange('failed')}
-                      />
-                      <label
-                        htmlFor='failed'
-                        className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
-                      >
-                        Failed
-                      </label>
-                    </div>
-                    <div className='flex items-center space-x-2'>
-                      <Checkbox
-                        id='noGrades'
-                        checked={gradeFilter.noGrades}
-                        onCheckedChange={() => handleFilterChange('noGrades')}
-                      />
-                      <label
-                        htmlFor='noGrades'
-                        className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
-                      >
-                        No Grades
-                      </label>
-                    </div>
-                  </div>
+                <PopoverContent className='w-auto p-0' align='end'>
+                  <Calendar
+                    mode='single'
+                    selected={selectedDate}
+                    onSelect={onDateSelect}
+                    initialFocus
+                    disabled={(date) => date > new Date()}
+                    defaultMonth={new Date()}
+                  />
                 </PopoverContent>
               </Popover>
-              {Object.entries(gradeFilter).some(([_, value]) => !value) && (
-                <div className='flex items-center gap-1.5'>
-                  {gradeFilter.passed && (
-                    <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700'>
-                      Passed
-                    </span>
-                  )}
-                  {gradeFilter.failed && (
-                    <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700'>
-                      Failed
-                    </span>
-                  )}
-                  {gradeFilter.noGrades && (
-                    <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700'>
-                      No Grades
-                    </span>
-                  )}
-                </div>
-              )}
+              <Button
+                onClick={handleExport}
+                className='ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center gap-2'
+              >
+                <svg
+                  className='w-4 h-4'
+                  fill='none'
+                  stroke='currentColor'
+                  strokeWidth='2'
+                  viewBox='0 0 24 24'
+                >
+                  <path d='M12 5v14m7-7H5' />
+                </svg>
+                Export to Excel
+              </Button>
             </div>
           </div>
-        </div>
-
-        {/* Table */}
-        <div className='overflow-x-auto max-h-[calc(100vh-300px)]'>
-          <table className='w-full border-separate border-spacing-0 table-fixed'>
-            <GradingTableHeader rubricDetails={rubricDetails} />
-            {isGroupView ? (
-              <tbody>
-                {students.map((student, idx) => {
-                  const studentScore = scores[student.id] || {
-                    studentId: student.id,
-                    scores: new Array(rubricDetails.length).fill(0),
-                    total: 0,
-                  };
-                  return (
-                    <GradingTableRow
-                      key={student.id}
-                      student={student}
-                      rubricDetails={rubricDetails}
-                      activeReport={activeReport}
-                      studentScore={studentScore}
-                      handleScoreChange={handleScoreChange}
-                      idx={idx}
-                    />
-                  );
-                })}
-              </tbody>
-            ) : (
-              <tbody>
-                {isLoading ? (
-                  <tr>
-                    <td
-                      colSpan={rubricDetails.length + 3}
-                      className='text-center py-8'
-                    >
-                      <div className='flex flex-col items-center gap-2'>
-                        <Loader2 className='h-8 w-8 animate-spin text-[#124A69]' />
-                        <p className='text-sm text-gray-600'>
-                          {loadingMessage}
-                        </p>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  (() => {
-                    const { paginatedStudents, totalPages, totalStudents } =
-                      getPaginatedStudents(students);
-
-                    if (paginatedStudents.length === 0) {
-                      return (
-                        <tr>
-                          <td
-                            colSpan={rubricDetails.length + 3}
-                            className='text-center py-8 text-muted-foreground'
-                          >
-                            No students found
-                          </td>
-                        </tr>
-                      );
-                    }
-
-                    return paginatedStudents.map((student, idx) => {
-                      const studentScore = scores[student.id] || {
-                        studentId: student.id,
-                        scores: new Array(rubricDetails.length).fill(0),
-                        total: 0,
-                      };
-                      return (
-                        <GradingTableRow
-                          key={student.id}
-                          student={student}
-                          rubricDetails={rubricDetails}
-                          activeReport={activeReport}
-                          studentScore={studentScore}
-                          handleScoreChange={handleScoreChange}
-                          idx={idx}
-                        />
-                      );
-                    });
-                  })()
-                )}
-              </tbody>
-            )}
-          </table>
-        </div>
-        {/* Footer Bar */}
-        <div className='flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 border-t bg-white'>
-          <div className='flex items-center gap-2'>
-            <p className='text-sm text-gray-500 whitespace-nowrap'>
-              {totalStudents > 0 ? (
-                <>
-                  {currentPage * studentsPerPage - (studentsPerPage - 1)}-
-                  {Math.min(currentPage * studentsPerPage, totalStudents)} of{' '}
-                  {totalStudents} students
-                </>
+          <Dialog open={showCriteriaDialog} onOpenChange={handleDialogClose}>
+            <DialogContent className='sm:max-w-[450px]'>
+              <DialogHeader>
+                <DialogTitle className='text-[#124A69] text-2xl font-bold'>
+                  Grading Report
+                </DialogTitle>
+                <DialogDescription className='text-gray-500'>
+                  Select existing report or create new ones
+                </DialogDescription>
+              </DialogHeader>
+              {criteriaLoading ? (
+                <div className='flex justify-center items-center py-8'>
+                  <Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
+                </div>
               ) : (
-                'No students found'
-              )}
-            </p>
-          </div>
-          <div className='flex justify-end'>
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    onClick={() =>
-                      setCurrentPage((prev) => Math.max(prev - 1, 1))
-                    }
-                    className={
-                      currentPage === 1
-                        ? 'pointer-events-none opacity-50'
-                        : 'hover:bg-gray-100'
-                    }
-                  />
-                </PaginationItem>
-                {[...Array(totalPages)].map((_, i) => (
-                  <PaginationItem key={i}>
-                    <PaginationLink
-                      isActive={currentPage === i + 1}
-                      onClick={() => setCurrentPage(i + 1)}
-                      className={`${
-                        currentPage === i + 1
-                          ? 'bg-[#124A69] text-white hover:bg-[#0d3a56]'
-                          : 'hover:bg-gray-100'
-                      }`}
+                <Tabs defaultValue='existing' className='w-full'>
+                  <TabsList className='grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg'>
+                    <TabsTrigger
+                      value='existing'
+                      className='data-[state=active]:bg-white data-[state=active]:shadow-sm'
                     >
-                      {i + 1}
-                    </PaginationLink>
-                  </PaginationItem>
-                ))}
-                <PaginationItem>
-                  <PaginationNext
-                    onClick={() =>
-                      setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-                    }
-                    className={
-                      currentPage === totalPages
-                        ? 'pointer-events-none opacity-50'
-                        : 'hover:bg-gray-100'
-                    }
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          </div>
+                      Use Existing
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value='new'
+                      className='data-[state=active]:bg-white data-[state=active]:shadow-sm'
+                    >
+                      Create New
+                    </TabsTrigger>
+                  </TabsList>
+                  <TabsContent value='existing'>
+                    <div className='space-y-4 py-4'>
+                      {savedReports.filter((report) => {
+                        if (!selectedDate) return false;
+
+                        // Convert both dates to local midnight for accurate comparison
+                        const reportDate = new Date(report.date);
+                        reportDate.setHours(0, 0, 0, 0);
+
+                        const selected = new Date(selectedDate);
+                        selected.setHours(0, 0, 0, 0);
+
+                        return reportDate.getTime() === selected.getTime();
+                      }).length > 0 ? (
+                        <div className='flex flex-col items-center'>
+                          <Select
+                            value={selectedReport}
+                            onValueChange={setSelectedReport}
+                          >
+                            <SelectTrigger className='bg-gray-50 border-gray-200 w-full max-w-[400px]'>
+                              <SelectValue placeholder='Select saved report' />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {savedReports
+                                .filter((report) => {
+                                  if (!selectedDate) return false;
+
+                                  // Convert both dates to local midnight for accurate comparison
+                                  const reportDate = new Date(report.date);
+                                  reportDate.setHours(0, 0, 0, 0);
+
+                                  const selected = new Date(selectedDate);
+                                  selected.setHours(0, 0, 0, 0);
+
+                                  return (
+                                    reportDate.getTime() === selected.getTime()
+                                  );
+                                })
+                                .map((report) => {
+                                  // Count students without grades for this report
+                                  const ungradedCount = students.filter(
+                                    (student) => {
+                                      const studentScore = scores[student.id];
+                                      // Check if student has no scores or if any of their scores are 0
+                                      return (
+                                        !studentScore ||
+                                        studentScore.scores.length === 0 ||
+                                        studentScore.scores.every(
+                                          (score) => score === 0,
+                                        )
+                                      );
+                                    },
+                                  ).length;
+
+                                  return (
+                                    <SelectItem
+                                      key={report.id}
+                                      value={report.id}
+                                    >
+                                      {report.name}
+                                      <span className='text-sm text-gray-500 ml-2'>
+                                        ({ungradedCount} students ungraded)
+                                      </span>
+                                    </SelectItem>
+                                  );
+                                })}
+                            </SelectContent>
+                          </Select>
+                          {selectedReport && (
+                            <div className='text-sm text-gray-500 mt-2'>
+                              Created by:{' '}
+                              {savedReports.find((c) => c.id === selectedReport)
+                                ?.user?.name || 'Unknown'}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p className='text-sm text-gray-500 text-center py-4'>
+                          No saved reports found for this date.
+                          <br />
+                          Create new ones in the other tab.
+                        </p>
+                      )}
+                      <DialogFooter className='gap-2 sm:gap-2'>
+                        <Button
+                          variant='outline'
+                          onClick={handleDialogClose}
+                          className='border-gray-200'
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={handleApplyCriteria}
+                          disabled={!selectedReport}
+                          className='bg-[#124A69] hover:bg-[#0d3a56]'
+                        >
+                          Apply Selected Report
+                        </Button>
+                      </DialogFooter>
+                    </div>
+                  </TabsContent>
+                  <TabsContent value='new'>
+                    <div className='space-y-4 py-4'>
+                      <div className='grid gap-4'>
+                        <div className='grid gap-2'>
+                          <label
+                            htmlFor='name'
+                            className='text-sm font-medium text-gray-700'
+                          >
+                            Report Name
+                          </label>
+                          <Input
+                            id='name'
+                            value={newReport.name}
+                            onChange={handleReportNameChange}
+                            placeholder='e.g., Midterm Exam'
+                            maxLength={25}
+                            className={`bg-gray-50 border-gray-200 ${
+                              validationErrors.name ? 'border-red-500' : ''
+                            }`}
+                          />
+                          <div className='flex justify-between mt-1'>
+                            {validationErrors.name && (
+                              <p className='text-sm text-red-500'>
+                                {validationErrors.name}
+                              </p>
+                            )}
+                            <p className='text-xs text-gray-500 -mt-2 ml-auto'>
+                              {newReport.name.length}/25
+                            </p>
+                          </div>
+                        </div>
+                        <div className='grid gap-2'>
+                          <label
+                            htmlFor='rubrics'
+                            className='text-sm font-medium text-gray-700'
+                          >
+                            Number of Rubrics
+                          </label>
+                          <Select
+                            value={newReport.rubrics}
+                            onValueChange={handleRubricCountChange}
+                          >
+                            <SelectTrigger className='bg-gray-50 border-gray-200'>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value='2'>2 Rubrics</SelectItem>
+                              <SelectItem value='3'>3 Rubrics</SelectItem>
+                              <SelectItem value='4'>4 Rubrics</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className='grid grid-cols-2 gap-4'>
+                          <div className='grid gap-2'>
+                            <label
+                              htmlFor='scoringRange'
+                              className='text-sm font-medium text-gray-700'
+                            >
+                              Scoring Range
+                            </label>
+                            <Select
+                              value={newReport.scoringRange}
+                              onValueChange={(value) =>
+                                setNewReport((prev) => ({
+                                  ...prev,
+                                  scoringRange: value,
+                                }))
+                              }
+                            >
+                              <SelectTrigger className='bg-gray-50 border-gray-200'>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value='5'>1-5</SelectItem>
+                                <SelectItem value='10'>1-10</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div className='grid gap-2'>
+                            <label
+                              htmlFor='passingScore'
+                              className='text-sm font-medium text-gray-700'
+                            >
+                              Passing Score (%)
+                            </label>
+                            <Select
+                              value={newReport.passingScore}
+                              onValueChange={(value) =>
+                                setNewReport((prev) => ({
+                                  ...prev,
+                                  passingScore: value,
+                                }))
+                              }
+                            >
+                              <SelectTrigger className='bg-gray-50 border-gray-200'>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value='60'>60%</SelectItem>
+                                <SelectItem value='65'>65%</SelectItem>
+                                <SelectItem value='70'>70%</SelectItem>
+                                <SelectItem value='75'>75%</SelectItem>
+                                <SelectItem value='80'>80%</SelectItem>
+                                <SelectItem value='85'>85%</SelectItem>
+                                <SelectItem value='90'>90%</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        <div className='grid gap-4 mt-2'>
+                          <label className='text-sm font-medium text-gray-700'>
+                            Rubric Details
+                          </label>
+                          <div className='space-y-4 max-h-[200px] overflow-y-auto pr-2'>
+                            {newReport.rubricDetails.map((rubric, index) => (
+                              <div
+                                key={index}
+                                className='flex items-center gap-2'
+                              >
+                                <div className='relative w-[400px]'>
+                                  <Input
+                                    value={
+                                      isGroupView &&
+                                      index ===
+                                        newReport.rubricDetails.length - 1
+                                        ? 'Participation'
+                                        : rubric.name
+                                    }
+                                    onChange={(e) =>
+                                      updateRubricDetail(
+                                        index,
+                                        'name',
+                                        e.target.value,
+                                      )
+                                    }
+                                    placeholder={`Rubric ${index + 1} name`}
+                                    className={`bg-gray-50 border-gray-200 ${
+                                      validationErrors.rubrics?.[index]
+                                        ? 'border-red-500'
+                                        : ''
+                                    } ${
+                                      isGroupView &&
+                                      index ===
+                                        newReport.rubricDetails.length - 1
+                                        ? 'bg-gray-100 cursor-not-allowed'
+                                        : ''
+                                    }`}
+                                    disabled={
+                                      isGroupView &&
+                                      index ===
+                                        newReport.rubricDetails.length - 1
+                                    }
+                                  />
+                                  {validationErrors.rubrics?.[index] && (
+                                    <p className='text-sm text-red-500'>
+                                      {validationErrors.rubrics[index]}
+                                    </p>
+                                  )}
+                                  <p className='text-xs text-gray-500 -mt-1 ml-auto'>
+                                    {rubric.name.length}/15
+                                  </p>
+                                </div>
+                                <div className='relative w-[200px] -mt-4'>
+                                  <div className='flex items-center gap-2'>
+                                    <Slider
+                                      value={[rubric.weight]}
+                                      onValueChange={(value: number[]) =>
+                                        updateRubricDetail(
+                                          index,
+                                          'weight',
+                                          value[0],
+                                        )
+                                      }
+                                      max={100}
+                                      step={1}
+                                      className='w-[100px]'
+                                    />
+                                    <Input
+                                      value={rubric.weight}
+                                      onChange={(e) =>
+                                        updateRubricDetail(
+                                          index,
+                                          'weight',
+                                          parseInt(e.target.value),
+                                        )
+                                      }
+                                      type='number'
+                                      min={0}
+                                      max={100}
+                                      className='w-[60px] bg-gray-50 border-gray-200'
+                                    />
+                                    <span className='text-sm text-gray-500'>
+                                      %
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className='flex justify-end mt-2'>
+                            <p className='text-sm font-medium'>
+                              Total Weight:{' '}
+                              <span
+                                className={
+                                  newReport.rubricDetails.reduce(
+                                    (sum, r) => sum + r.weight,
+                                    0,
+                                  ) === 100
+                                    ? 'text-green-600'
+                                    : 'text-red-500'
+                                }
+                              >
+                                {newReport.rubricDetails.reduce(
+                                  (sum, r) => sum + r.weight,
+                                  0,
+                                )}
+                                %
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <DialogFooter className='gap-2 sm:gap-2'>
+                        <Button
+                          variant='outline'
+                          onClick={handleDialogClose}
+                          className='border-gray-200'
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={handleCreateReport}
+                          disabled={!newReport.name || !newReport.rubrics}
+                          className='bg-[#124A69] hover:bg-[#0d3a56]'
+                        >
+                          Create New Report
+                        </Button>
+                      </DialogFooter>
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              )}
+            </DialogContent>
+          </Dialog>
+
+          {!showCriteriaDialog && activeReport && (
+            <div className='space-y-4 p-0'>
+              {/* Grading Table */}
+              <div className='overflow-x-auto max-h-[calc(100vh-300px)]'>
+                <table className='w-full border-separate border-spacing-0 table-fixed'>
+                  <GradingTableHeader rubricDetails={rubricDetails} />
+                  {isGroupView ? (
+                    <tbody>
+                      {students.map((student, idx) => {
+                        const studentScore = scores[student.id] || {
+                          studentId: student.id,
+                          scores: new Array(rubricDetails.length).fill(0),
+                          total: 0,
+                        };
+                        return (
+                          <tr
+                            key={student.id}
+                            className={
+                              idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F6FA]'
+                            }
+                          >
+                            <td className='sticky left-0 z-10 bg-white px-4 py-2 align-middle w-[300px]'>
+                              <div className='flex items-center gap-3'>
+                                <img
+                                  src={student.image}
+                                  alt=''
+                                  className='w-8 h-8 rounded-full object-cover'
+                                />
+                                <span>{`${student.lastName}, ${
+                                  student.firstName
+                                }${
+                                  student.middleInitial
+                                    ? ` ${student.middleInitial}.`
+                                    : ''
+                                }`}</span>
+                              </div>
+                            </td>
+                            {rubricDetails.map((rubric, rubricIdx) => {
+                              if (rubricIdx !== participationIndex) {
+                                if (idx === 0) {
+                                  // Determine background color for group rubric cell
+                                  const groupValue =
+                                    students.length > 0 &&
+                                    scores[students[0].id]?.scores[
+                                      rubricIdx
+                                    ] !== undefined
+                                      ? scores[students[0].id].scores[rubricIdx]
+                                      : '';
+                                  let cellBg = '';
+                                  if (groupValue) {
+                                    if (groupValue <= 3) {
+                                      cellBg = 'bg-red-50';
+                                    } else {
+                                      cellBg = 'bg-green-50';
+                                    }
+                                  }
+                                  return (
+                                    <td
+                                      key={rubricIdx}
+                                      rowSpan={students.length}
+                                      className={`text-center px-4 py-2 align-middle w-[120px] ${cellBg}`}
+                                    >
+                                      <select
+                                        className='w-full border rounded px-2 py-1'
+                                        value={groupValue}
+                                        onChange={(e) => {
+                                          const value = Number(e.target.value);
+                                          setScores((prev) => {
+                                            const updated = { ...prev };
+                                            students.forEach((student) => {
+                                              const studentScores =
+                                                updated[student.id]?.scores ||
+                                                new Array(
+                                                  rubricDetails.length,
+                                                ).fill(0);
+                                              studentScores[rubricIdx] = value;
+                                              updated[student.id] = {
+                                                ...updated[student.id],
+                                                scores: studentScores,
+                                                total:
+                                                  calculateTotal(studentScores),
+                                              };
+                                            });
+                                            return updated;
+                                          });
+                                        }}
+                                      >
+                                        <option value=''>Select grade</option>
+                                        {Array.from(
+                                          {
+                                            length:
+                                              Number(
+                                                activeReport?.scoringRange,
+                                              ) || 5,
+                                          },
+                                          (_, i) => (
+                                            <option key={i + 1} value={i + 1}>
+                                              {i + 1}
+                                            </option>
+                                          ),
+                                        )}
+                                      </select>
+                                    </td>
+                                  );
+                                } else {
+                                  return null;
+                                }
+                              } else {
+                                // Participation: always per-student
+                                const value =
+                                  studentScore.scores[rubricIdx] || '';
+                                let cellBg = '';
+                                if (value) {
+                                  if (value <= 3) {
+                                    cellBg = 'bg-red-50';
+                                  } else {
+                                    cellBg = 'bg-green-50';
+                                  }
+                                }
+                                return (
+                                  <td
+                                    key={rubricIdx}
+                                    className={`text-center px-4 py-2 align-middle w-[120px] ${cellBg}`}
+                                  >
+                                    <select
+                                      className='w-full border rounded px-2 py-1'
+                                      value={value}
+                                      onChange={(e) => {
+                                        const v = Number(e.target.value);
+                                        handleScoreChange(
+                                          student.id,
+                                          rubricIdx,
+                                          v,
+                                        );
+                                      }}
+                                    >
+                                      <option value=''>Select grade</option>
+                                      {Array.from(
+                                        {
+                                          length:
+                                            Number(
+                                              activeReport?.scoringRange,
+                                            ) || 5,
+                                        },
+                                        (_, i) => (
+                                          <option key={i + 1} value={i + 1}>
+                                            {i + 1}
+                                          </option>
+                                        ),
+                                      )}
+                                    </select>
+                                  </td>
+                                );
+                              }
+                            })}
+                            <td className='text-center px-4 py-2 align-middle font-bold w-[100px]'>
+                              {studentScore.total
+                                ? `${studentScore.total.toFixed(0)}%`
+                                : '--'}
+                            </td>
+                            <td className='text-center px-4 py-2 align-middle w-[100px]'>
+                              {studentScore.scores.some(
+                                (score) => score === 0,
+                              ) ? (
+                                <span className='px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600'>
+                                  ---
+                                </span>
+                              ) : (
+                                <span
+                                  className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                    studentScore.total >=
+                                    Number(activeReport?.passingScore)
+                                      ? 'bg-green-100 text-green-800'
+                                      : 'bg-red-100 text-red-800'
+                                  }`}
+                                >
+                                  {studentScore.total >=
+                                  Number(activeReport?.passingScore)
+                                    ? 'PASSED'
+                                    : 'FAILED'}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  ) : (
+                    <tbody>
+                      {isLoading
+                        ? Array.from({ length: 5 }).map((_, idx) => (
+                            <tr
+                              key={idx}
+                              className={
+                                idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F6FA]'
+                              }
+                            >
+                              <td className='sticky left-0 z-10 bg-white px-4 py-2 align-middle w-[300px]'>
+                                <div className='flex items-center gap-3'>
+                                  <div className='w-8 h-8 rounded-full bg-gray-200 animate-pulse' />
+                                  <div className='h-4 w-32 bg-gray-200 rounded animate-pulse' />
+                                </div>
+                              </td>
+                              {rubricDetails.map((_, rubricIdx) => (
+                                <td
+                                  key={rubricIdx}
+                                  className='text-center px-4 py-2 align-middle w-[120px]'
+                                >
+                                  <div className='h-8 w-full bg-gray-200 rounded animate-pulse' />
+                                </td>
+                              ))}
+                              <td className='text-center px-4 py-2 align-middle w-[100px]'>
+                                <div className='h-4 w-16 bg-gray-200 rounded animate-pulse mx-auto' />
+                              </td>
+                              <td className='text-center px-4 py-2 align-middle w-[100px]'>
+                                <div className='h-6 w-20 bg-gray-200 rounded-full animate-pulse mx-auto' />
+                              </td>
+                            </tr>
+                          ))
+                        : (() => {
+                            const {
+                              paginatedStudents,
+                              totalPages,
+                              totalStudents,
+                            } = getPaginatedStudents(students);
+
+                            if (paginatedStudents.length === 0) {
+                              return (
+                                <tr>
+                                  <td
+                                    colSpan={rubricDetails.length + 3}
+                                    className='text-center py-8 text-muted-foreground'
+                                  >
+                                    No students found
+                                  </td>
+                                </tr>
+                              );
+                            }
+
+                            return paginatedStudents.map((student, idx) => {
+                              const studentScore = scores[student.id] || {
+                                studentId: student.id,
+                                scores: new Array(rubricDetails.length).fill(0),
+                                total: 0,
+                              };
+                              return (
+                                <GradingTableRow
+                                  key={student.id}
+                                  student={student}
+                                  rubricDetails={rubricDetails}
+                                  activeReport={activeReport}
+                                  studentScore={studentScore}
+                                  handleScoreChange={handleScoreChange}
+                                  idx={idx}
+                                />
+                              );
+                            });
+                          })()}
+                    </tbody>
+                  )}
+                </table>
+              </div>
+              {/* Footer Bar */}
+              <div className='flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 border-t bg-white'>
+                <div className='flex flex-col sm:flex-row items-center gap-4 w-full'>
+                  <div className='flex items-center gap-2'>
+                    <p className='text-sm text-gray-500 whitespace-nowrap'>
+                      {totalStudents > 0 ? (
+                        <>
+                          {currentPage * studentsPerPage -
+                            (studentsPerPage - 1)}
+                          -
+                          {Math.min(
+                            currentPage * studentsPerPage,
+                            totalStudents,
+                          )}{' '}
+                          of {totalStudents} students
+                        </>
+                      ) : (
+                        'No students found'
+                      )}
+                    </p>
+                  </div>
+                  <div className='flex-1 flex justify-center'>
+                    <Pagination>
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious
+                            onClick={() =>
+                              setCurrentPage((prev) => Math.max(prev - 1, 1))
+                            }
+                            className={
+                              currentPage === 1
+                                ? 'pointer-events-none opacity-50'
+                                : 'hover:bg-gray-100'
+                            }
+                          />
+                        </PaginationItem>
+                        {[...Array(totalPages)].map((_, i) => (
+                          <PaginationItem key={i}>
+                            <PaginationLink
+                              isActive={currentPage === i + 1}
+                              onClick={() => setCurrentPage(i + 1)}
+                              className={`${
+                                currentPage === i + 1
+                                  ? 'bg-[#124A69] text-white hover:bg-[#0d3a56]'
+                                  : 'hover:bg-gray-100'
+                              }`}
+                            >
+                              {i + 1}
+                            </PaginationLink>
+                          </PaginationItem>
+                        ))}
+                        <PaginationItem>
+                          <PaginationNext
+                            onClick={() =>
+                              setCurrentPage((prev) =>
+                                Math.min(prev + 1, totalPages),
+                              )
+                            }
+                            className={
+                              currentPage === totalPages
+                                ? 'pointer-events-none opacity-50'
+                                : 'hover:bg-gray-100'
+                            }
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                  </div>
+                  <div className='flex items-center gap-2'>
+                    <Button
+                      variant='outline'
+                      onClick={() => setShowResetDialog(true)}
+                      className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
+                    >
+                      Reset
+                    </Button>
+                    <Button
+                      onClick={handleSaveGrades}
+                      disabled={isLoading || !hasChanges()}
+                      className='h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] disabled:opacity-50 disabled:cursor-not-allowed'
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                          Saving...
+                        </>
+                      ) : (
+                        'Save Grades'
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          {!showCriteriaDialog && !activeReport && (
+            <div className='flex flex-col items-center justify-center py-12 text-center'>
+              {criteriaLoading ? (
+                <div className='flex flex-col items-center gap-4'>
+                  <Loader2 className='h-8 w-8 animate-spin text-[#124A69]' />
+                  <p className='text-gray-500'>Loading grading criteria...</p>
+                </div>
+              ) : (
+                <>
+                  <div className='text-2xl font-semibold text-[#124A69] mb-2'>
+                    No Report Selected
+                  </div>
+                  <p className='text-gray-500'>
+                    Please select a date and create or choose a grading report
+                    to begin.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
-      {/* Action Buttons */}
-      <div className='flex justify-end gap-2 mt-4'>
-        <Button
-          variant='outline'
-          onClick={() => setShowResetDialog(true)}
-          className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
-        >
-          Reset
-        </Button>
-        <Button
-          onClick={handleSaveGrades}
-          disabled={isLoading || !hasChanges()}
-          className='h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] disabled:opacity-50 disabled:cursor-not-allowed'
-        >
-          {isLoading ? (
-            <>
-              <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-              Saving...
-            </>
-          ) : (
-            'Save Grades'
+
+      {/* Reset Confirmation Dialog */}
+      <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <DialogContent className='sm:max-w-[425px]'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              Reset Grades
+            </DialogTitle>
+            <DialogDescription className='text-gray-500'>
+              Are you sure you want to reset all grades? This action cannot be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className='gap-2 sm:gap-2'>
+            <Button
+              variant='outline'
+              onClick={() => setShowResetDialog(false)}
+              className='border-gray-200'
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleResetGrades}
+              className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+            >
+              Reset Grades
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Export Preview Dialog */}
+      <Dialog open={showExportPreview} onOpenChange={setShowExportPreview}>
+        <DialogContent className='sm:max-w-[800px] max-h-[80vh] overflow-y-auto'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              Export Preview
+            </DialogTitle>
+            <DialogDescription className='text-gray-500'>
+              Preview how your grades will look in the Excel file
+            </DialogDescription>
+          </DialogHeader>
+
+          {exportData && (
+            <div className='mt-4 overflow-x-auto'>
+              <table className='w-full border-collapse'>
+                <tbody>
+                  {exportData.header.map((row, rowIndex) => (
+                    <tr key={`header-${rowIndex}`}>
+                      {row.map((cell, cellIndex) => (
+                        <td
+                          key={`header-cell-${cellIndex}`}
+                          className={`border border-gray-200 p-2 ${
+                            rowIndex === 0
+                              ? 'bg-[#124A69] text-white text-center font-bold'
+                              : rowIndex === 5
+                              ? 'bg-gray-100 font-medium'
+                              : ''
+                          }`}
+                          colSpan={
+                            rowIndex === 0 ? exportData.header[5].length : 1
+                          }
+                        >
+                          {cell}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  {exportData.studentRows.map((row, rowIndex) => (
+                    <tr key={`student-${rowIndex}`}>
+                      {row.map((cell, cellIndex) => (
+                        <td
+                          key={`student-cell-${cellIndex}`}
+                          className={`border border-gray-200 p-2 ${
+                            cellIndex === row.length - 1
+                              ? cell === 'PASSED'
+                                ? 'text-green-600 font-medium'
+                                : cell === 'FAILED'
+                                ? 'text-red-600 font-medium'
+                                : ''
+                              : ''
+                          }`}
+                        >
+                          {cell}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
-        </Button>
-      </div>
+
+          <DialogFooter className='gap-2 sm:gap-2 mt-4'>
+            <Button
+              variant='outline'
+              onClick={() => setShowExportPreview(false)}
+              className='border-gray-200'
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmExport}
+              className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+            >
+              Export to Excel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

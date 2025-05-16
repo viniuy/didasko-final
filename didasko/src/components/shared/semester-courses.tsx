@@ -17,7 +17,6 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import axiosInstance from '@/lib/axios';
-import { Skeleton } from '@/components/ui/skeleton';
 
 interface Course {
   id: string;
@@ -43,7 +42,7 @@ interface Schedule {
 
 interface SemesterCoursesProps {
   semester: '1st Semester' | '2nd Semester';
-  type: 'attendance' | 'recitation' | 'quiz' | 'gradebook' | 'reporting';
+  type: 'attendance' | 'grading';
 }
 
 const CourseCard = ({
@@ -51,18 +50,12 @@ const CourseCard = ({
   type,
 }: {
   course: Course;
-  type: 'attendance' | 'recitation' | 'quiz' | 'gradebook' | 'reporting';
+  type: 'attendance' | 'grading';
 }) => {
   const href =
     type === 'attendance'
       ? `/attendance/class?courseId=${course.id}`
-      : type === 'recitation'
-      ? `/grading/recitation`
-      : type === 'quiz'
-      ? `/grading/quiz/${course.code}/${course.section}`
-      : type === 'reporting'
-      ? `/grading/reporting/${course.code}/${course.section}`
-      : `/grading/gradebook`;
+      : `/grading/reporting/${course.code}/${course.section}`;
 
   return (
     <Card className='bg-[#124A69] text-white rounded-lg shadow-md w-full max-w-[320px] sm:max-w-[360px] md:max-w-[320px] lg:max-w-[380px] xl:max-w-[440px] flex flex-col justify-between h-45'>
@@ -91,17 +84,7 @@ const CourseCard = ({
           variant='secondary'
           className='bg-[#FAEDCB] text-black text-sm'
         >
-          <Link href={href}>
-            {type === 'attendance'
-              ? 'View Attendance'
-              : type === 'recitation'
-              ? 'View Recitation'
-              : type === 'quiz'
-              ? 'View Quiz'
-              : type === 'reporting'
-              ? 'View Reporting'
-              : 'View Gradebook'}
-          </Link>
+          <Link href={href}>View Details</Link>
         </Button>
       </div>
     </Card>
@@ -110,20 +93,12 @@ const CourseCard = ({
 
 // Loading Skeleton Component
 const LoadingSkeleton = ({ index }: { index: number }) => (
-  <Card className='bg-white text-[#124A69] rounded-lg shadow-md w-full max-w-[320px] sm:max-w-[360px] md:max-w-[320px] lg:max-w-[380px] xl:max-w-[440px] flex flex-col justify-between h-45'>
-    <div>
-      <div className='-mt-7 p-4 flex justify-between items-center'>
-        <Skeleton className='h-7 w-3/4 bg-gray-200' />
-        <Skeleton className='h-[50px] w-[50px] rounded-full bg-gray-200' />
-      </div>
-      <div className='p-4 -mt-8 space-y-2'>
-        <Skeleton className='h-4 w-1/4 bg-gray-200' />
-        <Skeleton className='h-4 w-2/5 bg-gray-200' />
-        <Skeleton className='h-3 w-1/2 bg-gray-200' />
-      </div>
-    </div>
-    <div className='flex justify-end -mt-9 p-2'>
-      <Skeleton className='h-8 w-28 bg-gray-200 rounded-md' />
+  <Card key={`skeleton-${index}`} className='animate-pulse'>
+    <div className='p-4 space-y-3'>
+      <div className='h-6 w-3/4 bg-gray-200 rounded'></div>
+      <div className='h-4 w-1/2 bg-gray-200 rounded'></div>
+      <div className='h-4 w-2/3 bg-gray-200 rounded'></div>
+      <div className='h-8 w-full bg-gray-200 rounded mt-4'></div>
     </div>
   </Card>
 );

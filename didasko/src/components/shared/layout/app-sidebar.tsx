@@ -119,26 +119,7 @@ export function AppSidebar() {
   const items = isAdmin ? adminItems : academicHeadItems;
 
   const handleLogout = async () => {
-    try {
-      // First call our custom logout endpoint
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-      });
-
-      // Then sign out from NextAuth
-      await signOut({
-        callbackUrl: '/',
-        redirect: true,
-      });
-    } catch (error) {
-      console.error('Logout error:', error);
-      // Even if our custom logout fails, still try to sign out from NextAuth
-      await signOut({
-        callbackUrl: '/',
-        redirect: true,
-      });
-    }
+    await signOut({ callbackUrl: '/' });
   };
 
   useEffect(() => {
@@ -241,7 +222,7 @@ export function AppSidebar() {
                           />
                         </button>
                       </CollapsibleTrigger>
-                      <CollapsibleContent className='data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up overflow-hidden'>
+                      <CollapsibleContent>
                         <SidebarGroupContent>
                           <SidebarMenu>
                             {gradingSubItems.map((item) => (

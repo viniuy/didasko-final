@@ -27,12 +27,11 @@ import { useEffect, useState } from 'react';
 import { Textarea } from './ui/textarea';
 import { format, isSameDay, isBefore, isAfter } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
-import toast, { Toaster } from 'react-hot-toast';
+import { useToast } from '@/components/ui/use-toast';
 import { useSession } from 'next-auth/react';
 import { Role } from '@/lib/types';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
-import { Skeleton } from '@/components/ui/skeleton';
 
 import {
   Popover,
@@ -60,6 +59,7 @@ import {
 } from '@/lib/event-handlers';
 
 export default function UpcomingEvents() {
+  const { toast } = useToast();
   const { data: session, status } = useSession();
   const userRole = session?.user?.role as Role | undefined;
 
@@ -118,39 +118,16 @@ export default function UpcomingEvents() {
     description: string,
     variant: 'success' | 'error' = 'success',
   ) => {
-    if (variant === 'success') {
-      toast.success(description, {
-        style: {
-          background: '#fff',
-          color: '#124A69',
-          border: '1px solid #e5e7eb',
-          boxShadow:
-            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-          borderRadius: '0.5rem',
-          padding: '1rem',
-        },
-        iconTheme: {
-          primary: '#124A69',
-          secondary: '#fff',
-        },
-      });
-    } else {
-      toast.error(description, {
-        style: {
-          background: '#fff',
-          color: '#dc2626',
-          border: '1px solid #e5e7eb',
-          boxShadow:
-            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-          borderRadius: '0.5rem',
-          padding: '1rem',
-        },
-        iconTheme: {
-          primary: '#dc2626',
-          secondary: '#fff',
-        },
-      });
-    }
+    setAlert({
+      show: true,
+      title,
+      description,
+      variant,
+    });
+
+    setTimeout(() => {
+      setAlert((prev) => ({ ...prev, show: false }));
+    }, 3000);
   };
 
   // Function to refresh events
@@ -158,21 +135,7 @@ export default function UpcomingEvents() {
     const { events, error } = await getEvents();
 
     if (error) {
-      toast.error(error, {
-        style: {
-          background: '#fff',
-          color: '#dc2626',
-          border: '1px solid #e5e7eb',
-          boxShadow:
-            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-          borderRadius: '0.5rem',
-          padding: '1rem',
-        },
-        iconTheme: {
-          primary: '#dc2626',
-          secondary: '#fff',
-        },
-      });
+      showAlert('Error', error, 'error');
       return false;
     }
 
@@ -196,10 +159,10 @@ export default function UpcomingEvents() {
     fromTime: string,
     toTime: string,
   ): boolean {
-    if (!date) return true;
-
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    if (!date) return true;
 
     // Check if date is in the past
     if (isBefore(date, today)) {
@@ -207,7 +170,7 @@ export default function UpcomingEvents() {
       return false;
     }
 
-    // Only check time requirements if we have both date and time
+    // If date is today, check if time is in the past
     if (isSameDay(date, today) && fromTime) {
       const [hours, minutes] = fromTime.split(':').map(Number);
       const selectedTime = new Date(
@@ -218,11 +181,8 @@ export default function UpcomingEvents() {
         minutes,
       );
 
-      // Add a 5-minute buffer to allow for event creation
-      const bufferTime = new Date(now.getTime() + 5 * 60000);
-
-      if (selectedTime.getTime() <= bufferTime.getTime()) {
-        setTimeError('Event time must be at least 5 minutes in the future');
+      if (isBefore(selectedTime, now)) {
+        setTimeError('Cannot select a past time for today');
         return false;
       }
     }
@@ -288,38 +248,8 @@ export default function UpcomingEvents() {
     const result = await handleSaveNewEvent({
       newEvent,
       userRole,
-      onSuccess: (message) =>
-        toast.success(message, {
-          style: {
-            background: '#fff',
-            color: '#124A69',
-            border: '1px solid #e5e7eb',
-            boxShadow:
-              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-            borderRadius: '0.5rem',
-            padding: '1rem',
-          },
-          iconTheme: {
-            primary: '#124A69',
-            secondary: '#fff',
-          },
-        }),
-      onError: (error) =>
-        toast.error(error, {
-          style: {
-            background: '#fff',
-            color: '#dc2626',
-            border: '1px solid #e5e7eb',
-            boxShadow:
-              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-            borderRadius: '0.5rem',
-            padding: '1rem',
-          },
-          iconTheme: {
-            primary: '#dc2626',
-            secondary: '#fff',
-          },
-        }),
+      onSuccess: (message) => showAlert('Success', message, 'success'),
+      onError: (error) => showAlert('Error', error, 'error'),
     });
 
     if (result?.success) {
@@ -330,21 +260,11 @@ export default function UpcomingEvents() {
 
   function handleDeleteClick(eventId: string) {
     if (!canManageEvents) {
-      toast.error('Only Admin and Academic Head can delete events', {
-        style: {
-          background: '#fff',
-          color: '#dc2626',
-          border: '1px solid #e5e7eb',
-          boxShadow:
-            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-          borderRadius: '0.5rem',
-          padding: '1rem',
-        },
-        iconTheme: {
-          primary: '#dc2626',
-          secondary: '#fff',
-        },
-      });
+      showAlert(
+        'Unauthorized',
+        'Only Admin and Academic Head can delete events',
+        'error',
+      );
       return;
     }
 
@@ -358,38 +278,8 @@ export default function UpcomingEvents() {
     const result = await handleDeleteEvent({
       eventId: eventToDelete,
       userRole,
-      onSuccess: (message) =>
-        toast.success(message, {
-          style: {
-            background: '#fff',
-            color: '#124A69',
-            border: '1px solid #e5e7eb',
-            boxShadow:
-              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-            borderRadius: '0.5rem',
-            padding: '1rem',
-          },
-          iconTheme: {
-            primary: '#124A69',
-            secondary: '#fff',
-          },
-        }),
-      onError: (error) =>
-        toast.error(error, {
-          style: {
-            background: '#fff',
-            color: '#dc2626',
-            border: '1px solid #e5e7eb',
-            boxShadow:
-              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-            borderRadius: '0.5rem',
-            padding: '1rem',
-          },
-          iconTheme: {
-            primary: '#dc2626',
-            secondary: '#fff',
-          },
-        }),
+      onSuccess: (message) => showAlert('Success', message, 'success'),
+      onError: (error) => showAlert('Error', error, 'error'),
     });
 
     if (result?.success) {
@@ -401,21 +291,11 @@ export default function UpcomingEvents() {
 
   function handleEditClick(event: EventItem) {
     if (!canManageEvents) {
-      toast.error('Only Admin and Academic Head can edit events', {
-        style: {
-          background: '#fff',
-          color: '#dc2626',
-          border: '1px solid #e5e7eb',
-          boxShadow:
-            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-          borderRadius: '0.5rem',
-          padding: '1rem',
-        },
-        iconTheme: {
-          primary: '#dc2626',
-          secondary: '#fff',
-        },
-      });
+      showAlert(
+        'Unauthorized',
+        'Only Admin and Academic Head can edit events',
+        'error',
+      );
       return;
     }
 
@@ -439,38 +319,8 @@ export default function UpcomingEvents() {
     const result = await handleUpdateEvent({
       editData,
       userRole,
-      onSuccess: (message) =>
-        toast.success(message, {
-          style: {
-            background: '#fff',
-            color: '#124A69',
-            border: '1px solid #e5e7eb',
-            boxShadow:
-              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-            borderRadius: '0.5rem',
-            padding: '1rem',
-          },
-          iconTheme: {
-            primary: '#124A69',
-            secondary: '#fff',
-          },
-        }),
-      onError: (error) =>
-        toast.error(error, {
-          style: {
-            background: '#fff',
-            color: '#dc2626',
-            border: '1px solid #e5e7eb',
-            boxShadow:
-              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-            borderRadius: '0.5rem',
-            padding: '1rem',
-          },
-          iconTheme: {
-            primary: '#dc2626',
-            secondary: '#fff',
-          },
-        }),
+      onSuccess: (message) => showAlert('Success', message, 'success'),
+      onError: (error) => showAlert('Error', error, 'error'),
     });
 
     if (result?.success) {
@@ -530,49 +380,45 @@ export default function UpcomingEvents() {
 
   return (
     <div className='mb-2'>
-      <Toaster
-        toastOptions={{
-          className: '',
-          style: {
-            background: '#fff',
-            color: '#124A69',
-            border: '1px solid #e5e7eb',
-            boxShadow:
-              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-            borderRadius: '0.5rem',
-            padding: '1rem',
-          },
-          success: {
-            style: {
-              background: '#fff',
-              color: '#124A69',
-              border: '1px solid #e5e7eb',
-            },
-            iconTheme: {
-              primary: '#124A69',
-              secondary: '#fff',
-            },
-          },
-          error: {
-            style: {
-              background: '#fff',
-              color: '#dc2626',
-              border: '1px solid #e5e7eb',
-            },
-            iconTheme: {
-              primary: '#dc2626',
-              secondary: '#fff',
-            },
-          },
-          loading: {
-            style: {
-              background: '#fff',
-              color: '#124A69',
-              border: '1px solid #e5e7eb',
-            },
-          },
-        }}
-      />
+      {alert.show && (
+        <div className='fixed top-4 right-4 z-50 w-80 animate-in fade-in slide-in-from-top-2'>
+          <Alert
+            variant={alert.variant === 'success' ? 'default' : 'destructive'}
+            className={cn(
+              'relative border-l-4',
+              alert.variant === 'success'
+                ? 'border-l-[#124A69] bg-[#F0F7FA] text-[#124A69]'
+                : 'border-l-red-500 bg-red-50 text-red-800',
+            )}
+          >
+            <div className='flex items-start gap-3'>
+              {alert.variant === 'success' ? (
+                <CheckCircle2 className='h-4 w-4 text-[#124A69] mt-0.5' />
+              ) : (
+                <AlertCircle className='h-4 w-4 text-red-500 mt-0.5' />
+              )}
+              <div className='flex-1'>
+                <AlertDescription className='text-sm font-medium'>
+                  {alert.description}
+                </AlertDescription>
+              </div>
+              <Button
+                variant='ghost'
+                size='icon'
+                className={cn(
+                  'absolute right-1 top-1 h-6 w-6 p-0 hover:bg-transparent',
+                  alert.variant === 'success'
+                    ? 'text-[#124A69] hover:text-[#0a2f42]'
+                    : 'text-red-500 hover:text-red-700',
+                )}
+                onClick={() => setAlert((prev) => ({ ...prev, show: false }))}
+              >
+                <X className='h-3 w-3' />
+              </Button>
+            </div>
+          </Alert>
+        </div>
+      )}
 
       <div className='flex justify-between items-center mb-1'>
         <h2 className='text-lg font-semibold text-[#FAEDCB]'>
@@ -603,55 +449,9 @@ export default function UpcomingEvents() {
       <div className='bg-white rounded-lg p-2 shadow-md h-135 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#124A69] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#0a2f42] transition-all duration-300'>
         <div className='space-y-2 mt-2'>
           {isLoading ? (
-            <>
-              {/* Date header skeleton */}
-              <div className='flex items-center gap-2 text-[#124A69] mb-1'>
-                <Skeleton className='h-4 w-32' />
-              </div>
-
-              {/* Event card skeletons */}
-              {[...Array(3)].map((_, index) => (
-                <Card
-                  key={index}
-                  className='border-l-[8px] border-[#124A69] mb-1'
-                >
-                  <CardContent className='p-2 relative'>
-                    <div className='-mt-4 -mb-4'>
-                      <Skeleton className='h-4 w-3/4 mb-2' />
-                      <Skeleton className='h-3 w-1/2 mb-2' />
-                      <div className='flex items-center gap-1'>
-                        <Skeleton className='h-3 w-3' />
-                        <Skeleton className='h-3 w-24' />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-
-              {/* Another date header skeleton */}
-              <div className='flex items-center gap-2 text-[#124A69] mb-1 mt-4'>
-                <Skeleton className='h-4 w-32' />
-              </div>
-
-              {/* More event card skeletons */}
-              {[...Array(2)].map((_, index) => (
-                <Card
-                  key={`second-${index}`}
-                  className='border-l-[8px] border-[#124A69] mb-1'
-                >
-                  <CardContent className='p-2 relative'>
-                    <div className='-mt-4 -mb-4'>
-                      <Skeleton className='h-4 w-3/4 mb-2' />
-                      <Skeleton className='h-3 w-1/2 mb-2' />
-                      <div className='flex items-center gap-1'>
-                        <Skeleton className='h-3 w-3' />
-                        <Skeleton className='h-3 w-24' />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </>
+            <p className='text-gray-500 text-xs text-center'>
+              Loading events...
+            </p>
           ) : eventList.length > 0 ? (
             eventList.map((event, eventIndex) => (
               <div key={eventIndex}>
@@ -805,8 +605,17 @@ export default function UpcomingEvents() {
                       selected={editData.date || undefined}
                       onSelect={(date) => {
                         if (date) {
-                          setEditData({ ...editData, date: date || null });
+                          if (
+                            !validateDateTime(
+                              date,
+                              editData.fromTime,
+                              editData.toTime,
+                            )
+                          ) {
+                            return;
+                          }
                         }
+                        setEditData({ ...editData, date: date || null });
                       }}
                       disabled={(date) =>
                         date < new Date(new Date().setHours(0, 0, 0, 0))
@@ -930,11 +739,20 @@ export default function UpcomingEvents() {
                           selected={newEvent.date || undefined}
                           onSelect={(date) => {
                             if (date) {
-                              setNewEvent({
-                                ...newEvent,
-                                date: date || null,
-                              });
+                              if (
+                                !validateDateTime(
+                                  date,
+                                  newEvent.fromTime,
+                                  newEvent.toTime,
+                                )
+                              ) {
+                                return;
+                              }
                             }
+                            setNewEvent({
+                              ...newEvent,
+                              date: date || null,
+                            });
                           }}
                           disabled={(date) =>
                             date < new Date(new Date().setHours(0, 0, 0, 0))

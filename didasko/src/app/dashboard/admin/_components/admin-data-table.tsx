@@ -747,7 +747,7 @@ export function AdminDataTable({
   const refreshTableData = async () => {
     try {
       setIsRefreshing(true);
-      const response = await axiosInstance.get('/users');
+      const response = await axiosInstance.get('/api/users');
       const data = await response.data;
       if (data.users) {
         setTableData(data.users);

@@ -36,8 +36,6 @@ export function AddGroupModal({
 }: AddGroupModalProps) {
   const [groupNumber, setGroupNumber] = React.useState('');
   const [groupName, setGroupName] = React.useState('');
-  const [groupNumberError, setGroupNumberError] = React.useState('');
-  const [groupNameError, setGroupNameError] = React.useState('');
   const [selectedStudents, setSelectedStudents] = React.useState<string[]>([]);
   const [selectedLeader, setSelectedLeader] = React.useState<string>('');
   const [students, setStudents] = React.useState<Student[]>([]);
@@ -72,7 +70,7 @@ export function AddGroupModal({
 
   // Filter out students already in a group
   const availableStudents = students.filter(
-    (student) => !excludedStudentIds.includes(student.id),
+    (student) => !excludedStudentIds.includes(student.id)
   );
 
   // Filter students by name or attendance status
@@ -98,54 +96,8 @@ export function AddGroupModal({
     });
   };
 
-  // Validation functions
-  const validateGroupNumber = (value: string) => {
-    if (!/^\d+$/.test(value)) {
-      setGroupNumberError('Group number must contain only digits');
-      return false;
-    }
-    setGroupNumberError('');
-    return true;
-  };
-
-  const validateGroupName = (value: string) => {
-    if (value && !/^[a-zA-Z0-9\s]+$/.test(value)) {
-      setGroupNameError(
-        'Group name can only contain letters, numbers, and spaces',
-      );
-      return false;
-    }
-    if (value && value.length > 15) {
-      setGroupNameError('Group name must be 15 characters or less');
-      return false;
-    }
-    setGroupNameError('');
-    return true;
-  };
-
-  const handleGroupNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setGroupNumber(value);
-    validateGroupNumber(value);
-  };
-
-  const handleGroupNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setGroupName(value);
-    validateGroupName(value);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Validate before submission
-    const isGroupNumberValid = validateGroupNumber(groupNumber);
-    const isGroupNameValid = validateGroupName(groupName);
-
-    if (!isGroupNumberValid || !isGroupNameValid) {
-      return;
-    }
-
     setIsLoading(true);
     try {
       const response = await fetch(`/api/courses/${courseCode}/groups`, {
@@ -198,7 +150,7 @@ export function AddGroupModal({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button className='relative h-35 w-35 rounded-full bg-gray-200 flex flex-col items-center justify-center shadow-none transition-all p-0 mb-2 border-none outline-none focus:outline-none cursor-pointer group hover:bg-gray-300'>
+        <button className='relative h-40 w-40 rounded-full bg-gray-200 flex flex-col items-center justify-center shadow-none transition-all p-0 mb-2 border-none outline-none focus:outline-none cursor-pointer group hover:bg-gray-300'>
           <span className='absolute inset-0 flex items-center justify-center'>
             <svg
               className='h-20 w-20 text-gray-400 opacity-70'
@@ -225,7 +177,7 @@ export function AddGroupModal({
               <path d='M12 5v14m7-7H5' strokeLinecap='round' />
             </svg>
           </span>
-          <span className='mt-20 text-sm font-bold text-white drop-shadow-sm text-shadow-lg text-center pointer-events-none select-none'>
+          <span className='mt-28 text-base font-bold text-white drop-shadow-sm text-center pointer-events-none select-none'>
             Add groups
             <br />
             manually
@@ -246,21 +198,15 @@ export function AddGroupModal({
                   htmlFor='groupNumber'
                   className='text-sm font-semibold mb-1'
                 >
-                  Group Number*
+                  Group Number
                 </label>
                 <Input
                   id='groupNumber'
                   value={groupNumber}
-                  onChange={handleGroupNumberChange}
+                  onChange={(e) => setGroupNumber(e.target.value)}
                   placeholder='1'
                   required
-                  className={groupNumberError ? 'border-red-500' : ''}
                 />
-                {groupNumberError && (
-                  <span className='text-red-500 text-xs mt-1'>
-                    {groupNumberError}
-                  </span>
-                )}
               </div>
               <div className='flex flex-col'>
                 <label
@@ -272,21 +218,9 @@ export function AddGroupModal({
                 <Input
                   id='groupName'
                   value={groupName}
-                  onChange={handleGroupNameChange}
+                  onChange={(e) => setGroupName(e.target.value)}
                   placeholder='Group Name'
-                  className={groupNameError ? 'border-red-500' : ''}
-                  maxLength={15}
                 />
-                <div className='flex justify-between items-center mt-1'>
-                  {groupNameError && (
-                    <span className='text-red-500 text-xs'>
-                      {groupNameError}
-                    </span>
-                  )}
-                  <span className='text-xs text-gray-500 ml-auto'>
-                    {groupName.length}/15
-                  </span>
-                </div>
               </div>
             </div>
             <div className='flex flex-col'>
@@ -317,9 +251,7 @@ export function AddGroupModal({
               </Select>
             </div>
             <div className='flex flex-col'>
-              <label className='text-sm font-semibold mb-1'>
-                Add Students*
-              </label>
+              <label className='text-sm font-semibold mb-1'>Add Students</label>
               <Input
                 type='text'
                 placeholder='Search students by name or attendance status...'
@@ -347,7 +279,7 @@ export function AddGroupModal({
                       <span>{student.name}</span>
                       <span
                         className={`ml-3 px-2 py-0.5 rounded text-xs border ${statusColor(
-                          student.status,
+                          student.status
                         )}`}
                       >
                         {student.status === 'PRESENT'
@@ -363,8 +295,8 @@ export function AddGroupModal({
                 )}
               </div>
               <div className='text-xs text-gray-500 mt-1'>
-                {selectedStudents.length} out of {filteredStudents.length}{' '}
-                students selected
+                {selectedStudents.length} out of {filteredStudents.length} students
+                selected
               </div>
             </div>
           </div>
@@ -396,4 +328,4 @@ export function AddGroupModal({
       </DialogContent>
     </Dialog>
   );
-}
+} 

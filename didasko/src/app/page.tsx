@@ -17,6 +17,7 @@ export default function AdminLogin() {
     try {
       setIsLoading(true);
       const result = await signIn('google', {
+        callbackUrl: '/dashboard/admin',
         redirect: false,
       });
 
@@ -25,15 +26,14 @@ export default function AdminLogin() {
       }
 
       if (result?.ok) {
-        // Let NextAuth handle the redirect based on user role
-        router.push(result.url || '/');
+        router.push('/dashboard/admin');
       }
     } catch (err) {
       toast({
         variant: 'destructive',
         title: 'Authentication Error',
         description:
-          'Failed to sign in. Please ensure you have the correct permissions.',
+          'Failed to sign in. Please ensure you have admin privileges.',
       });
     } finally {
       setIsLoading(false);

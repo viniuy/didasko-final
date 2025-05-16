@@ -121,7 +121,6 @@ model Student {
   coursesEnrolled Course[] @relation("StudentCourses")
   groups        Group[]    @relation("GroupStudents")
   leadingGroups Group[]    @relation("GroupLeader")
-  quizScores    QuizScore[]
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
@@ -234,7 +233,6 @@ model Course {
   criteria    Criteria[]
   grades      Grade[]
   groups      Group[]
-  quizzes     Quiz[]
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -285,44 +283,4 @@ model Group {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("groups")
-}
-
-model Quiz {
-  id          String   @id @default(uuid())
-  name        String
-  courseId    String
-  course      Course   @relation(fields: [courseId], references: [id])
-  quizDate    DateTime
-  attendanceRangeStart DateTime
-  attendanceRangeEnd   DateTime
-  maxScore    Float
-  passingRate Float
-  scores      QuizScore[]
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  @@map("quizzes")
-  @@index([courseId])
-  @@index([attendanceRangeStart])
-  @@index([attendanceRangeEnd])
-}
-
-model QuizScore {
-  id          String   @id @default(uuid())
-  quizId      String
-  quiz        Quiz     @relation(fields: [quizId], references: [id])
-  studentId   String
-  student     Student  @relation(fields: [studentId], references: [id])
-  score       Float
-  attendance  String
-  plusPoints  Float
-  totalGrade  Float
-  remarks     String?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  @@unique([quizId, studentId])
-  @@map("quiz_scores")
-  @@index([quizId])
-  @@index([studentId])
 }

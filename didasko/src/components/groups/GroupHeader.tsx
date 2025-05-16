@@ -98,7 +98,10 @@ export function GroupHeader({
             </PopoverContent>
           </Popover>
         </div>
+        <Button className='ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center gap-2'>
+          Export to PDF
+        </Button>
       </div>
     </div>
   );
-}
+} 
