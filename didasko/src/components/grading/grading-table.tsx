@@ -244,11 +244,14 @@ export function GradingTable({
           `/courses/${courseId}/criteria`,
         );
         const allReports = response.data;
-        // Find a criteria for this date
+        // Find a criteria for this date and matching group status
         const found = allReports.find((c: any) => {
-          // If your criteria has a date field, compare it here
-          // If not, you may need to fetch grades for this date and get the criteriaId from there
-          return c.date === formattedDate;
+          const reportDate = new Date(c.date);
+          reportDate.setHours(0, 0, 0, 0);
+          const selected = new Date(selectedDate);
+          selected.setHours(0, 0, 0, 0);
+          return reportDate.getTime() === selected.getTime() && 
+                 c.isGroupCriteria === isGroupView;
         });
         if (found) {
           setActiveReport(found);
@@ -271,7 +274,7 @@ export function GradingTable({
       }
     };
     checkExistingCriteria();
-  }, [selectedDate, courseId]);
+  }, [selectedDate, courseId, isGroupView]);
 
   // Reset scores when date changes
   useEffect(() => {
@@ -462,11 +465,11 @@ export function GradingTable({
         });
 
         // Update local state
-        setScores((prev) => {
-          const newScores = { ...prev };
-          delete newScores[studentId];
-          return newScores;
-        });
+      setScores((prev) => {
+        const newScores = { ...prev };
+        delete newScores[studentId];
+        return newScores;
+      });
 
         toast.success('Grades deleted successfully');
       } catch (error: any) {
@@ -1218,15 +1221,22 @@ export function GradingTable({
           },
         }}
       />
-      <div className='max-w-6xl mx-auto'>
+    <div className='max-w-6xl mx-auto'>
         {/* x */}
-        <div className='bg-white rounded-lg shadow-md'>
-          {/* Card Header */}
-          <div className='flex items-center gap-2 px-4 py-3 border-b'>
-            <Button
-              variant='ghost'
-              className='h-9 w-9 p-0 hover:bg-gray-100'
-              onClick={() => window.history.back()}
+      <div className='bg-white rounded-lg shadow-md'>
+        {/* Card Header */}
+        <div className='flex items-center gap-2 px-4 py-3 border-b'>
+          <Button
+            variant='ghost'
+            className='h-9 w-9 p-0 hover:bg-gray-100'
+            onClick={() => window.history.back()}
+          >
+            <svg
+              className='h-5 w-5 text-gray-500'
+              fill='none'
+              stroke='currentColor'
+              strokeWidth='2'
+              viewBox='0 0 24 24'
             >
               <svg
                 className='h-5 w-5 text-gray-500'
@@ -1392,6 +1402,52 @@ export function GradingTable({
                 Export to Excel
               </Button>
             </div>
+          </div>
+            <div className='flex items-center gap-2'>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={'outline'}
+                    className={cn(
+                      'w-[200px] justify-start text-left font-normal h-9',
+                      !selectedDate && 'text-muted-foreground',
+                    )}
+                  >
+                    <CalendarIcon className='mr-2 h-4 w-4' />
+                    {selectedDate ? (
+                      format(selectedDate, 'PPP')
+                    ) : (
+                      <span>Pick a date</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className='w-auto p-0' align='end'>
+                  <Calendar
+                    mode='single'
+                    selected={selectedDate}
+                    onSelect={onDateSelect}
+                    initialFocus
+                    disabled={(date) => date > new Date()}
+                    defaultMonth={new Date()}
+                  />
+                </PopoverContent>
+              </Popover>
+              <Button
+                onClick={handleExport}
+                className='ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center gap-2'
+              >
+                <svg
+                  className='w-4 h-4'
+                  fill='none'
+                  stroke='currentColor'
+                  strokeWidth='2'
+                  viewBox='0 0 24 24'
+                >
+                  <path d='M12 5v14m7-7H5' />
+                </svg>
+                Export to Excel
+              </Button>
+        </div>
           </div>
           <Dialog open={showCriteriaDialog} onOpenChange={handleDialogClose}>
             <DialogContent className='sm:max-w-[450px]'>
@@ -1775,20 +1831,20 @@ export function GradingTable({
           {!showCriteriaDialog && activeReport && (
             <div className='space-y-4 p-0'>
               {/* Grading Table */}
-              <div className='overflow-x-auto max-h-[calc(100vh-300px)]'>
-                <table className='w-full border-separate border-spacing-0 table-fixed'>
-                  <GradingTableHeader rubricDetails={rubricDetails} />
-                  {isGroupView ? (
-                    <tbody>
-                      {students.map((student, idx) => {
-                        const studentScore = scores[student.id] || {
-                          studentId: student.id,
-                          scores: new Array(rubricDetails.length).fill(0),
-                          total: 0,
-                        };
-                        return (
+        <div className='overflow-x-auto max-h-[calc(100vh-300px)]'>
+          <table className='w-full border-separate border-spacing-0 table-fixed'>
+            <GradingTableHeader rubricDetails={rubricDetails} />
+            {isGroupView ? (
+              <tbody>
+                {students.map((student, idx) => {
+                  const studentScore = scores[student.id] || {
+                    studentId: student.id,
+                    scores: new Array(rubricDetails.length).fill(0),
+                    total: 0,
+                  };
+                  return (
                           <tr
-                            key={student.id}
+                      key={student.id}
                             className={
                               idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F6FA]'
                             }
@@ -1956,11 +2012,11 @@ export function GradingTable({
                               )}
                             </td>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  ) : (
-                    <tbody>
+                  );
+                })}
+              </tbody>
+            ) : (
+              <tbody>
                       {isLoading
                         ? Array.from({ length: 5 }).map((_, idx) => (
                             <tr
@@ -1973,8 +2029,8 @@ export function GradingTable({
                                 <div className='flex items-center gap-3'>
                                   <div className='w-8 h-8 rounded-full bg-gray-200 animate-pulse' />
                                   <div className='h-4 w-32 bg-gray-200 rounded animate-pulse' />
-                                </div>
-                              </td>
+                      </div>
+                    </td>
                               {rubricDetails.map((_, rubricIdx) => (
                                 <td
                                   key={rubricIdx}
@@ -1989,7 +2045,7 @@ export function GradingTable({
                               <td className='text-center px-4 py-2 align-middle w-[100px]'>
                                 <div className='h-6 w-20 bg-gray-200 rounded-full animate-pulse mx-auto' />
                               </td>
-                            </tr>
+                  </tr>
                           ))
                         : (() => {
                             const {
@@ -1998,49 +2054,49 @@ export function GradingTable({
                               totalStudents,
                             } = getPaginatedStudents(students);
 
-                            if (paginatedStudents.length === 0) {
-                              return (
-                                <tr>
-                                  <td
-                                    colSpan={rubricDetails.length + 3}
-                                    className='text-center py-8 text-muted-foreground'
-                                  >
-                                    No students found
-                                  </td>
-                                </tr>
-                              );
-                            }
+                    if (paginatedStudents.length === 0) {
+                      return (
+                        <tr>
+                          <td
+                            colSpan={rubricDetails.length + 3}
+                            className='text-center py-8 text-muted-foreground'
+                          >
+                            No students found
+                          </td>
+                        </tr>
+                      );
+                    }
 
-                            return paginatedStudents.map((student, idx) => {
-                              const studentScore = scores[student.id] || {
-                                studentId: student.id,
-                                scores: new Array(rubricDetails.length).fill(0),
-                                total: 0,
-                              };
-                              return (
-                                <GradingTableRow
-                                  key={student.id}
-                                  student={student}
-                                  rubricDetails={rubricDetails}
-                                  activeReport={activeReport}
-                                  studentScore={studentScore}
-                                  handleScoreChange={handleScoreChange}
-                                  idx={idx}
-                                />
-                              );
-                            });
+                    return paginatedStudents.map((student, idx) => {
+                      const studentScore = scores[student.id] || {
+                        studentId: student.id,
+                        scores: new Array(rubricDetails.length).fill(0),
+                        total: 0,
+                      };
+                      return (
+                        <GradingTableRow
+                          key={student.id}
+                          student={student}
+                          rubricDetails={rubricDetails}
+                          activeReport={activeReport}
+                          studentScore={studentScore}
+                          handleScoreChange={handleScoreChange}
+                          idx={idx}
+                        />
+                      );
+                    });
                           })()}
-                    </tbody>
-                  )}
-                </table>
-              </div>
-              {/* Footer Bar */}
-              <div className='flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 border-t bg-white'>
+              </tbody>
+            )}
+          </table>
+        </div>
+        {/* Footer Bar */}
+        <div className='flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 border-t bg-white'>
                 <div className='flex flex-col sm:flex-row items-center gap-4 w-full'>
-                  <div className='flex items-center gap-2'>
-                    <p className='text-sm text-gray-500 whitespace-nowrap'>
-                      {totalStudents > 0 ? (
-                        <>
+          <div className='flex items-center gap-2'>
+            <p className='text-sm text-gray-500 whitespace-nowrap'>
+              {totalStudents > 0 ? (
+                <>
                           {currentPage * studentsPerPage -
                             (studentsPerPage - 1)}
                           -
@@ -2049,82 +2105,60 @@ export function GradingTable({
                             totalStudents,
                           )}{' '}
                           of {totalStudents} students
-                        </>
-                      ) : (
-                        'No students found'
-                      )}
-                    </p>
-                  </div>
+                </>
+              ) : (
+                'No students found'
+              )}
+            </p>
+          </div>
                   <div className='flex-1 flex justify-center'>
-                    <Pagination>
-                      <PaginationContent>
-                        <PaginationItem>
-                          <PaginationPrevious
-                            onClick={() =>
-                              setCurrentPage((prev) => Math.max(prev - 1, 1))
-                            }
-                            className={
-                              currentPage === 1
-                                ? 'pointer-events-none opacity-50'
-                                : 'hover:bg-gray-100'
-                            }
-                          />
-                        </PaginationItem>
-                        {[...Array(totalPages)].map((_, i) => (
-                          <PaginationItem key={i}>
-                            <PaginationLink
-                              isActive={currentPage === i + 1}
-                              onClick={() => setCurrentPage(i + 1)}
-                              className={`${
-                                currentPage === i + 1
-                                  ? 'bg-[#124A69] text-white hover:bg-[#0d3a56]'
-                                  : 'hover:bg-gray-100'
-                              }`}
-                            >
-                              {i + 1}
-                            </PaginationLink>
-                          </PaginationItem>
-                        ))}
-                        <PaginationItem>
-                          <PaginationNext
-                            onClick={() =>
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.max(prev - 1, 1))
+                    }
+                    className={
+                      currentPage === 1
+                        ? 'pointer-events-none opacity-50'
+                        : 'hover:bg-gray-100'
+                    }
+                  />
+                </PaginationItem>
+                {[...Array(totalPages)].map((_, i) => (
+                  <PaginationItem key={i}>
+                    <PaginationLink
+                      isActive={currentPage === i + 1}
+                      onClick={() => setCurrentPage(i + 1)}
+                      className={`${
+                        currentPage === i + 1
+                          ? 'bg-[#124A69] text-white hover:bg-[#0d3a56]'
+                          : 'hover:bg-gray-100'
+                      }`}
+                    >
+                      {i + 1}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
+                <PaginationItem>
+                  <PaginationNext
+                    onClick={() =>
                               setCurrentPage((prev) =>
                                 Math.min(prev + 1, totalPages),
                               )
-                            }
-                            className={
-                              currentPage === totalPages
-                                ? 'pointer-events-none opacity-50'
-                                : 'hover:bg-gray-100'
-                            }
-                          />
-                        </PaginationItem>
-                      </PaginationContent>
-                    </Pagination>
-                  </div>
-                  <div className='flex items-center gap-2'>
-                    <Button
-                      variant='outline'
-                      onClick={() => setShowResetDialog(true)}
-                      className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
-                    >
-                      Reset
-                    </Button>
-                    <Button
-                      onClick={handleSaveGrades}
-                      disabled={isLoading || !hasChanges()}
-                      className='h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] disabled:opacity-50 disabled:cursor-not-allowed'
-                    >
-                      {isLoading ? (
-                        <>
-                          <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                          Saving...
-                        </>
-                      ) : (
-                        'Save Grades'
-                      )}
-                    </Button>
-                  </div>
+                    }
+                    className={
+                      currentPage === totalPages
+                        ? 'pointer-events-none opacity-50'
+                        : 'hover:bg-gray-100'
+                    }
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
+
                 </div>
               </div>
             </div>
@@ -2149,7 +2183,31 @@ export function GradingTable({
               )}
             </div>
           )}
+          
         </div>
+        <div className='flex justify-end mt-3 gap-2'>
+        <Button
+          variant='outline'
+          onClick={() => setShowResetDialog(true)}
+          className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
+        >
+          Reset
+        </Button>
+        <Button
+          onClick={handleSaveGrades}
+          disabled={isLoading || !hasChanges()}
+          className='h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] disabled:opacity-50 disabled:cursor-not-allowed'
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+              Saving...
+            </>
+          ) : (
+            'Save Grades'
+          )}
+        </Button>
+      </div>
       </div>
 
       {/* Reset Confirmation Dialog */}
