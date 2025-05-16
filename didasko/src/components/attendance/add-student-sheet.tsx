@@ -24,6 +24,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import axiosInstance from '@/lib/axios';
 
 // For available students (from /available-students endpoint)
 interface AvailableStudent {
@@ -109,12 +110,8 @@ export function AddStudentSheet({
 
     try {
       setIsLoadingEnrolled(true);
-      const response = await fetch(`/api/courses/${courseId}/students`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch enrolled students');
-      }
-      const data = await response.json();
-      setEnrolledStudents(data.students);
+      const response = await axiosInstance.get(`/courses/${courseId}/students`);
+      setEnrolledStudents(response.data.students);
     } catch (error) {
       console.error('Error fetching enrolled students:', error);
       toast.error('Failed to fetch enrolled students');
@@ -130,16 +127,10 @@ export function AddStudentSheet({
 
       setIsLoadingAvailable(true);
       try {
-        const response = await fetch(
-          `/api/courses/${courseId}/available-students`,
+        const response = await axiosInstance.get(
+          `/courses/${courseId}/available-students`,
         );
-        if (!response.ok) {
-          throw new Error(
-            `Failed to fetch available students: ${response.status}`,
-          );
-        }
-        const data = await response.json();
-        setAllStudents(data);
+        setAllStudents(response.data);
       } catch (error) {
         console.error('Error fetching available students:', error);
         toast.error('Failed to fetch available students');
@@ -236,20 +227,10 @@ export function AddStudentSheet({
 
   const handleRemoveStudent = async (studentId: string) => {
     try {
-      const response = await fetch(
-        `/api/courses/${courseId}/students/${studentId}`,
-        {
-          method: 'DELETE',
-        },
-      );
-
-      if (!response.ok) throw new Error('Failed to remove student');
-
-      // Update the local state by removing the student
+      await axiosInstance.delete(`/courses/${courseId}/students/${studentId}`);
       setEnrolledStudents((prev) =>
         prev.filter((student) => student.id !== studentId),
       );
-
       toast.success('Student removed successfully');
     } catch (error) {
       console.error('Error removing student:', error);
@@ -285,15 +266,7 @@ export function AddStudentSheet({
 
       // Create an array of promises for each student removal
       const promises = Array.from(selectedStudentsToRemove).map((studentId) =>
-        fetch(`/api/courses/${courseId}/students/${studentId}`, {
-          method: 'DELETE',
-        }).then(async (response) => {
-          if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || 'Failed to remove student');
-          }
-          return studentId;
-        }),
+        axiosInstance.delete(`/courses/${courseId}/students/${studentId}`),
       );
 
       // Wait for all removals to complete

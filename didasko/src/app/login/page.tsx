@@ -13,9 +13,11 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import axiosInstance from '@/lib/axios';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -26,24 +28,21 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email }),
+      const response = await axiosInstance.post('/api/auth/login', {
+        email,
+        password,
       });
+      const data = response.data;
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Login failed');
+      if (data.error) {
+        setError(data.error);
+        return;
       }
 
-      // Redirect to the appropriate dashboard based on role
-      router.push(data.redirectPath);
-    } catch (err: any) {
-      setError(err.message || 'An error occurred during login');
+      router.push('/dashboard');
+    } catch (error) {
+      console.error('Error logging in:', error);
+      setError('Failed to log in');
     } finally {
       setIsLoading(false);
     }
@@ -78,6 +77,19 @@ export default function LoginPage() {
                   placeholder='your.name@domain.com'
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <div className='space-y-2'>
+                <label htmlFor='password' className='text-sm font-medium'>
+                  Password
+                </label>
+                <Input
+                  id='password'
+                  type='password'
+                  placeholder='********'
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   required
                 />
               </div>

@@ -2,12 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
-import { AttendanceStatus } from '@prisma/client';
-
-interface AttendanceRecord {
-  studentId: string;
-  status: AttendanceStatus;
-}
+import { Prisma, AttendanceStatus } from '@prisma/client';
+import { AttendanceResponse, AttendanceCreateInput } from '@/types/attendance';
 
 export async function GET(
   request: Request,
@@ -24,6 +20,9 @@ export async function GET(
 
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '10');
+    const skip = (page - 1) * limit;
 
     if (!date) {
       return NextResponse.json(
@@ -38,6 +37,17 @@ export async function GET(
     const endDate = new Date(date);
     endDate.setUTCHours(23, 59, 59, 999);
 
+    // Get total count for pagination
+    const total = await prisma.attendance.count({
+      where: {
+        courseId,
+        date: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+    });
+
     const attendanceRecords = await prisma.attendance.findMany({
       where: {
         courseId,
@@ -47,11 +57,39 @@ export async function GET(
         },
       },
       include: {
-        student: true,
+        student: {
+          select: {
+            id: true,
+            lastName: true,
+            firstName: true,
+            middleInitial: true,
+          },
+        },
+        course: {
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            section: true,
+          },
+        },
       },
+      skip,
+      take: limit,
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     });
 
-    return NextResponse.json(attendanceRecords);
+    const response: AttendanceResponse = {
+      attendance: attendanceRecords,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+
+    return NextResponse.json(response);
   } catch (error) {
     console.error('Error fetching attendance records:', error);
     return NextResponse.json(
@@ -110,6 +148,24 @@ export async function POST(
           const updated = await tx.attendance.update({
             where: { id: existingRecord.id },
             data: { status: record.status },
+            include: {
+              student: {
+                select: {
+                  id: true,
+                  lastName: true,
+                  firstName: true,
+                  middleInitial: true,
+                },
+              },
+              course: {
+                select: {
+                  id: true,
+                  code: true,
+                  title: true,
+                  section: true,
+                },
+              },
+            },
           });
           records.push(updated);
         } else {
@@ -120,6 +176,24 @@ export async function POST(
               courseId: courseId,
               date: utcDate,
               status: record.status,
+            },
+            include: {
+              student: {
+                select: {
+                  id: true,
+                  lastName: true,
+                  firstName: true,
+                  middleInitial: true,
+                },
+              },
+              course: {
+                select: {
+                  id: true,
+                  code: true,
+                  title: true,
+                  section: true,
+                },
+              },
             },
           });
           records.push(created);

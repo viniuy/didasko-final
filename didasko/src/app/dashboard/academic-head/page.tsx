@@ -3,7 +3,7 @@ import { SidebarProvider } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/shared/layout/app-sidebar';
 import Stats from '@/components/stats';
 import Greet from '@/components/greeting';
-import Courses from '@/components/courses';
+import AllCourses from '@/components/shared/all-courses';
 import WeeklySchedule from '@/components/weekly-schedule';
 import Header from '@/components/shared/layout/header';
 import Rightsidebar from '@/components/shared/layout/right-sidebar';
@@ -26,10 +26,12 @@ export default function AcademicHeadDashboard() {
                 <Header />
                 <Greet />
                 <Stats />
-                <h2 className='pl-2 pb-1 text-2xl font-bold text-muted-foreground'>
-                  Courses
-                </h2>
-                <Courses />
+                <div className='space-y-4'>
+                  <h2 className='pl-2 pb-1 text-2xl font-bold text-muted-foreground'>
+                    All Courses
+                  </h2>
+                  <AllCourses type='attendance' />
+                </div>
               </div>
 
               {session?.user?.id && (

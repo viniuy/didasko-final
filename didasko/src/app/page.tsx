@@ -17,7 +17,6 @@ export default function AdminLogin() {
     try {
       setIsLoading(true);
       const result = await signIn('google', {
-        callbackUrl: '/dashboard/admin',
         redirect: false,
       });
 
@@ -26,14 +25,15 @@ export default function AdminLogin() {
       }
 
       if (result?.ok) {
-        router.push('/dashboard/admin');
+        // Let NextAuth handle the redirect based on user role
+        router.push(result.url || '/');
       }
     } catch (err) {
       toast({
         variant: 'destructive',
         title: 'Authentication Error',
         description:
-          'Failed to sign in. Please ensure you have admin privileges.',
+          'Failed to sign in. Please ensure you have the correct permissions.',
       });
     } finally {
       setIsLoading(false);
@@ -59,11 +59,8 @@ export default function AdminLogin() {
             transition={{ duration: 0.5 }}
           />
           <h1 className='text-3xl drop-shadow-md font-bold mb-4'>
-            Admin Portal
+            Welcome to Didasko
           </h1>
-          <p className='text-lg opacity-90'>
-            Access the administrative dashboard
-          </p>
         </div>
       </div>
 

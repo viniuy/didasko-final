@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/pagination';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
+import axiosInstance from '@/lib/axios';
 
 interface Course {
   id: string;
@@ -102,12 +103,13 @@ export default function Courses() {
 
   const fetchAttendanceStats = async (courseId: string) => {
     try {
-      const response = await fetch(`/api/courses/${courseId}/attendance/stats`);
-      if (!response.ok) throw new Error('Failed to fetch attendance stats');
-      return await response.json();
+      const response = await axiosInstance.get(
+        `/courses/${courseId}/attendance/stats`,
+      );
+      return response.data;
     } catch (error) {
       console.error('Error fetching attendance stats:', error);
-      return null;
+      throw new Error('Failed to fetch attendance stats');
     }
   };
 
@@ -118,28 +120,33 @@ export default function Courses() {
     }
 
     try {
-      const response = await fetch(
-        `/api/courses/schedules?facultyId=${session.user.id}`,
+      const response = await axiosInstance.get('/courses', {
+        params: {
+          facultyId: session.user.id,
+          semester: 'first',
+        },
+      });
+
+      // Fetch attendance stats for each course
+      const schedulesWithStats = await Promise.all(
+        response.data.courses.map(async (course: Course) => {
+          const stats = await fetchAttendanceStats(course.id);
+          return {
+            id: course.id,
+            courseId: course.id,
+            day: new Date(),
+            fromTime: '00:00',
+            toTime: '00:00',
+            course: {
+              ...course,
+              attendanceStats: stats,
+            },
+          };
+        }),
       );
-      const data = await response.json();
-      if (response.ok) {
-        // Fetch attendance stats for each course
-        const schedulesWithStats = await Promise.all(
-          data.map(async (schedule: ScheduleWithCourse) => {
-            const stats = await fetchAttendanceStats(schedule.courseId);
-            return {
-              ...schedule,
-              course: {
-                ...schedule.course,
-                attendanceStats: stats,
-              },
-            };
-          }),
-        );
-        setSchedules(schedulesWithStats);
-      }
+      setSchedules(schedulesWithStats);
     } catch (error) {
-      console.error('Error in fetchSchedules:', error);
+      console.error('Error fetching courses:', error);
     } finally {
       setIsLoading(false);
     }

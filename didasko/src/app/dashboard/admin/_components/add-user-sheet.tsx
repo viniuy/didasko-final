@@ -187,9 +187,9 @@ export function AddUserSheet({ onSuccess }: AddUserSheetProps) {
         </SheetHeader>
         <form
           onSubmit={form.handleSubmit(onSubmit)}
-          className='space-y-4 py-4 p-4'
+          className='space-y-4 py-4 p-4 flex flex-col h-full'
         >
-          <div className='space-y-1 w-97'>
+          <div className='space-y-1 w-full'>
             <Label htmlFor='lastName'>Last Name *</Label>
             <Input
               id='lastName'
@@ -242,7 +242,7 @@ export function AddUserSheet({ onSuccess }: AddUserSheetProps) {
               </div>
             </div>
 
-            <div className='space-y-1 w-40'>
+            <div className='space-y-1 w-47'>
               <Label htmlFor='middleInitial'>Middle Initial</Label>
               <Input
                 id='middleInitial'
@@ -266,7 +266,7 @@ export function AddUserSheet({ onSuccess }: AddUserSheetProps) {
             </div>
           </div>
 
-          <div className='space-y-1 w-97'>
+          <div className='space-y-1 w-full'>
             <Label htmlFor='email'>Email *</Label>
             <Input
               id='email'
@@ -280,104 +280,107 @@ export function AddUserSheet({ onSuccess }: AddUserSheetProps) {
               </p>
             )}
           </div>
+          <div className='flex flex-row w-full gap-2'>
+            <div className='space-y-1 w-1/2'>
+              <Label htmlFor='department'>Department *</Label>
+              <Select
+                onValueChange={(value) => form.setValue('department', value)}
+                defaultValue={form.getValues('department')}
+              >
+                <SelectTrigger className='w-full'>
+                  <SelectValue placeholder='Select department' />
+                </SelectTrigger>
+                <SelectContent>
+                  {DEPARTMENTS.map((dept) => (
+                    <SelectItem key={dept} value={dept}>
+                      {dept}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {form.formState.errors.department && (
+                <p className='text-sm text-red-500'>
+                  {form.formState.errors.department.message}
+                </p>
+              )}
+            </div>
 
-          <div className='space-y-1'>
-            <Label htmlFor='department'>Department *</Label>
-            <Select
-              onValueChange={(value) => form.setValue('department', value)}
-              defaultValue={form.getValues('department')}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder='Select department' />
-              </SelectTrigger>
-              <SelectContent>
-                {DEPARTMENTS.map((dept) => (
-                  <SelectItem key={dept} value={dept}>
-                    {dept}
+            <div className='space-y-1 w-1/2'>
+              <Label htmlFor='workType'>Work Type *</Label>
+              <Select
+                onValueChange={(value) =>
+                  form.setValue('workType', value as WorkType)
+                }
+                defaultValue={form.getValues('workType')}
+              >
+                <SelectTrigger className='w-full'>
+                  <SelectValue placeholder='Select work type' />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={WorkType.FULL_TIME}>Full Time</SelectItem>
+                  <SelectItem value={WorkType.PART_TIME}>Part Time</SelectItem>
+                  <SelectItem value={WorkType.CONTRACT}>Contract</SelectItem>
+                </SelectContent>
+              </Select>
+              {form.formState.errors.workType && (
+                <p className='text-sm text-red-500'>
+                  {form.formState.errors.workType.message}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className='flex flex-row w-full gap-2'>
+            <div className='space-y-1 w-1/2'>
+              <Label htmlFor='role'>Role *</Label>
+              <Select
+                onValueChange={(value) => form.setValue('role', value as Role)}
+                defaultValue={form.getValues('role')}
+              >
+                <SelectTrigger className='w-full'>
+                  <SelectValue placeholder='Select role' />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={Role.FACULTY}>Faculty</SelectItem>
+                  <SelectItem value={Role.ADMIN}>Admin</SelectItem>
+                  <SelectItem value={Role.ACADEMIC_HEAD}>
+                    Academic Head
                   </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {form.formState.errors.department && (
-              <p className='text-sm text-red-500'>
-                {form.formState.errors.department.message}
-              </p>
-            )}
+                </SelectContent>
+              </Select>
+              {form.formState.errors.role && (
+                <p className='text-sm text-red-500'>
+                  {form.formState.errors.role.message}
+                </p>
+              )}
+            </div>
+
+            <div className='space-y-1 w-1/2'>
+              <Label htmlFor='permission'>Permission *</Label>
+              <Select
+                onValueChange={(value) =>
+                  form.setValue('permission', value as Permission)
+                }
+                defaultValue={form.getValues('permission')}
+              >
+                <SelectTrigger className='w-full'>
+                  <SelectValue placeholder='Select permission' />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={Permission.GRANTED}>Granted</SelectItem>
+                  <SelectItem value={Permission.DENIED}>Denied</SelectItem>
+                </SelectContent>
+              </Select>
+              {form.formState.errors.permission && (
+                <p className='text-sm text-red-500'>
+                  {form.formState.errors.permission.message}
+                </p>
+              )}
+            </div>
           </div>
 
-          <div className='space-y-1'>
-            <Label htmlFor='workType'>Work Type *</Label>
-            <Select
-              onValueChange={(value) =>
-                form.setValue('workType', value as WorkType)
-              }
-              defaultValue={form.getValues('workType')}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder='Select work type' />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={WorkType.FULL_TIME}>Full Time</SelectItem>
-                <SelectItem value={WorkType.PART_TIME}>Part Time</SelectItem>
-                <SelectItem value={WorkType.CONTRACT}>Contract</SelectItem>
-              </SelectContent>
-            </Select>
-            {form.formState.errors.workType && (
-              <p className='text-sm text-red-500'>
-                {form.formState.errors.workType.message}
-              </p>
-            )}
-          </div>
-
-          <div className='space-y-1'>
-            <Label htmlFor='role'>Role *</Label>
-            <Select
-              onValueChange={(value) => form.setValue('role', value as Role)}
-              defaultValue={form.getValues('role')}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder='Select role' />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={Role.FACULTY}>Faculty</SelectItem>
-                <SelectItem value={Role.ADMIN}>Admin</SelectItem>
-                <SelectItem value={Role.ACADEMIC_HEAD}>
-                  Academic Head
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            {form.formState.errors.role && (
-              <p className='text-sm text-red-500'>
-                {form.formState.errors.role.message}
-              </p>
-            )}
-          </div>
-
-          <div className='space-y-1'>
-            <Label htmlFor='permission'>Permission *</Label>
-            <Select
-              onValueChange={(value) =>
-                form.setValue('permission', value as Permission)
-              }
-              defaultValue={form.getValues('permission')}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder='Select permission' />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={Permission.GRANTED}>Granted</SelectItem>
-                <SelectItem value={Permission.DENIED}>Denied</SelectItem>
-              </SelectContent>
-            </Select>
-            {form.formState.errors.permission && (
-              <p className='text-sm text-red-500'>
-                {form.formState.errors.permission.message}
-              </p>
-            )}
-          </div>
-
-          <div className='flex justify-end pt-4 gap-2'>
+          <div className='flex justify-start pt-4 gap-2 mt-auto w-full'>
             <Button
+              className='w-1/2 h-15'
               type='button'
               variant='outline'
               onClick={() => {
@@ -401,7 +404,7 @@ export function AddUserSheet({ onSuccess }: AddUserSheetProps) {
             <Button
               type='submit'
               disabled={isSubmitting}
-              className='bg-[#124A69] text-white hover:bg-gray-700'
+              className='bg-[#124A69] text-white hover:bg-gray-700 w-1/2 h-15'
             >
               {isSubmitting ? 'Adding...' : 'Add'}
             </Button>

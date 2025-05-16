@@ -1,24 +1,40 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getAuthCookie, verifyToken } from '@/lib/auth';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth-options';
+import {
+  Criteria,
+  CriteriaCreateInput,
+  CriteriaResponse,
+} from '@/types/grading';
 
 export async function POST(request: Request) {
   try {
-    const tokenStr = await getAuthCookie();
-    if (!tokenStr) {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const token = await verifyToken(tokenStr);
-    if (!token) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-    }
-
-    const data = await request.json();
-    const { name, courseId, rubrics, scoringRange, passingScore } = data;
+    const body = await request.json();
+    const {
+      name,
+      courseId,
+      rubrics,
+      scoringRange,
+      passingScore,
+      date,
+      isGroupCriteria,
+    } = body as any;
 
     // Validate required fields
-    if (!name || !courseId || !rubrics || !scoringRange || !passingScore) {
+    if (
+      !name ||
+      !courseId ||
+      !rubrics ||
+      !scoringRange ||
+      !passingScore ||
+      !date
+    ) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 },
@@ -30,10 +46,26 @@ export async function POST(request: Request) {
       data: {
         name,
         courseId,
-        userId: token.id,
-        rubrics,
+        userId: session.user.id,
         scoringRange,
         passingScore,
+        date: new Date(date),
+        isGroupCriteria: isGroupCriteria === true, // default to false if not provided
+        rubrics: {
+          create: rubrics.map((r: any) => ({
+            name: r.name,
+            percentage: r.weight ?? r.percentage,
+          })),
+        },
+      },
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
+        rubrics: true,
       },
     });
 
@@ -49,18 +81,16 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   try {
-    const tokenStr = await getAuthCookie();
-    if (!tokenStr) {
+    const session = await getServerSession(authOptions);
+    if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const token = await verifyToken(tokenStr);
-    if (!token) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
     const courseId = searchParams.get('courseId');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '10');
+    const skip = (page - 1) * limit;
 
     if (!courseId) {
       return NextResponse.json(
@@ -69,10 +99,13 @@ export async function GET(request: Request) {
       );
     }
 
+    // Get total count for pagination
+    const total = await prisma.criteria.count({
+      where: { courseId },
+    });
+
     const criteria = await prisma.criteria.findMany({
-      where: {
-        courseId,
-      },
+      where: { courseId },
       include: {
         user: {
           select: {
@@ -80,10 +113,24 @@ export async function GET(request: Request) {
             email: true,
           },
         },
+        rubrics: true,
       },
+      skip,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
     });
 
-    return NextResponse.json(criteria);
+    const response: CriteriaResponse = {
+      criteria,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+
+    return NextResponse.json(response);
   } catch (error) {
     console.error('Error fetching criteria:', error);
     return NextResponse.json(

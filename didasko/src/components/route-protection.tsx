@@ -3,7 +3,6 @@
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { DashboardSkeleton } from './dashboard-skeleton';
 
 export function withAuth<P extends object>(
   WrappedComponent: React.ComponentType<P>,
@@ -17,10 +16,6 @@ export function withAuth<P extends object>(
         router.push('/');
       }
     }, [status, router]);
-
-    if (status === 'loading') {
-      return <DashboardSkeleton />;
-    }
 
     if (status === 'unauthenticated') {
       return null;

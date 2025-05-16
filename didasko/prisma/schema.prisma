@@ -39,6 +39,7 @@ model User {
   workType   WorkType @map("work_type")
   role       Role
   permission Permission @default(DENIED)
+  image      String?   // Optional profile image URL/path
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
@@ -114,9 +115,13 @@ model Student {
   firstName     String
   middleInitial String?
   image         String?
+  studentId     String    @unique
   grades        Grade[]
   attendance    Attendance[]
   coursesEnrolled Course[] @relation("StudentCourses")
+  groups        Group[]    @relation("GroupStudents")
+  leadingGroups Group[]    @relation("GroupLeader")
+  quizScores    QuizScore[]
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
@@ -157,20 +162,34 @@ model GradeItem {
 }
 
 model Criteria {
-  id          String   @id @default(uuid())
-  name        String
-  courseId    String
-  course      Course   @relation(fields: [courseId], references: [id])
-  userId      String   @map("user_id")
-  user        User     @relation(fields: [userId], references: [id])
-  rubrics     Json     // Will store array of {name: string, percentage: number}
-  scoringRange String  // "1-5" or "1-10"
-  passingScore String  // "75" or "80"
-  grades      Grade[]
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id           String    @id @default(uuid())
+  name         String
+  courseId     String
+  course       Course    @relation(fields: [courseId], references: [id])
+  userId       String    @map("user_id")
+  user         User      @relation(fields: [userId], references: [id])
+  scoringRange String    // "1-5" or "1-10"
+  passingScore String    // "75" or "80"
+  grades       Grade[]
+  rubrics      Rubric[]  // NEW: relation to Rubric
+  date         DateTime
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  isGroupCriteria Boolean @default(false)
 
   @@map("criteria")
+}
+
+model Rubric {
+  id             String    @id @default(uuid())
+  criteria       Criteria  @relation(fields: [criteriaId], references: [id])
+  criteriaId     String
+  name           String
+  percentage     Int
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("rubrics")
 }
 
 model Event {
@@ -214,6 +233,8 @@ model Course {
   attendance  Attendance[]
   criteria    Criteria[]
   grades      Grade[]
+  groups      Group[]
+  quizzes     Quiz[]
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -249,4 +270,59 @@ model Attendance {
   @@index([studentId])
   @@index([courseId])
   @@index([date])
+}
+
+model Group {
+  id          String   @id @default(uuid())
+  number      String
+  name        String?
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id])
+  students    Student[] @relation("GroupStudents")
+  leaderId    String?  // Optional leader ID
+  leader      Student? @relation("GroupLeader", fields: [leaderId], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("groups")
+}
+
+model Quiz {
+  id          String   @id @default(uuid())
+  name        String
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id])
+  quizDate    DateTime
+  attendanceRangeStart DateTime
+  attendanceRangeEnd   DateTime
+  maxScore    Float
+  passingRate Float
+  scores      QuizScore[]
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("quizzes")
+  @@index([courseId])
+  @@index([attendanceRangeStart])
+  @@index([attendanceRangeEnd])
+}
+
+model QuizScore {
+  id          String   @id @default(uuid())
+  quizId      String
+  quiz        Quiz     @relation(fields: [quizId], references: [id])
+  studentId   String
+  student     Student  @relation(fields: [studentId], references: [id])
+  score       Float
+  attendance  String
+  plusPoints  Float
+  totalGrade  Float
+  remarks     String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([quizId, studentId])
+  @@map("quiz_scores")
+  @@index([quizId])
+  @@index([studentId])
 }

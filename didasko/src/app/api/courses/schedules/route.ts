@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
-import { PrismaClient } from '@prisma/client';
-import { CourseSchedule } from '@/lib/types';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
+import {
+  Schedule,
+  ScheduleCreateInput,
+  ScheduleResponse,
+} from '@/types/schedule';
 
 // Helper function to check for schedule overlaps
 async function hasScheduleOverlap(
@@ -39,18 +41,17 @@ async function hasScheduleOverlap(
 
 export async function GET(request: Request) {
   try {
-    console.log('Starting GET request for schedules');
     const session = await getServerSession(authOptions);
-    console.log('Session:', JSON.stringify(session, null, 2));
-
     if (!session) {
-      console.log('No session found');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
     const facultyId = searchParams.get('facultyId');
-    console.log('FacultyId from params:', facultyId);
+    const semester = searchParams.get('semester');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '10');
+    const skip = (page - 1) * limit;
 
     if (!facultyId) {
       return NextResponse.json(
@@ -61,95 +62,64 @@ export async function GET(request: Request) {
 
     // Verify the user exists
     const user = await prisma.user.findUnique({
-      where: {
-        id: facultyId,
-      },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-      },
+      where: { id: facultyId },
+      select: { id: true, email: true, role: true },
     });
 
-    console.log('Found user:', JSON.stringify(user, null, 2));
-
     if (!user) {
-      console.log('User not found in database');
       return NextResponse.json({ error: 'Faculty not found' }, { status: 404 });
     }
 
-    // First get all courses for this faculty
-    console.log('Finding courses for faculty:', facultyId);
-    const courses = await prisma.$queryRaw<
-      Array<{ id: string; title: string }>
-    >`
-      SELECT id, title 
-      FROM courses 
-      WHERE "facultyId" = ${facultyId}
-    `;
-    console.log('Found courses:', JSON.stringify(courses, null, 2));
-
-    if (!Array.isArray(courses) || courses.length === 0) {
-      console.log('No courses found for faculty');
-      return NextResponse.json([]);
-    }
-
-    const courseIds = courses.map((course) => course.id);
-    console.log('Course IDs:', courseIds);
-
-    // Then get schedules for these courses
-    console.log('Finding schedules for courses:', courseIds);
-    const schedules = await prisma.$queryRaw<
-      Array<{
-        id: string;
-        courseId: string;
-        day: Date;
-        fromTime: string;
-        toTime: string;
+    // Get total count for pagination
+    const total = await prisma.courseSchedule.count({
+      where: {
         course: {
-          code: string;
-          title: string;
-          room: string;
-        };
-      }>
-    >`
-      SELECT 
-        cs.id,
-        cs."courseId",
-        cs.day,
-        cs."fromTime",
-        cs."toTime",
-        json_build_object(
-          'id', c.id,
-          'code', c.code,
-          'title', c.title,
-          'room', c.room,
-          'semester', c.semester,
-          'section', c.section
-        ) as course
-      FROM course_schedules cs
-      JOIN courses c ON cs."courseId" = c.id
-      WHERE cs."courseId" = ANY(${courseIds})
-      ORDER BY cs.day ASC
-    `;
-    console.log('Found schedules:', JSON.stringify(schedules, null, 2));
-
-    return NextResponse.json(schedules);
-  } catch (error: any) {
-    console.error('Detailed error in GET /api/courses/schedules:', {
-      name: error?.name,
-      message: error?.message,
-      stack: error?.stack,
-      cause: error?.cause,
-      prismaAvailable: !!prisma,
-      prismaModels: Object.keys(prisma),
+          facultyId,
+          ...(semester ? { semester } : {}),
+        },
+      },
     });
 
-    return NextResponse.json(
-      {
-        error: 'Failed to fetch schedules',
-        details: error?.message || 'Unknown error',
+    // Get schedules with pagination
+    const schedules = await prisma.courseSchedule.findMany({
+      where: {
+        course: {
+          facultyId,
+          ...(semester ? { semester } : {}),
+        },
       },
+      include: {
+        course: {
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            room: true,
+            semester: true,
+            section: true,
+          },
+        },
+      },
+      skip,
+      take: limit,
+      orderBy: { day: 'asc' },
+    });
+
+    const response: ScheduleResponse = {
+      schedules,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+
+    return NextResponse.json(response);
+  } catch (error) {
+    console.error('Error fetching schedules:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch schedules' },
       { status: 500 },
     );
   }
@@ -163,7 +133,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { courseId, day, fromTime, toTime } = body;
+    const { courseId, day, fromTime, toTime } = body as ScheduleCreateInput;
 
     // Validate required fields
     if (!courseId || !day || !fromTime || !toTime) {
@@ -195,11 +165,20 @@ export async function POST(request: Request) {
         toTime,
       },
       include: {
-        course: true,
+        course: {
+          select: {
+            id: true,
+            code: true,
+            title: true,
+            room: true,
+            semester: true,
+            section: true,
+          },
+        },
       },
     });
 
-    return NextResponse.json(schedule);
+    return NextResponse.json(schedule as Schedule);
   } catch (error) {
     console.error('Error creating schedule:', error);
     return NextResponse.json(
@@ -217,9 +196,9 @@ export async function DELETE(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
+    const scheduleId = searchParams.get('id');
 
-    if (!id) {
+    if (!scheduleId) {
       return NextResponse.json(
         { error: 'Schedule ID is required' },
         { status: 400 },
@@ -227,7 +206,7 @@ export async function DELETE(request: Request) {
     }
 
     await prisma.courseSchedule.delete({
-      where: { id },
+      where: { id: scheduleId },
     });
 
     return NextResponse.json({ message: 'Schedule deleted successfully' });

@@ -16,6 +16,8 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { format } from 'date-fns';
+import axiosInstance from '@/lib/axios';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface Course {
   id: string;
@@ -25,7 +27,7 @@ interface Course {
   semester: string;
   section: string;
   attendanceStats?: {
-    totalAbsents: number;
+    totalAbsent: number;
     lastAttendanceDate: string | null;
   };
 }
@@ -41,40 +43,43 @@ interface Schedule {
 
 interface SemesterCoursesProps {
   semester: '1st Semester' | '2nd Semester';
-  type: 'attendance' | 'grading';
+  type: 'attendance' | 'recitation' | 'quiz' | 'gradebook' | 'reporting';
 }
 
 const CourseCard = ({
-  schedule,
+  course,
   type,
 }: {
-  schedule: Schedule;
-  type: 'attendance' | 'grading';
+  course: Course;
+  type: 'attendance' | 'recitation' | 'quiz' | 'gradebook' | 'reporting';
 }) => {
   const href =
     type === 'attendance'
-      ? `/attendance/class?courseId=${schedule.courseId}`
-      : `/grading/reporting/${schedule.course.code}`;
+      ? `/attendance/class?courseId=${course.id}`
+      : type === 'recitation'
+      ? `/grading/recitation`
+      : type === 'quiz'
+      ? `/grading/quiz/${course.code}/${course.section}`
+      : type === 'reporting'
+      ? `/grading/reporting/${course.code}/${course.section}`
+      : `/grading/gradebook`;
 
   return (
-    <Card className='bg-[#124A69] text-white rounded-lg shadow-md w-full max-w-[440px] flex flex-col justify-between h-45 '>
+    <Card className='bg-[#124A69] text-white rounded-lg shadow-md w-full max-w-[320px] sm:max-w-[360px] md:max-w-[320px] lg:max-w-[380px] xl:max-w-[440px] flex flex-col justify-between h-45'>
       <div>
         <CardHeader className='-mt-4 flex justify-between items-center'>
-          <CardTitle className='text-2xl font-bold'>
-            {schedule.course.title}
-          </CardTitle>
+          <CardTitle className='text-2xl font-bold'>{course.title}</CardTitle>
           <BookOpenText size={50} />
         </CardHeader>
         <CardContent>
-          <p className='text-sm'>Section {schedule.course.section}</p>
+          <p className='text-sm'>Section {course.section}</p>
           <p className='text-sm font-semibold'>
-            Total Number of Absents:{' '}
-            {schedule.course.attendanceStats?.totalAbsents || 0}
+            Total Number of Absents: {course.attendanceStats?.totalAbsent || 0}
           </p>
           <p className='text-xs text-gray-400'>
-            {schedule.course.attendanceStats?.lastAttendanceDate
+            {course.attendanceStats?.lastAttendanceDate
               ? `Last attendance: ${new Date(
-                  schedule.course.attendanceStats.lastAttendanceDate,
+                  course.attendanceStats.lastAttendanceDate,
                 ).toLocaleDateString()}`
               : 'No attendance yet'}
           </p>
@@ -86,7 +91,17 @@ const CourseCard = ({
           variant='secondary'
           className='bg-[#FAEDCB] text-black text-sm'
         >
-          <Link href={href}>View Details</Link>
+          <Link href={href}>
+            {type === 'attendance'
+              ? 'View Attendance'
+              : type === 'recitation'
+              ? 'View Recitation'
+              : type === 'quiz'
+              ? 'View Quiz'
+              : type === 'reporting'
+              ? 'View Reporting'
+              : 'View Gradebook'}
+          </Link>
         </Button>
       </div>
     </Card>
@@ -95,12 +110,20 @@ const CourseCard = ({
 
 // Loading Skeleton Component
 const LoadingSkeleton = ({ index }: { index: number }) => (
-  <Card key={`skeleton-${index}`} className='animate-pulse'>
-    <div className='p-4 space-y-3'>
-      <div className='h-6 w-3/4 bg-gray-200 rounded'></div>
-      <div className='h-4 w-1/2 bg-gray-200 rounded'></div>
-      <div className='h-4 w-2/3 bg-gray-200 rounded'></div>
-      <div className='h-8 w-full bg-gray-200 rounded mt-4'></div>
+  <Card className='bg-white text-[#124A69] rounded-lg shadow-md w-full max-w-[320px] sm:max-w-[360px] md:max-w-[320px] lg:max-w-[380px] xl:max-w-[440px] flex flex-col justify-between h-45'>
+    <div>
+      <div className='-mt-7 p-4 flex justify-between items-center'>
+        <Skeleton className='h-7 w-3/4 bg-gray-200' />
+        <Skeleton className='h-[50px] w-[50px] rounded-full bg-gray-200' />
+      </div>
+      <div className='p-4 -mt-8 space-y-2'>
+        <Skeleton className='h-4 w-1/4 bg-gray-200' />
+        <Skeleton className='h-4 w-2/5 bg-gray-200' />
+        <Skeleton className='h-3 w-1/2 bg-gray-200' />
+      </div>
+    </div>
+    <div className='flex justify-end -mt-9 p-2'>
+      <Skeleton className='h-8 w-28 bg-gray-200 rounded-md' />
     </div>
   </Card>
 );
@@ -111,7 +134,7 @@ export default function SemesterCourses({
 }: SemesterCoursesProps) {
   const router = useRouter();
   const { data: session, status } = useSession();
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 3;
@@ -119,42 +142,30 @@ export default function SemesterCourses({
   const fetchSchedules = async () => {
     if (!session?.user?.id) {
       setIsLoading(false);
-      router.push('/');
       return;
     }
 
     try {
-      const response = await fetch(
-        `/api/courses/schedules?facultyId=${session.user.id}`,
+      const response = await axiosInstance.get('/courses', {
+        params: {
+          facultyId: session.user.id,
+          semester,
+        },
+      });
+      const courses = response.data.courses || [];
+      const coursesWithStats = await Promise.all(
+        courses.map(async (course: Course) => {
+          const stats = await fetchAttendanceStats(course.id);
+          return {
+            ...course,
+            attendanceStats: stats,
+          };
+        }),
       );
-      const data = await response.json();
-      if (response.ok) {
-        // Fetch attendance stats for each course
-        const schedulesWithStats = await Promise.all(
-          data.map(async (schedule: Schedule) => {
-            const stats = await fetchAttendanceStats(schedule.courseId);
-            return {
-              ...schedule,
-              course: {
-                ...schedule.course,
-                attendanceStats: stats,
-              },
-            };
-          }),
-        );
-        // Filter for specified semester courses
-        const semesterSchedules = schedulesWithStats.filter(
-          (schedule: Schedule) => {
-            return (
-              schedule?.course?.semester &&
-              schedule.course.semester.trim() === semester
-            );
-          },
-        );
-        setSchedules(semesterSchedules);
-      }
+      setCourses(coursesWithStats);
     } catch (error) {
       console.error('Error in fetchSchedules:', error);
+      setCourses([]);
     } finally {
       setIsLoading(false);
     }
@@ -162,9 +173,12 @@ export default function SemesterCourses({
 
   const fetchAttendanceStats = async (courseId: string) => {
     try {
-      const response = await fetch(`/api/courses/${courseId}/attendance/stats`);
-      if (!response.ok) throw new Error('Failed to fetch attendance stats');
-      return await response.json();
+      const response = await axiosInstance.get(
+        `/courses/${courseId}/attendance/stats`,
+      );
+      if (response.status !== 200 || !response.data)
+        throw new Error('Failed to fetch attendance stats');
+      return response.data;
     } catch (error) {
       console.error('Error fetching attendance stats:', error);
       return null;
@@ -174,13 +188,11 @@ export default function SemesterCourses({
   useEffect(() => {
     if (status === 'authenticated') {
       fetchSchedules();
-    } else if (status === 'unauthenticated') {
-      router.push('/');
     }
-  }, [status, session?.user?.id, router]);
+  }, [status, session?.user?.id]);
 
-  const totalPages = Math.ceil(schedules.length / itemsPerPage);
-  const currentSchedules = schedules.slice(
+  const totalPages = Math.ceil(courses.length / itemsPerPage);
+  const currentCourses = courses.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage,
   );
@@ -197,7 +209,7 @@ export default function SemesterCourses({
     );
   }
 
-  if (schedules.length === 0) {
+  if (courses.length === 0) {
     return (
       <Card className='p-4 shadow-md rounded-lg'>
         <div className='text-center py-8'>
@@ -214,18 +226,18 @@ export default function SemesterCourses({
 
   return (
     <Card className='p-4 shadow-md rounded-lg'>
-      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 '>
-        {currentSchedules.map((schedule) => (
-          <CourseCard key={schedule.id} schedule={schedule} type={type} />
+      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 lg:gap-8'>
+        {currentCourses.map((course) => (
+          <CourseCard key={course.id} course={course} type={type} />
         ))}
       </div>
 
-      {schedules.length > itemsPerPage && (
+      {courses.length > itemsPerPage && (
         <div className='flex justify-between items-center px-2 -mt-4'>
           <p className='text-sm text-gray-500 w-40    '>
             {currentPage * itemsPerPage - (itemsPerPage - 1)}-
-            {Math.min(currentPage * itemsPerPage, schedules.length)} out of{' '}
-            {schedules.length} classes
+            {Math.min(currentPage * itemsPerPage, courses.length)} out of{' '}
+            {courses.length} classes
           </p>
           <Pagination className='flex justify-end'>
             <PaginationContent>
