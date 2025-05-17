@@ -62,6 +62,7 @@ interface GradingTableProps {
   onDateSelect?: (date: Date | undefined) => void;
   groupId?: string;
   isGroupView?: boolean;
+  isRecitationCriteria?: boolean;
 }
 
 interface GradingReport {
@@ -101,6 +102,7 @@ export function GradingTable({
   onDateSelect,
   groupId,
   isGroupView = false,
+  isRecitationCriteria = false,
 }: GradingTableProps) {
   const { data: session } = useSession();
   const [students, setStudents] = useState<Student[]>([]);
@@ -155,6 +157,7 @@ export function GradingTable({
   const [previousScores, setPreviousScores] = useState<
     Record<string, GradingScore>
   >({});
+  const [showExportWarning, setShowExportWarning] = useState(false);
 
   // Function to handle dialog close
   const handleDialogClose = () => {
@@ -256,11 +259,12 @@ export function GradingTable({
       try {
         const formattedDate = selectedDate.toISOString().split('T')[0];
         // Fetch all criteria for this course
-        const endpoint =
-          isGroupView && groupId
-            ? `/courses/${courseId}/groups/${groupId}/criteria`
-            : `/courses/${courseId}/criteria`;
-
+        let endpoint = `/courses/${courseId}/criteria`;
+        if (isGroupView && groupId) {
+          endpoint = `/courses/${courseId}/groups/${groupId}/criteria`;
+        } else if (isRecitationCriteria) {
+          endpoint = `/courses/${courseId}/recitation-criteria`;
+        }
         const response = await axiosInstance.get(endpoint);
         const allReports = response.data;
         // Filter reports for the selected date
@@ -287,7 +291,7 @@ export function GradingTable({
       }
     };
     checkExistingCriteria();
-  }, [selectedDate, courseId, isGroupView, groupId]);
+  }, [selectedDate, courseId, isGroupView, groupId, isRecitationCriteria]);
 
   // Reset scores when date changes
   useEffect(() => {
@@ -784,7 +788,6 @@ export function GradingTable({
       console.log('No session user ID');
       return;
     }
-
     const loadingToast = toast.loading('Creating report...', {
       position: 'top-center',
       duration: Infinity,
@@ -794,28 +797,23 @@ export function GradingTable({
         border: '1px solid #e5e7eb',
       },
     });
-
     try {
       setIsLoading(true);
-      // Prepare rubrics as array of { name, percentage, isGroupRubric }
       const rubrics = newReport.rubricDetails.map((r, idx, arr) => ({
         name: isGroupView && idx === arr.length - 1 ? 'Participation' : r.name,
-        percentage: r.weight, // Convert weight to percentage
-        isGroupRubric: isGroupView ? idx !== arr.length - 1 : false, // Set isGroupRubric based on view mode and position
+        percentage: r.weight,
+        isGroupRubric: isGroupView ? idx !== arr.length - 1 : false,
       }));
-
-      // Choose endpoint and isGroupCriteria flag
-      const endpoint =
-        isGroupView && groupId
-          ? `/courses/${courseId}/groups/${groupId}/criteria`
-          : `/courses/${courseId}/criteria`;
-
-      // Ensure date is set to midnight UTC to avoid timezone issues
+      let endpoint = `/courses/${courseId}/criteria`;
+      if (isGroupView && groupId) {
+        endpoint = `/courses/${courseId}/groups/${groupId}/criteria`;
+      } else if (isRecitationCriteria) {
+        endpoint = `/courses/${courseId}/recitation-criteria`;
+      }
       const dateToSend = selectedDate ? new Date(selectedDate) : undefined;
       if (dateToSend) {
         dateToSend.setHours(0, 0, 0, 0);
       }
-
       const response = await axiosInstance.post(endpoint, {
         name: newReport.name,
         rubrics,
@@ -824,21 +822,14 @@ export function GradingTable({
         userId: session.user.id,
         date: dateToSend ? dateToSend.toISOString() : undefined,
         isGroupCriteria: isGroupView,
+        isRecitationCriteria: isRecitationCriteria,
       });
       const created = response.data;
-
-      // Update the saved reports with the new report at the beginning of the array
       setSavedReports((prev) => [created, ...prev]);
-
-      // Set the active report and rubric details
       setActiveReport(created);
       setRubricDetails(created.rubrics);
       setSelectedReport(created.id);
-
-      // Close the dialog
       setShowCriteriaDialog(false);
-
-      // Reset the form
       setNewReport({
         name: '',
         rubrics: '2',
@@ -849,10 +840,7 @@ export function GradingTable({
           { name: '', weight: 50 },
         ],
       });
-
-      // Clear validation errors
       setValidationErrors({});
-
       toast.dismiss(loadingToast);
       toast.success('Report created successfully', {
         duration: 3000,
@@ -914,10 +902,17 @@ export function GradingTable({
 
     // Create header rows
     const header = [
-      [`${courseCode} - ${courseSection} GRADING REPORT`],
+      [
+        `${courseCode} - ${courseSection} ${
+          isRecitationCriteria ? 'RECITATION' : 'GRADING'
+        } REPORT`,
+      ],
       [''],
       ['Date:', formattedDate],
-      ['Grading Report:', activeReport.name],
+      [
+        `${isRecitationCriteria ? 'Recitation' : 'Grading'} Report:`,
+        activeReport.name,
+      ],
       [''],
       // Column headers
       [
@@ -968,9 +963,28 @@ export function GradingTable({
       return;
     }
 
+    // Check for students without scores
+    const unscoredStudents = students.filter((student) => {
+      const studentScore = scores[student.id];
+      return !studentScore || studentScore.scores.every((score) => score === 0);
+    });
+
+    if (unscoredStudents.length > 0) {
+      setShowExportWarning(true);
+      return;
+    }
+
     const data = prepareExportData();
     if (!data) return;
 
+    setExportData(data);
+    setShowExportPreview(true);
+  };
+
+  const handleConfirmExportWithWarning = () => {
+    setShowExportWarning(false);
+    const data = prepareExportData();
+    if (!data) return;
     setExportData(data);
     setShowExportPreview(true);
   };
@@ -1533,18 +1547,6 @@ export function GradingTable({
                     className='pl-8 w-[200px]'
                   />
                 </div>
-                <div className='flex items-center gap-2'>
-                  <Button
-                    variant='outline'
-                    className={cn(
-                      'w-[180px] justify-start text-left font-normal',
-                      !selectedDate && 'text-muted-foreground',
-                    )}
-                  >
-                    <CalendarIcon className='mr-2 h-4 w-4' />
-                    {selectedDate ? format(selectedDate, 'PPP') : 'Pick a date'}
-                  </Button>
-                </div>
               </div>
               <div className='flex items-center gap-2'>
                 <Popover>
@@ -1632,25 +1634,20 @@ export function GradingTable({
             </div>
             <div className='flex items-center gap-1'>
               <Button
+                variant='outline'
+                className={cn(
+                  'w-[180px] justify-start text-left font-normal',
+                  !selectedDate && 'text-muted-foreground',
+                )}
+              >
+                <CalendarIcon className='mr-2 h-4 w-4' />
+                {selectedDate ? format(selectedDate, 'PPP') : 'Pick a date'}
+              </Button>
+              <Button
                 onClick={() => setShowCriteriaDialog(true)}
                 className='ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center '
               >
                 Report Manager
-              </Button>
-              <Button
-                onClick={handleExport}
-                className=' h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center'
-              >
-                <svg
-                  className='w-4 h-4'
-                  fill='none'
-                  stroke='currentColor'
-                  strokeWidth='2'
-                  viewBox='0 0 24 24'
-                >
-                  <path d='M12 5v14m7-7H5' />
-                </svg>
-                Export to Excel
               </Button>
             </div>
           </div>
@@ -1659,10 +1656,12 @@ export function GradingTable({
           <DialogContent className='sm:max-w-[450px]'>
             <DialogHeader>
               <DialogTitle className='text-[#124A69] text-2xl font-bold'>
-                Grading Report
+                {isRecitationCriteria ? 'Recitation Report' : 'Grading Report'}
               </DialogTitle>
               <DialogDescription className='text-gray-500'>
-                Select existing report or create new ones
+                {isRecitationCriteria
+                  ? 'Select existing recitation report or create new ones'
+                  : 'Select existing report or create new ones'}
               </DialogDescription>
             </DialogHeader>
             {criteriaLoading ? (
@@ -1688,7 +1687,9 @@ export function GradingTable({
                 <TabsContent value='existing'>
                   <div className='space-y-4 py-4'>
                     <div className='text-sm font-medium text-gray-700 mb-2'>
-                      Select a report
+                      {isRecitationCriteria
+                        ? 'Select a recitation report'
+                        : 'Select a report'}
                     </div>
                     {criteriaLoading ? (
                       <div className='flex flex-col items-center justify-center py-8'>
@@ -1699,7 +1700,9 @@ export function GradingTable({
                       </div>
                     ) : savedReports.length === 0 ? (
                       <div className='text-gray-500 text-center py-4'>
-                        No reports found.
+                        {isRecitationCriteria
+                          ? 'No recitation reports found.'
+                          : 'No reports found.'}
                       </div>
                     ) : (
                       <div className='flex flex-col gap-4'>
@@ -1708,7 +1711,13 @@ export function GradingTable({
                           onValueChange={setSelectedReport}
                         >
                           <SelectTrigger className='bg-gray-50 border-gray-200 w-full max-w-[400px]'>
-                            <SelectValue placeholder='Select saved report' />
+                            <SelectValue
+                              placeholder={
+                                isRecitationCriteria
+                                  ? 'Select saved recitation report'
+                                  : 'Select saved report'
+                              }
+                            />
                           </SelectTrigger>
                           <SelectContent>
                             {savedReports.map((report) => {
@@ -1765,7 +1774,9 @@ export function GradingTable({
                         disabled={!selectedReport}
                         className='bg-[#124A69] hover:bg-[#0d3a56]'
                       >
-                        Apply Selected Report
+                        {isRecitationCriteria
+                          ? 'Apply Selected Recitation Report'
+                          : 'Apply Selected Report'}
                       </Button>
                     </DialogFooter>
                   </div>
@@ -1778,13 +1789,19 @@ export function GradingTable({
                           htmlFor='name'
                           className='text-sm font-medium text-gray-700'
                         >
-                          Report Name
+                          {isRecitationCriteria
+                            ? 'Recitation Report Name'
+                            : 'Report Name'}
                         </label>
                         <Input
                           id='name'
                           value={newReport.name}
                           onChange={handleReportNameChange}
-                          placeholder='e.g., Midterm Exam'
+                          placeholder={
+                            isRecitationCriteria
+                              ? 'e.g., Week 1 Recitation'
+                              : 'e.g., Mt. Mayon Report'
+                          }
                           maxLength={25}
                           className={`bg-gray-50 border-gray-200 ${
                             validationErrors.name ? 'border-red-500' : ''
@@ -2005,7 +2022,9 @@ export function GradingTable({
                         disabled={!newReport.name || !newReport.rubrics}
                         className='bg-[#124A69] hover:bg-[#0d3a56]'
                       >
-                        Create New Report
+                        {isRecitationCriteria
+                          ? 'Create New Recitation Report'
+                          : 'Create New Report'}
                       </Button>
                     </DialogFooter>
                   </div>
@@ -2227,6 +2246,13 @@ export function GradingTable({
             Reset
           </Button>
           <Button
+            variant='outline'
+            onClick={handleExport}
+            className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
+          >
+            Export to Excel
+          </Button>
+          <Button
             onClick={handleSaveGrades}
             disabled={isLoading || !hasChanges() || isSaving}
             className='h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden'
@@ -2271,6 +2297,36 @@ export function GradingTable({
                 className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
               >
                 Reset Grades
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Export Warning Dialog */}
+        <Dialog open={showExportWarning} onOpenChange={setShowExportWarning}>
+          <DialogContent className='sm:max-w-[425px]'>
+            <DialogHeader>
+              <DialogTitle className='text-[#124A69] text-xl font-bold'>
+                Warning: Unscored Students
+              </DialogTitle>
+              <DialogDescription className='text-gray-500'>
+                There are students who have not been scored yet. Do you want to
+                proceed with the export?
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className='gap-2 sm:gap-2'>
+              <Button
+                variant='outline'
+                onClick={() => setShowExportWarning(false)}
+                className='border-gray-200'
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleConfirmExportWithWarning}
+                className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+              >
+                Proceed with Export
               </Button>
             </DialogFooter>
           </DialogContent>

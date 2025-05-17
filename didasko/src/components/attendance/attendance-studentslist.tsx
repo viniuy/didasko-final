@@ -179,6 +179,7 @@ export default function StudentList() {
   const [showMarkAllConfirm, setShowMarkAllConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [attendanceDates, setAttendanceDates] = useState<Date[]>([]);
 
   const fetchStudents = async () => {
     if (!courseId) return;
@@ -188,13 +189,15 @@ export default function StudentList() {
       const response = await axiosInstance.get(`/courses/${courseId}/students`);
       const students = response.data.students.map((student: any) => ({
         ...student,
-        name: `${student.lastName}, ${student.firstName}${student.middleInitial ? ` ${student.middleInitial}.` : ''}`,
+        name: `${student.lastName}, ${student.firstName}${
+          student.middleInitial ? ` ${student.middleInitial}.` : ''
+        }`,
         status: 'NOT_SET' as AttendanceStatusWithNotSet,
         attendanceRecords: [],
       }));
       setStudentList(students);
       setCourseInfo(response.data.course);
-      
+
       // Fetch attendance for the selected date after getting students
       if (selectedDate) {
         await fetchAttendance(selectedDate);
@@ -214,19 +217,18 @@ export default function StudentList() {
     try {
       setIsDateLoading(true);
       const dateStr = format(date, 'yyyy-MM-dd');
-      const attendanceResponse = await axiosInstance.get<{ attendance: AttendanceRecord[] }>(
-        `/courses/${courseId}/attendance`,
-        {
-          params: {
-            date: dateStr,
-            limit: 1000, // Increase limit to get all records
-          },
+      const attendanceResponse = await axiosInstance.get<{
+        attendance: AttendanceRecord[];
+      }>(`/courses/${courseId}/attendance`, {
+        params: {
+          date: dateStr,
+          limit: 1000, // Increase limit to get all records
         },
-      );
+      });
 
       const attendanceData = attendanceResponse.data.attendance;
       const attendanceMap = new Map<string, AttendanceRecord>(
-        attendanceData.map((record) => [record.studentId, record])
+        attendanceData.map((record) => [record.studentId, record]),
       );
 
       // Update the entire student list with attendance records
@@ -236,14 +238,18 @@ export default function StudentList() {
           return {
             ...student,
             status: record?.status || 'NOT_SET',
-            attendanceRecords: record ? [{
-              id: record.id,
-              studentId: student.id,
-              courseId: courseId,
-              status: record.status,
-              date: dateStr,
-              reason: record.reason,
-            }] : [],
+            attendanceRecords: record
+              ? [
+                  {
+                    id: record.id,
+                    studentId: student.id,
+                    courseId: courseId,
+                    status: record.status,
+                    date: dateStr,
+                    reason: record.reason,
+                  },
+                ]
+              : [],
           };
         }),
       );
@@ -271,10 +277,51 @@ export default function StudentList() {
     }
   };
 
+  const fetchAttendanceDates = async () => {
+    if (!courseId) return;
+
+    try {
+      // Get the start date (January 2025) and end date (today)
+      const startDate = new Date(2025, 0, 1);
+      const endDate = new Date();
+
+      console.log(
+        'Fetching attendance dates from:',
+        startDate.toISOString(),
+        'to:',
+        endDate.toISOString(),
+      );
+
+      // Get all attendance records for the date range
+      const response = await axiosInstance.get(
+        `/courses/${courseId}/attendance/range`,
+        {
+          params: {
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString(),
+          },
+        },
+      );
+
+      console.log('Attendance API response:', response.data);
+
+      // Extract unique dates from the response
+      const uniqueDates = response.data.uniqueDates.map(
+        (dateStr: string) => new Date(dateStr),
+      );
+      console.log('Unique attendance dates:', uniqueDates);
+
+      setAttendanceDates(uniqueDates);
+    } catch (error) {
+      console.error('Error fetching attendance dates:', error);
+    }
+  };
+
   useEffect(() => {
     if (courseId) {
       fetchStudents();
       fetchAttendanceStats();
+      fetchAttendanceDates();
     }
   }, [courseId]);
 
@@ -345,66 +392,71 @@ export default function StudentList() {
     const student = filteredStudents[actualIndex];
     if (!student) return;
 
-    const promise = axiosInstance.post(
-      `/courses/${courseId}/attendance`,
-      {
-        date: selectedDate.toISOString(),
-        attendance: [{
+    const promise = axiosInstance.post(`/courses/${courseId}/attendance`, {
+      date: selectedDate.toISOString(),
+      attendance: [
+        {
           studentId: student.id,
           status: newStatus,
-        }],
+        },
+      ],
+    });
+
+    toast.promise(
+      promise,
+      {
+        loading: 'Updating attendance...',
+        success: 'Attendance updated',
+        error: 'Failed to update attendance',
+      },
+      {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+          boxShadow:
+            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+          borderRadius: '0.5rem',
+          padding: '1rem',
+        },
+        success: {
+          style: {
+            background: '#fff',
+            color: '#124A69',
+            border: '1px solid #e5e7eb',
+          },
+          iconTheme: {
+            primary: '#124A69',
+            secondary: '#fff',
+          },
+        },
+        error: {
+          style: {
+            background: '#fff',
+            color: '#dc2626',
+            border: '1px solid #e5e7eb',
+          },
+          iconTheme: {
+            primary: '#dc2626',
+            secondary: '#fff',
+          },
+        },
+        loading: {
+          style: {
+            background: '#fff',
+            color: '#124A69',
+            border: '1px solid #e5e7eb',
+          },
+        },
       },
     );
-
-    toast.promise(promise, {
-      loading: 'Updating attendance...',
-      success: 'Attendance updated',
-      error: 'Failed to update attendance',
-    }, {
-      style: {
-        background: '#fff',
-        color: '#124A69',
-        border: '1px solid #e5e7eb',
-        boxShadow:
-          '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-        borderRadius: '0.5rem',
-        padding: '1rem',
-      },
-      success: {
-        style: {
-          background: '#fff',
-          color: '#124A69',
-          border: '1px solid #e5e7eb',
-        },
-        iconTheme: {
-          primary: '#124A69',
-          secondary: '#fff',
-        },
-      },
-      error: {
-        style: {
-          background: '#fff',
-          color: '#dc2626',
-          border: '1px solid #e5e7eb',
-        },
-        iconTheme: {
-          primary: '#dc2626',
-          secondary: '#fff',
-        },
-      },
-      loading: {
-        style: {
-          background: '#fff',
-          color: '#124A69',
-          border: '1px solid #e5e7eb',
-        },
-      },
-    });
 
     try {
       // Update local state immediately for better UX
       setStudentList((prev) =>
-        prev.map((s) => (s.id === student.id ? { ...s, status: newStatus } : s)),
+        prev.map((s) =>
+          s.id === student.id ? { ...s, status: newStatus } : s,
+        ),
       );
 
       await promise;
@@ -420,17 +472,19 @@ export default function StudentList() {
       };
 
       setStudentList((prev) =>
-        prev.map((s) => 
-          s.id === student.id 
+        prev.map((s) =>
+          s.id === student.id
             ? { ...s, status: newStatus, attendanceRecords: [record] }
-            : s
+            : s,
         ),
       );
     } catch (error) {
       console.error('Error saving attendance:', error);
       // Revert local state on error
       setStudentList((prev) =>
-        prev.map((s) => (s.id === student.id ? { ...s, status: 'NOT_SET' } : s)),
+        prev.map((s) =>
+          s.id === student.id ? { ...s, status: 'NOT_SET' } : s,
+        ),
       );
     }
   };
@@ -460,7 +514,15 @@ export default function StudentList() {
       (currentPage - 1) * itemsPerPage,
       currentPage * itemsPerPage,
     );
-  }, [studentList, searchQuery, filters.status, sortDate, selectedDate, currentPage, itemsPerPage]);
+  }, [
+    studentList,
+    searchQuery,
+    filters.status,
+    sortDate,
+    selectedDate,
+    currentPage,
+    itemsPerPage,
+  ]);
 
   const handleImageUpload = async (studentId: string, file: File) => {
     try {
@@ -615,63 +677,64 @@ export default function StudentList() {
       return;
     }
 
-    const attendanceData = studentList.map(student => ({
+    const attendanceData = studentList.map((student) => ({
       studentId: student.id,
       status: 'PRESENT' as AttendanceStatus,
     }));
 
-    const promise = axiosInstance.post(
-      `/courses/${courseId}/attendance`,
+    const promise = axiosInstance.post(`/courses/${courseId}/attendance`, {
+      date: selectedDate.toISOString(),
+      attendance: attendanceData,
+    });
+
+    toast.promise(
+      promise,
       {
-        date: selectedDate.toISOString(),
-        attendance: attendanceData,
+        loading: 'Marking all as present...',
+        success: 'All students marked as present',
+        error: 'Failed to update attendance',
+      },
+      {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+          boxShadow:
+            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+          borderRadius: '0.5rem',
+          padding: '1rem',
+        },
+        success: {
+          style: {
+            background: '#fff',
+            color: '#124A69',
+            border: '1px solid #e5e7eb',
+          },
+          iconTheme: {
+            primary: '#124A69',
+            secondary: '#fff',
+          },
+        },
+        error: {
+          style: {
+            background: '#fff',
+            color: '#dc2626',
+            border: '1px solid #e5e7eb',
+          },
+          iconTheme: {
+            primary: '#dc2626',
+            secondary: '#fff',
+          },
+        },
+        loading: {
+          style: {
+            background: '#fff',
+            color: '#124A69',
+            border: '1px solid #e5e7eb',
+          },
+        },
       },
     );
-
-    toast.promise(promise, {
-      loading: 'Marking all as present...',
-      success: 'All students marked as present',
-      error: 'Failed to update attendance',
-    }, {
-      style: {
-        background: '#fff',
-        color: '#124A69',
-        border: '1px solid #e5e7eb',
-        boxShadow:
-          '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-        borderRadius: '0.5rem',
-        padding: '1rem',
-      },
-      success: {
-        style: {
-          background: '#fff',
-          color: '#124A69',
-          border: '1px solid #e5e7eb',
-        },
-        iconTheme: {
-          primary: '#124A69',
-          secondary: '#fff',
-        },
-      },
-      error: {
-        style: {
-          background: '#fff',
-          color: '#dc2626',
-          border: '1px solid #e5e7eb',
-        },
-        iconTheme: {
-          primary: '#dc2626',
-          secondary: '#fff',
-        },
-      },
-      loading: {
-        style: {
-          background: '#fff',
-          color: '#124A69',
-          border: '1px solid #e5e7eb',
-        },
-      },
-    });
 
     try {
       // Update local state immediately
@@ -679,14 +742,16 @@ export default function StudentList() {
         prev.map((student) => ({
           ...student,
           status: 'PRESENT' as AttendanceStatus,
-          attendanceRecords: [{
-            id: crypto.randomUUID(),
-            studentId: student.id,
-            courseId: courseId,
-            status: 'PRESENT',
-            date: format(selectedDate, 'yyyy-MM-dd'),
-            reason: null,
-          }],
+          attendanceRecords: [
+            {
+              id: crypto.randomUUID(),
+              studentId: student.id,
+              courseId: courseId,
+              status: 'PRESENT',
+              date: format(selectedDate, 'yyyy-MM-dd'),
+              reason: null,
+            },
+          ],
         })),
       );
 
@@ -714,11 +779,12 @@ export default function StudentList() {
   };
 
   const hasIncompleteAttendance = useMemo(() => {
-    return filteredStudents.some(student => student.status === 'NOT_SET');
+    return filteredStudents.some((student) => student.status === 'NOT_SET');
   }, [filteredStudents]);
 
   const incompleteAttendanceCount = useMemo(() => {
-    return filteredStudents.filter(student => student.status === 'NOT_SET').length;
+    return filteredStudents.filter((student) => student.status === 'NOT_SET')
+      .length;
   }, [filteredStudents]);
 
   const handleExport = () => {
@@ -728,7 +794,9 @@ export default function StudentList() {
     }
 
     if (hasIncompleteAttendance) {
-      toast.error('Please set attendance status for all students before exporting');
+      toast.error(
+        'Please set attendance status for all students before exporting',
+      );
       return;
     }
 
@@ -937,12 +1005,14 @@ export default function StudentList() {
     }
 
     const dateStr = format(selectedDate, 'yyyy-MM-dd');
-    
+
     // Get all attendance records for the selected date
     const recordsToDelete = studentList
-      .filter(student => student.status !== 'NOT_SET')
-      .map(student => {
-        const record = student.attendanceRecords.find(r => r.date === dateStr);
+      .filter((student) => student.status !== 'NOT_SET')
+      .map((student) => {
+        const record = student.attendanceRecords.find(
+          (r) => r.date === dateStr,
+        );
         return record?.id;
       })
       .filter((id): id is string => id !== undefined);
@@ -970,50 +1040,54 @@ export default function StudentList() {
       },
     );
 
-    toast.promise(promise, {
-      loading: 'Clearing attendance...',
-      success: 'Attendance cleared successfully',
-      error: 'Failed to clear attendance',
-    }, {
-      style: {
-        background: '#fff',
-        color: '#124A69',
-        border: '1px solid #e5e7eb',
-        boxShadow:
-          '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-        borderRadius: '0.5rem',
-        padding: '1rem',
+    toast.promise(
+      promise,
+      {
+        loading: 'Clearing attendance...',
+        success: 'Attendance cleared successfully',
+        error: 'Failed to clear attendance',
       },
-      success: {
+      {
         style: {
           background: '#fff',
           color: '#124A69',
           border: '1px solid #e5e7eb',
+          boxShadow:
+            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+          borderRadius: '0.5rem',
+          padding: '1rem',
         },
-        iconTheme: {
-          primary: '#124A69',
-          secondary: '#fff',
+        success: {
+          style: {
+            background: '#fff',
+            color: '#124A69',
+            border: '1px solid #e5e7eb',
+          },
+          iconTheme: {
+            primary: '#124A69',
+            secondary: '#fff',
+          },
+        },
+        error: {
+          style: {
+            background: '#fff',
+            color: '#dc2626',
+            border: '1px solid #e5e7eb',
+          },
+          iconTheme: {
+            primary: '#dc2626',
+            secondary: '#fff',
+          },
+        },
+        loading: {
+          style: {
+            background: '#fff',
+            color: '#124A69',
+            border: '1px solid #e5e7eb',
+          },
         },
       },
-      error: {
-        style: {
-          background: '#fff',
-          color: '#dc2626',
-          border: '1px solid #e5e7eb',
-        },
-        iconTheme: {
-          primary: '#dc2626',
-          secondary: '#fff',
-        },
-      },
-      loading: {
-        style: {
-          background: '#fff',
-          color: '#124A69',
-          border: '1px solid #e5e7eb',
-        },
-      },
-    });
+    );
 
     try {
       // Update local state immediately for all students
@@ -1029,7 +1103,7 @@ export default function StudentList() {
 
       await promise;
       setShowClearConfirm(false);
-      
+
       // Reset to first page after clearing
       setCurrentPage(1);
     } catch (error) {
@@ -1038,9 +1112,9 @@ export default function StudentList() {
       setStudentList((prev) =>
         prev.map((student) => ({
           ...student,
-          status: student.attendanceRecords.find(
-            (record) => record.date === dateStr,
-          )?.status || 'NOT_SET',
+          status:
+            student.attendanceRecords.find((record) => record.date === dateStr)
+              ?.status || 'NOT_SET',
         })),
       );
     }
@@ -1236,6 +1310,34 @@ export default function StudentList() {
                     // Disable dates before Jan 2025 and after today
                     return date < jan2025 || date > today;
                   }}
+                  modifiers={{
+                    hasAttendance: (date) => {
+                      const hasAttendance = attendanceDates.some(
+                        (attendanceDate) =>
+                          attendanceDate.getFullYear() === date.getFullYear() &&
+                          attendanceDate.getMonth() === date.getMonth() &&
+                          attendanceDate.getDate() === date.getDate(),
+                      );
+                      console.log(
+                        'Checking date:',
+                        date,
+                        'Has attendance:',
+                        hasAttendance,
+                      );
+                      return hasAttendance;
+                    },
+                  }}
+                  modifiersStyles={{
+                    hasAttendance: {
+                      border: '1px solid #124A69',
+                      color: '#000000',
+                      borderRadius: '50%',
+                    },
+                    selected: {
+                      backgroundColor: '#124A69',
+                      color: '#ffffff',
+                    },
+                  }}
                   initialFocus
                 />
               </PopoverContent>
@@ -1294,65 +1396,73 @@ export default function StudentList() {
 
       <div className='flex-1 overflow-auto p-4'>
         <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4'>
-          {isDateLoading
-            ? // Loading skeleton for student cards
-              Array.from({ length: 10 }).map((_, index) => (
-                <div
-                  key={index}
-                  className='w-full bg-white p-6 rounded-lg shadow-sm border border-gray-100 animate-pulse'
-                >
-                  <div className='flex flex-col items-center gap-3'>
-                    <div className='w-16 h-16 bg-gray-200 rounded-full'></div>
-                    <div className='w-2/3 h-4 bg-gray-200 rounded'></div>
-                    <div className='w-full h-8 bg-gray-200 rounded-full'></div>
-                  </div>
+          {isDateLoading ? (
+            // Loading skeleton for student cards
+            Array.from({ length: 10 }).map((_, index) => (
+              <div
+                key={index}
+                className='w-full bg-white p-6 rounded-lg shadow-sm border border-gray-100 animate-pulse'
+              >
+                <div className='flex flex-col items-center gap-3'>
+                  <div className='w-16 h-16 bg-gray-200 rounded-full'></div>
+                  <div className='w-2/3 h-4 bg-gray-200 rounded'></div>
+                  <div className='w-full h-8 bg-gray-200 rounded-full'></div>
                 </div>
-              ))
-            : currentStudents.length > 0 ? (
-                currentStudents.map((student, index) => (
-                  <StudentCard
-                    key={student.id}
-                    student={{
-                      name: student.name,
-                      status: student.status,
-                      image: student.image,
-                    }}
-                    index={index}
-                    tempImage={tempImage}
-                    onImageUpload={(index) =>
-                      handleImageUpload(student.id, new File([], ''))
-                    }
-                    onSaveChanges={handleSaveImageChanges}
-                    onRemoveImage={() =>
-                      setImageToRemove({ index, name: student.name })
-                    }
-                    onStatusChange={(index, status: AttendanceStatus) =>
-                      updateStatus(index, status)
-                    }
-                    isSaving={isSaving}
-                  />
-                ))
-              ) : (
-                <div className="col-span-full flex flex-col items-center justify-center py-12">
-                  <div className="text-gray-500 text-lg font-medium mb-2">No students found</div>
-                  <p className="text-gray-400 text-sm">Try adjusting your search or filters</p>
-                </div>
-              )}
+              </div>
+            ))
+          ) : currentStudents.length > 0 ? (
+            currentStudents.map((student, index) => (
+              <StudentCard
+                key={student.id}
+                student={{
+                  name: student.name,
+                  status: student.status,
+                  image: student.image,
+                }}
+                index={index}
+                tempImage={tempImage}
+                onImageUpload={(index) =>
+                  handleImageUpload(student.id, new File([], ''))
+                }
+                onSaveChanges={handleSaveImageChanges}
+                onRemoveImage={() =>
+                  setImageToRemove({ index, name: student.name })
+                }
+                onStatusChange={(index, status: AttendanceStatus) =>
+                  updateStatus(index, status)
+                }
+                isSaving={isSaving}
+              />
+            ))
+          ) : (
+            <div className='col-span-full flex flex-col items-center justify-center py-12'>
+              <div className='text-gray-500 text-lg font-medium mb-2'>
+                No students found
+              </div>
+              <p className='text-gray-400 text-sm'>
+                Try adjusting your search or filters
+              </p>
+            </div>
+          )}
         </div>
 
         {totalPages > 1 && currentStudents.length > 0 && (
           <div className='flex justify-between items-center px-2 mt-10'>
             <p className='text-sm text-gray-500 w-60  '>
               {currentPage * itemsPerPage - (itemsPerPage - 1)}-
-              {Math.min(currentPage * itemsPerPage, filteredStudents.length)} out of{' '}
-              {filteredStudents.length} students
+              {Math.min(currentPage * itemsPerPage, filteredStudents.length)}{' '}
+              out of {filteredStudents.length} students
             </p>
             <Pagination className='flex justify-end'>
               <PaginationContent>
                 <PaginationItem>
                   <PaginationPrevious
-                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                    className={currentPage === 1 ? 'pointer-events-none opacity-50' : ''}
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.max(prev - 1, 1))
+                    }
+                    className={
+                      currentPage === 1 ? 'pointer-events-none opacity-50' : ''
+                    }
                   />
                 </PaginationItem>
                 {[...Array(totalPages)].map((_, i) => (
@@ -1360,7 +1470,9 @@ export default function StudentList() {
                     <PaginationLink
                       isActive={currentPage === i + 1}
                       onClick={() => setCurrentPage(i + 1)}
-                      className={currentPage === i + 1 ? 'bg-[#124A69] text-white' : ''}
+                      className={
+                        currentPage === i + 1 ? 'bg-[#124A69] text-white' : ''
+                      }
                     >
                       {i + 1}
                     </PaginationLink>
@@ -1368,8 +1480,14 @@ export default function StudentList() {
                 ))}
                 <PaginationItem>
                   <PaginationNext
-                    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                    className={currentPage === totalPages ? 'pointer-events-none opacity-50 ' : ''}
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                    }
+                    className={
+                      currentPage === totalPages
+                        ? 'pointer-events-none opacity-50 '
+                        : ''
+                    }
                   />
                 </PaginationItem>
               </PaginationContent>
@@ -1417,8 +1535,11 @@ export default function StudentList() {
           {selectedDate ? (
             <>
               {hasIncompleteAttendance && (
-                <div className="mt-2 text-sm text-red-500">
-                  {incompleteAttendanceCount} student{incompleteAttendanceCount !== 1 ? 's' : ''} {incompleteAttendanceCount !== 1 ? 'do' : 'does'} not have attendance set yet
+                <div className='mt-2 text-sm text-red-500'>
+                  {incompleteAttendanceCount} student
+                  {incompleteAttendanceCount !== 1 ? 's' : ''}{' '}
+                  {incompleteAttendanceCount !== 1 ? 'do' : 'does'} not have
+                  attendance set yet
                 </div>
               )}
               <div className='mt-6 max-h-[400px] overflow-auto'>
@@ -1459,7 +1580,9 @@ export default function StudentList() {
                   onClick={handleExport}
                   disabled={!selectedDate || hasIncompleteAttendance}
                 >
-                  {hasIncompleteAttendance ? 'Complete Attendance First' : 'Export to Excel'}
+                  {hasIncompleteAttendance
+                    ? 'Complete Attendance First'
+                    : 'Export to Excel'}
                 </Button>
               </div>
             </>

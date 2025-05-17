@@ -176,6 +176,7 @@ model Criteria {
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
   isGroupCriteria Boolean @default(false)
+  isRecitationCriteria Boolean @default(false)
 
   @@map("criteria")
 }
@@ -235,7 +236,6 @@ model Course {
   grades      Grade[]
   groups      Group[]
   quizzes     Quiz[]
-  recitations Recitation[]
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -328,15 +328,3 @@ model QuizScore {
   @@index([studentId])
 }
 
-model Recitation {
-  id          String   @id @default(uuid())
-  title       String
-  description String?
-  courseId    String
-  course      Course   @relation(fields: [courseId], references: [id])
-  date        DateTime
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  @@map("recitations")
-}

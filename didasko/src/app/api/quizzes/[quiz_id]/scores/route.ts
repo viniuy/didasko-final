@@ -3,6 +3,44 @@ import { prisma } from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 
+export async function GET(
+  req: Request,
+  { params }: { params: { quiz_id: string } },
+) {
+  const session = await getServerSession(authOptions);
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const { quiz_id: quizId } = await Promise.resolve(params);
+  if (!quizId) {
+    return NextResponse.json({ error: 'Quiz ID is required' }, { status: 400 });
+  }
+
+  try {
+    const scores = await prisma.quizScore.findMany({
+      where: {
+        quizId,
+      },
+      select: {
+        studentId: true,
+        score: true,
+        attendance: true,
+        plusPoints: true,
+        totalGrade: true,
+      },
+    });
+
+    return NextResponse.json(scores);
+  } catch (error) {
+    console.error('Error fetching quiz scores:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch quiz scores' },
+      { status: 500 },
+    );
+  }
+}
+
 export async function POST(
   req: Request,
   { params }: { params: { quiz_id: string } },

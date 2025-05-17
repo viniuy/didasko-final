@@ -16,6 +16,7 @@ interface AttendanceStats {
     absent: number;
     attendanceRate: number;
   }[];
+  uniqueDates: string[];
 }
 
 export async function GET(
@@ -133,6 +134,7 @@ export async function GET(
     const stats: AttendanceStats = {
       totalClasses,
       studentStats,
+      uniqueDates: uniqueDates.map((date) => date.date.toISOString()),
     };
 
     return NextResponse.json(stats);

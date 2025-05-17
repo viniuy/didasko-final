@@ -29,6 +29,7 @@ import {
   DialogFooter,
   DialogClose,
   DialogDescription,
+  DialogTrigger,
 } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
@@ -42,6 +43,9 @@ import {
 import { toast } from 'react-hot-toast';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
+import * as XLSX from 'xlsx';
+import { ExportQuiz } from '@/components/grading/export-quiz';
+import { prepareExportData } from '@/lib/prepare-export-data';
 
 interface QuizTableProps {
   courseId: string;
@@ -124,6 +128,13 @@ export function QuizTable({
     string,
     QuizScore
   > | null>(null);
+  const [selectedQuizId, setSelectedQuizId] = useState<string>('');
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [showExportPreview, setShowExportPreview] = useState(false);
+  const [exportData, setExportData] = useState<{
+    header: string[][];
+    studentRows: string[][];
+  } | null>(null);
 
   // Fetch quizzes for the course when modal opens
   useEffect(() => {
@@ -224,11 +235,12 @@ export function QuizTable({
       let updatedScore = { ...currentScore, [field]: value };
 
       // Recalculate total grade if quiz score changes
-      if (field === 'quizScore' && selectedQuiz) {
+      if (field === 'quizScore') {
+        const quizScore = typeof value === 'number' ? value : 0;
         updatedScore.totalGrade = calculateTotalGrade(
-          value,
+          quizScore,
           updatedScore.plusPoints,
-          selectedQuiz.maxScore,
+          selectedQuiz?.maxScore || 100,
         );
       }
 
@@ -331,6 +343,44 @@ export function QuizTable({
       to: new Date(quiz.attendanceRangeEnd),
     });
     if (quiz.quizDate) onDateSelect?.(new Date(quiz.quizDate));
+
+    // Fetch existing scores for this quiz
+    setLoading(true);
+    setLoadingMessage('Loading quiz scores...');
+    axios
+      .get(`/api/quizzes/${quiz.id}/scores`)
+      .then((response) => {
+        const existingScores = response.data.reduce(
+          (acc: Record<string, QuizScore>, score: any) => {
+            acc[score.studentId] = {
+              studentId: score.studentId,
+              quizScore: score.score,
+              attendance: score.attendance,
+              plusPoints: score.plusPoints,
+              totalGrade: score.totalGrade,
+              remarks: '',
+            };
+            return acc;
+          },
+          {},
+        );
+        setScores(existingScores);
+      })
+      .catch((error) => {
+        console.error('Error fetching quiz scores:', error);
+        toast.error('Failed to load quiz scores', {
+          duration: 3000,
+          style: {
+            background: '#fff',
+            color: '#dc2626',
+            border: '1px solid #e5e7eb',
+          },
+        });
+      })
+      .finally(() => {
+        setLoading(false);
+        setLoadingMessage('');
+      });
   };
 
   const handleChooseAnotherDate = () => {
@@ -341,11 +391,6 @@ export function QuizTable({
   };
 
   // Open modal when selectedDate changes and no quiz is selected for that date
-  useEffect(() => {
-    if (!selectedQuiz && selectedDate) {
-      setShowSetupModal(true);
-    }
-  }, [selectedDate]);
 
   const validateQuizName = (name: string) => {
     if (!name.trim()) {
@@ -354,8 +399,9 @@ export function QuizTable({
     if (name.length > 25) {
       return 'Quiz name must not exceed 25 characters';
     }
-    if (!/^[a-zA-Z0-9\s]+$/.test(name)) {
-      return 'Quiz name can only contain letters, numbers, and spaces';
+    // Only allow letters, numbers, spaces, and basic punctuation
+    if (!/^[a-zA-Z0-9\s\-_.,]+$/.test(name)) {
+      return 'Quiz name can only contain letters, numbers, spaces, and basic punctuation (-_.,)';
     }
     // Check for duplicate names
     const isDuplicate = quizzes.some(
@@ -365,6 +411,35 @@ export function QuizTable({
       return 'A quiz with this name already exists';
     }
     return '';
+  };
+
+  const handleExport = () => {
+    if (!selectedQuiz || !selectedDate) {
+      toast.error('Please select a quiz first', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+      });
+      return;
+    }
+
+    const data = prepareExportData({
+      courseCode,
+      courseSection,
+      selectedDate,
+      selectedQuiz,
+      dateRange,
+      students,
+      scores,
+      attendanceStats,
+      passingRate,
+    });
+
+    setExportData(data);
+    setShowExportPreview(true);
   };
 
   return (
@@ -510,7 +585,7 @@ export function QuizTable({
         </div>
 
         {/* Table */}
-        <div className='overflow-x-auto max-h-[calc(100vh-300px)]'>
+        <div className='overflow-x-auto'>
           <table className='w-full border-separate border-spacing-0 table-fixed'>
             <thead className='bg-white'>
               <tr>
@@ -542,6 +617,32 @@ export function QuizTable({
                 <th className='border-b font-bold text-[#124A69] text-center px-4 py-3 w-[150px]'>
                   Remarks
                 </th>
+              </tr>
+              <tr>
+                <td colSpan={6} className='border-b px-4 py-2 bg-gray-50'>
+                  <div className='flex items-center justify-center gap-4 text-xs text-gray-600'>
+                    <span className='flex items-center gap-1'>
+                      <span className='w-2 h-2 rounded-full bg-green-700'></span>
+                      Present
+                    </span>
+                    <span className='flex items-center gap-1'>
+                      <span className='w-2 h-2 rounded-full bg-yellow-700'></span>
+                      Late
+                    </span>
+                    <span className='flex items-center gap-1'>
+                      <span className='w-2 h-2 rounded-full bg-blue-700'></span>
+                      Excused
+                    </span>
+                    <span className='flex items-center gap-1'>
+                      <span className='w-2 h-2 rounded-full bg-red-700'></span>
+                      Absent
+                    </span>
+                    <span className='flex items-center gap-1'>
+                      <span className='w-2 h-2 rounded-full bg-gray-700'></span>
+                      Missing
+                    </span>
+                  </div>
+                </td>
               </tr>
             </thead>
             <tbody>
@@ -611,7 +712,7 @@ export function QuizTable({
                         key={student.id}
                         className={idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F6FA]'}
                       >
-                        <td className='sticky left-0 z-10 bg-inherit px-4 py-3'>
+                        <td className='sticky left-0 z-10 bg-inherit px-4 py-2'>
                           <div className='flex items-center gap-3'>
                             {student.image ? (
                               <img
@@ -641,7 +742,7 @@ export function QuizTable({
                             }`}</span>
                           </div>
                         </td>
-                        <td className='px-4 py-3 text-center'>
+                        <td className='px-4 py-2 text-center'>
                           <input
                             type='number'
                             min='0'
@@ -651,7 +752,7 @@ export function QuizTable({
                               const value =
                                 e.target.value === ''
                                   ? 0
-                                  : parseInt(e.target.value);
+                                  : Math.max(0, parseInt(e.target.value));
                               const maxScore = selectedQuiz?.maxScore || 100;
                               handleScoreChange(
                                 student.id,
@@ -663,45 +764,83 @@ export function QuizTable({
                             placeholder='Score'
                           />
                         </td>
-                        <td className='px-4 py-3 text-center'>
+                        <td className='px-4 py-2 text-center'>
                           {(() => {
-                            if (!studentStat) return 'N/A';
+                            if (!studentStat)
+                              return (
+                                <span className='text-red-700 font-medium'></span>
+                              );
+
+                            const totalRecords =
+                              (studentStat.present || 0) +
+                              (studentStat.late || 0) +
+                              (studentStat.absent || 0) +
+                              (studentStat.excused || 0);
+                            const missingRecords =
+                              (attendanceStats?.totalClasses || 0) -
+                              totalRecords;
+
                             return (
-                              <div className='flex flex-col items-start gap-0.5 text-sm'>
+                              <div className='flex items-center justify-center gap-2 text-sm'>
                                 {studentStat.present > 0 && (
-                                  <span className='text-green-700 font-medium'>
-                                    Present: {studentStat.present}
+                                  <span className='text-green-700 font-medium flex items-center gap-1 group relative'>
+                                    <span className='w-2 h-2 rounded-full bg-green-700'></span>
+                                    {studentStat.present}
+                                    <span className='absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap'>
+                                      Present
+                                    </span>
                                   </span>
                                 )}
                                 {studentStat.late > 0 && (
-                                  <span className='text-yellow-700 font-medium'>
-                                    Late: {studentStat.late}
+                                  <span className='text-yellow-700 font-medium flex items-center gap-1 group relative'>
+                                    <span className='w-2 h-2 rounded-full bg-yellow-700'></span>
+                                    {studentStat.late}
+                                    <span className='absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap'>
+                                      Late
+                                    </span>
                                   </span>
                                 )}
                                 {studentStat.excused &&
                                   studentStat.excused > 0 && (
-                                    <span className='text-blue-700 font-medium'>
-                                      Excused: {studentStat.excused}
+                                    <span className='text-blue-700 font-medium flex items-center gap-1 group relative'>
+                                      <span className='w-2 h-2 rounded-full bg-blue-700'></span>
+                                      {studentStat.excused}
+                                      <span className='absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap'>
+                                        Excused
+                                      </span>
                                     </span>
                                   )}
                                 {studentStat.absent > 0 && (
-                                  <span className='text-red-700 font-medium'>
-                                    Absent: {studentStat.absent}
+                                  <span className='text-red-700 font-medium flex items-center gap-1 group relative'>
+                                    <span className='w-2 h-2 rounded-full bg-red-700'></span>
+                                    {studentStat.absent}
+                                    <span className='absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap'>
+                                      Absent
+                                    </span>
+                                  </span>
+                                )}
+                                {missingRecords > 0 && (
+                                  <span className='text-gray-700 font-medium flex items-center gap-1 group relative'>
+                                    <span className='w-2 h-2 rounded-full bg-gray-700'></span>
+                                    {missingRecords}
+                                    <span className='absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap'>
+                                      Missing
+                                    </span>
                                   </span>
                                 )}
                               </div>
                             );
                           })()}
                         </td>
-                        <td className='px-4 py-3 text-center'>
+                        <td className='px-4 py-2 text-center'>
                           {studentScore.plusPoints}
                         </td>
-                        <td className='px-4 py-3 text-center font-semibold'>
+                        <td className='px-4 py-2 text-center font-semibold'>
                           {studentScore.totalGrade
                             ? studentScore.totalGrade.toFixed(1) + '%'
                             : '---'}
                         </td>
-                        <td className='px-4 py-3 text-center'>
+                        <td className='px-4 py-2 text-center'>
                           {studentScore.totalGrade ? (
                             <span
                               className={
@@ -804,7 +943,7 @@ export function QuizTable({
             </DialogDescription>
           </DialogHeader>
           <Tabs value={modalTab} onValueChange={setModalTab} className='w-full'>
-            <TabsList className='grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg mb-4'>
+            <TabsList className='grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg -mb-2'>
               <TabsTrigger
                 value='existing'
                 className='data-[state=active]:bg-white data-[state=active]:shadow-sm'
@@ -837,14 +976,8 @@ export function QuizTable({
                 ) : (
                   <div className='flex flex-col gap-4'>
                     <Select
-                      onValueChange={(quizId) => {
-                        const selectedQuiz = quizzes.find(
-                          (q) => q.id === quizId,
-                        );
-                        if (selectedQuiz) {
-                          handleSelectQuiz(selectedQuiz);
-                        }
-                      }}
+                      value={selectedQuizId}
+                      onValueChange={setSelectedQuizId}
                     >
                       <SelectTrigger className='w-full bg-gray-50 border-gray-200'>
                         <SelectValue placeholder='Select a quiz' />
@@ -868,33 +1001,56 @@ export function QuizTable({
                         ))}
                       </SelectContent>
                     </Select>
+                    <DialogFooter className='gap-2 sm:gap-2'>
+                      <Button
+                        variant='outline'
+                        onClick={() => setShowSetupModal(false)}
+                        className='border-gray-200'
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          const selectedQuiz = quizzes.find(
+                            (q) => q.id === selectedQuizId,
+                          );
+                          if (selectedQuiz) {
+                            handleSelectQuiz(selectedQuiz);
+                          }
+                        }}
+                        disabled={!selectedQuizId}
+                        className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+                      >
+                        Apply Selected Quiz
+                      </Button>
+                    </DialogFooter>
                   </div>
                 )}
               </div>
             </TabsContent>
             <TabsContent value='new'>
               <div className='space-y-4 py-4'>
-                <div className='text-sm font-medium text-gray-700 mb-2'>
-                  Create a new quiz
-                </div>
                 <div className='grid gap-4'>
                   <div className='grid gap-2'>
                     <label className='text-sm font-medium text-gray-700'>
-                      Quiz Name
+                      Quiz Name*
                     </label>
                     <Input
                       value={quizName}
-                      onChange={(e) => setQuizName(e.target.value)}
+                      onChange={(e) => setQuizName(e.target.value.slice(0, 25))}
                       placeholder='Enter quiz name'
-                      maxLength={50}
+                      maxLength={25}
                       className='bg-gray-50 border-gray-200'
                     />
+                    <div className='text-xs text-gray-500 text-right'>
+                      {quizName.length}/25
+                    </div>
                   </div>
                   <div className='grid gap-2'>
                     <label className='text-sm font-medium text-gray-700'>
                       Attendance Date Range
                     </label>
-                    <Popover>
+                    <Popover modal={true}>
                       <PopoverTrigger asChild>
                         <Button
                           variant='outline'
@@ -921,6 +1077,7 @@ export function QuizTable({
                           selected={modalDateRange}
                           onSelect={setModalDateRange}
                           numberOfMonths={2}
+                          disabled={(date) => date > new Date()}
                           initialFocus
                         />
                       </PopoverContent>
@@ -974,6 +1131,11 @@ export function QuizTable({
                     <Button
                       type='button'
                       className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+                      disabled={
+                        !quizName.trim() ||
+                        !modalDateRange?.from ||
+                        !modalDateRange?.to
+                      }
                       onClick={() => {
                         const newQuiz = {
                           name: quizName,
@@ -1064,6 +1226,15 @@ export function QuizTable({
           </Button>
         )}
         <Button
+          variant='outline'
+          size='sm'
+          onClick={handleExport}
+          className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
+          disabled={loading || !selectedQuiz}
+        >
+          Export to Excel
+        </Button>
+        <Button
           variant='default'
           size='sm'
           className='h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden'
@@ -1117,6 +1288,17 @@ export function QuizTable({
           )}
         </Button>
       </div>
+
+      {/* Export Preview Dialog */}
+      <ExportQuiz
+        showExportPreview={showExportPreview}
+        setShowExportPreview={setShowExportPreview}
+        exportData={exportData}
+        selectedDate={selectedDate}
+        courseCode={courseCode}
+        courseSection={courseSection}
+        selectedQuiz={selectedQuiz}
+      />
     </div>
   );
 }

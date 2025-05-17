@@ -1,7 +1,7 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BookOpenText } from 'lucide-react';
+import { BookOpenText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState, useEffect } from 'react';
 import {
@@ -53,16 +53,24 @@ const CourseCard = ({
   course: Course;
   type: 'attendance' | 'recitation' | 'quiz' | 'gradebook' | 'reporting';
 }) => {
+  const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
   const href =
     type === 'attendance'
       ? `/attendance/class?courseId=${course.id}`
       : type === 'recitation'
-      ? `/grading/recitation`
+      ? `/grading/recitation/${course.code}/${course.section}`
       : type === 'quiz'
       ? `/grading/quiz/${course.code}/${course.section}`
       : type === 'reporting'
       ? `/grading/reporting/${course.code}/${course.section}`
       : `/grading/gradebook`;
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    router.push(href);
+  };
 
   return (
     <Card className='bg-[#124A69] text-white rounded-lg shadow-md w-full max-w-[320px] sm:max-w-[360px] md:max-w-[320px] lg:max-w-[380px] xl:max-w-[440px] flex flex-col justify-between h-45'>
@@ -87,21 +95,21 @@ const CourseCard = ({
       </div>
       <div className='flex justify-end -mt-4 p-2'>
         <Button
-          asChild
+          onClick={handleClick}
           variant='secondary'
-          className='bg-[#FAEDCB] text-black text-sm'
+          className='bg-[#FAEDCB] text-black text-sm min-w-[120px]'
+          disabled={isLoading}
         >
-          <Link href={href}>
-            {type === 'attendance'
-              ? 'View Attendance'
-              : type === 'recitation'
-              ? 'View Recitation'
-              : type === 'quiz'
-              ? 'View Quiz'
-              : type === 'reporting'
-              ? 'View Reporting'
-              : 'View Gradebook'}
-          </Link>
+          {isLoading ? <Loader2 className='h-4 w-4 animate-spin mr-2' /> : null}
+          {type === 'attendance'
+            ? 'View Attendance'
+            : type === 'recitation'
+            ? 'View Recitation'
+            : type === 'quiz'
+            ? 'View Quiz'
+            : type === 'reporting'
+            ? 'View Reporting'
+            : 'View Gradebook'}
         </Button>
       </div>
     </Card>
