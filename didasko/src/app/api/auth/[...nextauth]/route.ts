@@ -1,6 +1,7 @@
 import NextAuth from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import { prisma } from '@/lib/prisma';
+import { Role } from '@/lib/types';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 
