@@ -25,10 +25,20 @@ export function GroupHeader({
 }: GroupHeaderProps) {
   return (
     <div className='flex items-center gap-2 px-4 py-3 border-b bg-[#F5F6FA] rounded-t-lg'>
-      <Button asChild variant='ghost' size='icon'>
-        <Link href='/grading/reporting'>
-          <ArrowLeft className='h-4 w-4' />
-        </Link>
+      <Button
+        variant='ghost'
+        className='h-9 w-9 p-0 hover:bg-gray-100'
+        onClick={() => window.history.back()}
+      >
+        <svg
+          className='h-5 w-5 text-gray-500'
+          fill='none'
+          stroke='currentColor'
+          strokeWidth='2'
+          viewBox='0 0 24 24'
+        >
+          <path d='M15 18l-6-6 6-6' />
+        </svg>
       </Button>
       <div className='flex flex-col mr-4'>
         <span className='text-lg font-bold text-[#124A69] leading-tight'>
@@ -98,10 +108,7 @@ export function GroupHeader({
             </PopoverContent>
           </Popover>
         </div>
-        <Button className='ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center gap-2'>
-          Export to PDF
-        </Button>
       </div>
     </div>
   );
-} 
+}

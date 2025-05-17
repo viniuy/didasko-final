@@ -168,8 +168,11 @@ export default function GroupGradingPage({
           <main className='h-full w-full lg:w-[calc(100%-22.5rem)] pl-[4rem] sm:pl-[5rem] transition-all'>
             <div className='flex flex-col flex-grow px-4'>
               <Header />
-              <div className='flex items-center justify-center h-full'>
-                <p className='text-muted-foreground'>Group not found</p>
+              <div className='flex flex-col items-center justify-center h-full gap-4'>
+                <Loader2 className='h-8 w-8 animate-spin text-[#124A69]' />
+                <p className='text-muted-foreground'>
+                  Fetching group information...
+                </p>
               </div>
             </div>
           </main>
@@ -186,18 +189,12 @@ export default function GroupGradingPage({
           <div className='flex flex-col flex-grow px-4'>
             <Header />
             <div className='flex items-center justify-between mb-8'>
-              <div className='flex items-center gap-4'>
-                <Link
-                  href={`/grading/reporting/${course.code}/${course.section}`}
-                  className='flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors'
-                >
-                  <ArrowLeft className='h-4 w-4' />
-                  Back
-                </Link>
-                <h1 className='text-3xl font-bold tracking-tight text-[#A0A0A0]'>
-                  Group {group.number} - {group.name}
-                </h1>
-              </div>
+              <h1 className='text-3xl font-bold tracking-tight text-[#A0A0A0]'>
+                Group {group.number} - {group.name}
+              </h1>
+              <h1 className='text-2xl font-bold tracking-tight text-[#A0A0A0]'>
+                {format(new Date(), 'EEEE, MMMM d')}
+              </h1>
             </div>
 
             <div className='flex-1 overflow-y-auto pb-6'>

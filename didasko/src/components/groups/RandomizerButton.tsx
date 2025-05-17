@@ -5,10 +5,13 @@ interface RandomizerButtonProps {
   onClick?: () => void;
 }
 
-export function RandomizerButton({ disabled = false, onClick }: RandomizerButtonProps) {
+export function RandomizerButton({
+  disabled = false,
+  onClick,
+}: RandomizerButtonProps) {
   return (
     <button
-      className='relative h-40 w-40 rounded-full bg-gray-200 flex flex-col items-center justify-center shadow-none transition-all p-0 mb-2 border-none outline-none focus:outline-none cursor-pointer group'
+      className='relative h-35 w-35 rounded-full bg-gray-200 flex flex-col items-center justify-center shadow-none transition-all p-0 mb-2 border-none outline-none focus:outline-none cursor-pointer group'
       disabled={disabled}
       onClick={onClick}
     >
@@ -36,11 +39,11 @@ export function RandomizerButton({ disabled = false, onClick }: RandomizerButton
           <path d='M12 5v14m7-7H5' strokeLinecap='round' />
         </svg>
       </span>
-      <span className='mt-28 text-base font-bold text-white drop-shadow-sm text-center pointer-events-none select-none'>
-        Add groups
+      <span className='mt-20 text-sm font-bold text-white drop-shadow-sm text-shadow-lg text-center pointer-events-none select-none'>
+        Add groups using a
         <br />
-        using a randomizer
+        randomizer
       </span>
     </button>
   );
-} 
+}

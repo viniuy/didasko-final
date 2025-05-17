@@ -3,7 +3,6 @@
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { DashboardSkeleton } from './dashboard-skeleton';
 
 export function withAuth<P extends object>(
   WrappedComponent: React.ComponentType<P>,
@@ -19,7 +18,11 @@ export function withAuth<P extends object>(
     }, [status, router]);
 
     if (status === 'loading') {
-      return <DashboardSkeleton />;
+      return (
+        <div className='flex items-center justify-center min-h-screen'>
+          Loading...
+        </div>
+      );
     }
 
     if (status === 'unauthenticated') {

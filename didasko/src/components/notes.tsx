@@ -42,6 +42,7 @@ import { useSession } from 'next-auth/react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
 import axiosInstance from '@/lib/axios';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface Note {
   id: string;
@@ -152,42 +153,66 @@ export default function Notes() {
   };
 
   // Skeleton UI for loading state
-  if (status === 'loading' || isLoading) {
+  if (status === 'loading' || isLoading)
     return (
       <div className='mb-2'>
-        <h2 className='text-lg font-semibold text-[#FAEDCB] mb-1'>Notes</h2>
-        <div className='bg-white rounded-lg p-2 shadow-md h-70 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#124A69] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#0a2f42]'>
-          <div className='absolute right-7'>
-            <div className='w-6 h-6 rounded-full bg-gray-200 animate-pulse'></div>
-          </div>
+        <div className='flex justify-between items-center mb-1'>
+          <h2 className='text-lg font-semibold text-[#FAEDCB]'>Notes</h2>
+          <Skeleton className='w-6 h-6 rounded-full' />
+        </div>
+        <div className='bg-white rounded-lg p-2 shadow-md h-[280px] overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#124A69] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#0a2f42]'>
+          <div className='space-y-2 mt-2'>
+            {/* First date group */}
+            <div className='flex items-center gap-2 text-[#124A69] mb-1'>
+              <Skeleton className='h-4 w-32' />
+            </div>
 
-          <div className='space-y-3 mt-1'>
-            {/* Date header skeleton */}
-            <div className='h-4 w-32 bg-gray-200 rounded animate-pulse'></div>
-
-            {/* Just 2 note item skeletons */}
-            {Array.from({ length: 2 }).map((_, i) => (
-              <div
-                key={i}
-                className='border-l-[8px] border-gray-200 rounded-md p-2 mb-2'
+            {/* First group of note skeletons */}
+            {[...Array(2)].map((_, index) => (
+              <Card
+                key={index}
+                className='border-l-[8px] border-[#FAEDCB] mb-1'
               >
-                <div className='flex justify-between'>
-                  <div className='w-full'>
-                    <div className='h-3 w-24 bg-gray-200 rounded animate-pulse mb-1'></div>
-                    <div className='h-2 w-2/3 bg-gray-100 rounded animate-pulse'></div>
+                <CardContent className='p-2 relative'>
+                  <div className='absolute right-1 -top-5 flex gap-0.5'>
+                    <Skeleton className='h-5 w-5 rounded-full' />
+                    <Skeleton className='h-5 w-5 rounded-full' />
                   </div>
-                  <div className='flex space-x-1'>
-                    <div className='w-4 h-4 bg-gray-200 rounded-full animate-pulse'></div>
-                    <div className='w-4 h-4 bg-gray-200 rounded-full animate-pulse'></div>
+                  <div className='-mt-4 -mb-4'>
+                    <Skeleton className='h-4 w-3/4 mb-2' />
+                    <Skeleton className='h-3 w-1/2' />
                   </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
+            ))}
+
+            {/* Second date group */}
+            <div className='flex items-center gap-2 text-[#124A69] mb-1 mt-4'>
+              <Skeleton className='h-4 w-32' />
+            </div>
+
+            {/* Second group of note skeletons */}
+            {[...Array(2)].map((_, index) => (
+              <Card
+                key={`second-${index}`}
+                className='border-l-[8px] border-[#FAEDCB] mb-1'
+              >
+                <CardContent className='p-2 relative'>
+                  <div className='absolute right-1 -top-5 flex gap-0.5'>
+                    <Skeleton className='h-5 w-5 rounded-full' />
+                    <Skeleton className='h-5 w-5 rounded-full' />
+                  </div>
+                  <div className='-mt-4 -mb-4'>
+                    <Skeleton className='h-4 w-3/4 mb-2' />
+                    <Skeleton className='h-3 w-1/2' />
+                  </div>
+                </CardContent>
+              </Card>
             ))}
           </div>
         </div>
       </div>
     );
-  }
 
   if (status === 'unauthenticated') {
     return <div>Please sign in to view notes</div>;

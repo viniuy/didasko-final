@@ -661,7 +661,7 @@ export default function GroupGradingPage({
                 Group Management
               </h1>
               <h1 className='text-2xl font-bold tracking-tight text-[#A0A0A0]'>
-                {format(new Date(), 'EEEE, MMMM d, yyyy')}
+                {format(new Date(), 'EEEE, MMMM d')}
               </h1>
             </div>
 

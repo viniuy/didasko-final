@@ -1,7 +1,9 @@
 import NextAuth from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import { prisma } from '@/lib/prisma';
-import { Role } from '@/lib/types';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth-options';
+
 const handler = NextAuth({
   providers: [
     GoogleProvider({
@@ -106,7 +108,7 @@ const handler = NextAuth({
             session.user.name = dbUser.name;
             session.user.id = dbUser.id;
             session.user.role = dbUser.role;
-            session.user.image = dbUser.image;
+            session.user.image = dbUser.image || undefined;
             console.log('Found user in database:', dbUser);
           } else {
             console.log('User not found in database');
@@ -126,23 +128,25 @@ const handler = NextAuth({
         url === baseUrl ||
         url === `${baseUrl}/`
       ) {
-        // Get the user's role from the token
-        const role = 'ADMIN' as Role; // Since we know this user is an admin
-        console.log('Redirect Callback - Role:', role);
+        // Get the session from the token
+        const session = await getServerSession(authOptions);
 
-        // Redirect based on role
-        switch (role) {
-          case 'ADMIN':
-            return `${baseUrl}/dashboard/admin`;
-          case 'ACADEMIC_HEAD':
-            return `${baseUrl}/dashboard/academic-head`;
-          case 'FACULTY':
-            return `${baseUrl}/dashboard/faculty`;
-          default:
-            console.log(
-              'Redirect Callback - No role found, redirecting to default dashboard',
-            );
-            return `${baseUrl}/dashboard`;
+        console.log('Redirect Callback - Session:', session);
+
+        if (session?.user?.role) {
+          switch (session.user.role) {
+            case 'ADMIN':
+              return `${baseUrl}/dashboard/admin`;
+            case 'ACADEMIC_HEAD':
+              return `${baseUrl}/dashboard/academic-head`;
+            case 'FACULTY':
+              return `${baseUrl}/dashboard/faculty`;
+            default:
+              console.log(
+                'Redirect Callback - No role found, redirecting to default dashboard',
+              );
+              return `${baseUrl}/dashboard`;
+          }
         }
       }
       return url;
