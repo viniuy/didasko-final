@@ -26,7 +26,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Loader2 } from 'lucide-react';
+import { Calendar as CalendarIcon, Loader2, Search } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import axiosInstance from '@/lib/axios';
 import GradingTableHeader from './grading-table-header';
@@ -126,6 +126,7 @@ export function GradingTable({
     ],
   });
   const [criteriaLoading, setCriteriaLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [gradeFilter, setGradeFilter] = useState<{
     passed: boolean;
@@ -158,12 +159,13 @@ export function GradingTable({
   // Function to handle dialog close
   const handleDialogClose = () => {
     setShowCriteriaDialog(false);
-    // Reset active report and students when closing without applying
-    setActiveReport(null);
-    setStudents([]);
-    setScores({});
-    setRubricDetails([]);
-    setSelectedReport('');
+    // Only reset if there's no active report
+    if (!activeReport) {
+      setStudents([]);
+      setScores({});
+      setRubricDetails([]);
+      setSelectedReport('');
+    }
   };
 
   // Fetch grades when both date and criteria are available
@@ -550,6 +552,13 @@ export function GradingTable({
     if (!/^[a-zA-Z0-9\s]+$/.test(name)) {
       return 'Report name can only contain letters, numbers, and spaces';
     }
+    // Check for duplicate names
+    const isDuplicate = savedReports.some(
+      (report) => report.name.toLowerCase() === name.toLowerCase(),
+    );
+    if (isDuplicate) {
+      return 'A report with this name already exists';
+    }
     return '';
   };
 
@@ -880,18 +889,7 @@ export function GradingTable({
               : `/courses/${courseId}/criteria`;
 
           const response = await axiosInstance.get(endpoint);
-          const allReports = response.data;
-          // Filter reports for the selected date
-          const filteredReports = allReports.filter((report: GradingReport) => {
-            const reportDate = new Date(report.date);
-            reportDate.setHours(0, 0, 0, 0);
-
-            const selected = new Date(selectedDate);
-            selected.setHours(0, 0, 0, 0);
-
-            return reportDate.getTime() === selected.getTime();
-          });
-          setSavedReports(filteredReports);
+          setSavedReports(response.data);
         } catch (error) {
           console.error('Error fetching reports:', error);
           toast.error('Failed to load saved reports', {
@@ -1524,23 +1522,29 @@ export function GradingTable({
               <span className='text-sm text-gray-500'>{courseSection}</span>
             </div>
             <div className='flex-1 flex items-center gap-2'>
-              <div className='relative w-64'>
-                <svg
-                  className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400'
-                  fill='none'
-                  stroke='currentColor'
-                  strokeWidth='2'
-                  viewBox='0 0 24 24'
-                >
-                  <circle cx='11' cy='11' r='8' />
-                  <path d='m21 21-4.3-4.3' />
-                </svg>
-                <Input
-                  placeholder='Search a name'
-                  className='w-full pl-9 rounded-full border-gray-200 h-9 bg-[#F5F6FA]'
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
+              {/* Header Controls */}
+              <div className='flex items-center gap-4'>
+                <div className='relative'>
+                  <Search className='absolute left-2 top-2.5 h-4 w-4 text-gray-500' />
+                  <Input
+                    placeholder='Search students...'
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className='pl-8 w-[200px]'
+                  />
+                </div>
+                <div className='flex items-center gap-2'>
+                  <Button
+                    variant='outline'
+                    className={cn(
+                      'w-[180px] justify-start text-left font-normal',
+                      !selectedDate && 'text-muted-foreground',
+                    )}
+                  >
+                    <CalendarIcon className='mr-2 h-4 w-4' />
+                    {selectedDate ? format(selectedDate, 'PPP') : 'Pick a date'}
+                  </Button>
+                </div>
               </div>
               <div className='flex items-center gap-2'>
                 <Popover>
@@ -1626,38 +1630,16 @@ export function GradingTable({
                 )}
               </div>
             </div>
-            <div className='flex items-center gap-2'>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant={'outline'}
-                    className={cn(
-                      'w-[200px] justify-start text-left font-normal h-9',
-                      !selectedDate && 'text-muted-foreground',
-                    )}
-                  >
-                    <CalendarIcon className='mr-2 h-4 w-4' />
-                    {selectedDate ? (
-                      format(selectedDate, 'PPP')
-                    ) : (
-                      <span>Pick a date</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className='w-auto p-0' align='end'>
-                  <Calendar
-                    mode='single'
-                    selected={selectedDate}
-                    onSelect={onDateSelect}
-                    initialFocus
-                    disabled={(date) => date > new Date()}
-                    defaultMonth={new Date()}
-                  />
-                </PopoverContent>
-              </Popover>
+            <div className='flex items-center gap-1'>
+              <Button
+                onClick={() => setShowCriteriaDialog(true)}
+                className='ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center '
+              >
+                Report Manager
+              </Button>
               <Button
                 onClick={handleExport}
-                className='ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center gap-2'
+                className=' h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center'
               >
                 <svg
                   className='w-4 h-4'
@@ -1705,19 +1687,22 @@ export function GradingTable({
                 </TabsList>
                 <TabsContent value='existing'>
                   <div className='space-y-4 py-4'>
-                    {savedReports.filter((report) => {
-                      if (!selectedDate) return false;
-
-                      // Convert both dates to local midnight for accurate comparison
-                      const reportDate = new Date(report.date);
-                      reportDate.setHours(0, 0, 0, 0);
-
-                      const selected = new Date(selectedDate);
-                      selected.setHours(0, 0, 0, 0);
-
-                      return reportDate.getTime() === selected.getTime();
-                    }).length > 0 ? (
-                      <div className='flex flex-col items-center'>
+                    <div className='text-sm font-medium text-gray-700 mb-2'>
+                      Select a report
+                    </div>
+                    {criteriaLoading ? (
+                      <div className='flex flex-col items-center justify-center py-8'>
+                        <Loader2 className='h-8 w-8 animate-spin text-[#124A69]' />
+                        <p className='text-sm text-gray-500 mt-2'>
+                          {loadingMessage}
+                        </p>
+                      </div>
+                    ) : savedReports.length === 0 ? (
+                      <div className='text-gray-500 text-center py-4'>
+                        No reports found.
+                      </div>
+                    ) : (
+                      <div className='flex flex-col gap-4'>
                         <Select
                           value={selectedReport}
                           onValueChange={setSelectedReport}
@@ -1726,46 +1711,36 @@ export function GradingTable({
                             <SelectValue placeholder='Select saved report' />
                           </SelectTrigger>
                           <SelectContent>
-                            {savedReports
-                              .filter((report) => {
-                                if (!selectedDate) return false;
+                            {savedReports.map((report) => {
+                              // Count students without grades for this report
+                              const ungradedCount = students.filter(
+                                (student) => {
+                                  const studentScore = scores[student.id];
+                                  return (
+                                    !studentScore ||
+                                    studentScore.scores.length === 0 ||
+                                    studentScore.scores.every(
+                                      (score) => score === 0,
+                                    )
+                                  );
+                                },
+                              ).length;
 
-                                // Convert both dates to local midnight for accurate comparison
-                                const reportDate = new Date(report.date);
-                                reportDate.setHours(0, 0, 0, 0);
-
-                                const selected = new Date(selectedDate);
-                                selected.setHours(0, 0, 0, 0);
-
-                                return (
-                                  reportDate.getTime() === selected.getTime()
-                                );
-                              })
-                              .map((report) => {
-                                // Count students without grades for this report
-                                const ungradedCount = students.filter(
-                                  (student) => {
-                                    const studentScore = scores[student.id];
-                                    // Check if student has no scores or if any of their scores are 0
-                                    return (
-                                      !studentScore ||
-                                      studentScore.scores.length === 0 ||
-                                      studentScore.scores.every(
-                                        (score) => score === 0,
-                                      )
-                                    );
-                                  },
-                                ).length;
-
-                                return (
-                                  <SelectItem key={report.id} value={report.id}>
-                                    {report.name}
-                                    <span className='text-sm text-gray-500 ml-2'>
-                                      ({ungradedCount} students ungraded)
+                              return (
+                                <SelectItem key={report.id} value={report.id}>
+                                  <div className='flex flex-col items-start'>
+                                    <span className='font-medium text-[#124A69]'>
+                                      {report.name}
                                     </span>
-                                  </SelectItem>
-                                );
-                              })}
+                                    <span className='text-xs text-gray-500'>
+                                      {format(new Date(report.date), 'PPP')} |{' '}
+                                      {report.rubrics.length} Rubrics | Passing
+                                      Score: {report.passingScore}%
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                              );
+                            })}
                           </SelectContent>
                         </Select>
                         {selectedReport && (
@@ -1776,12 +1751,6 @@ export function GradingTable({
                           </div>
                         )}
                       </div>
-                    ) : (
-                      <p className='text-sm text-gray-500 text-center py-4'>
-                        No saved reports found for this date.
-                        <br />
-                        Create new ones in the other tab.
-                      </p>
                     )}
                     <DialogFooter className='gap-2 sm:gap-2'>
                       <Button

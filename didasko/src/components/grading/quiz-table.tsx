@@ -28,6 +28,7 @@ import {
   DialogTitle,
   DialogFooter,
   DialogClose,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
@@ -40,6 +41,7 @@ import {
 } from '@/components/ui/pagination';
 import { toast } from 'react-hot-toast';
 import { Progress } from '@/components/ui/progress';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface QuizTableProps {
   courseId: string;
@@ -109,6 +111,19 @@ export function QuizTable({
   const [quizzes, setQuizzes] = useState<any[]>([]);
   const [modalTab, setModalTab] = useState('existing');
   const datePickerButtonRef = useRef<HTMLButtonElement>(null);
+  const [gradeFilter, setGradeFilter] = useState<{
+    passed: boolean;
+    failed: boolean;
+    noGrades: boolean;
+  }>({
+    passed: false,
+    failed: false,
+    noGrades: false,
+  });
+  const [previousScores, setPreviousScores] = useState<Record<
+    string,
+    QuizScore
+  > | null>(null);
 
   // Fetch quizzes for the course when modal opens
   useEffect(() => {
@@ -160,16 +175,6 @@ export function QuizTable({
 
     fetchData();
   }, [selectedQuiz, courseId, dateRange]);
-
-  // Update date range when selected date changes
-  useEffect(() => {
-    if (selectedDate) {
-      setDateRange({
-        from: addDays(selectedDate, -30),
-        to: selectedDate,
-      });
-    }
-  }, [selectedDate]);
 
   // Calculate plus points based on attendance rate
   const calculatePlusPoints = (studentId: string): number => {
@@ -231,7 +236,43 @@ export function QuizTable({
     });
   };
 
-  // Get paginated students
+  // Function to handle filter changes
+  const handleFilterChange = (key: keyof typeof gradeFilter) => {
+    const newFilter = {
+      ...gradeFilter,
+      [key]: !gradeFilter[key],
+    };
+
+    // If all options are checked, set all to true
+    if (Object.values(newFilter).every(Boolean)) {
+      setGradeFilter({
+        passed: true,
+        failed: true,
+        noGrades: true,
+      });
+    } else {
+      setGradeFilter(newFilter);
+    }
+  };
+
+  // Function to check if a student matches the current filters
+  const studentMatchesFilter = (student: Student) => {
+    // If no filters are checked, show all students
+    if (!gradeFilter.passed && !gradeFilter.failed && !gradeFilter.noGrades) {
+      return true;
+    }
+
+    const studentScore = scores[student.id];
+    const total = studentScore?.totalGrade || 0;
+    const hasGrades = studentScore?.quizScore > 0;
+
+    if (gradeFilter.passed && hasGrades && total >= passingRate) return true;
+    if (gradeFilter.failed && hasGrades && total < passingRate) return true;
+    if (gradeFilter.noGrades && !hasGrades) return true;
+    return false;
+  };
+
+  // Update getPaginatedStudents to include filter
   const getPaginatedStudents = (students: Student[]) => {
     if (!Array.isArray(students)) {
       return {
@@ -245,7 +286,8 @@ export function QuizTable({
       const name = `${student.lastName || ''} ${student.firstName || ''} ${
         student.middleInitial || ''
       }`.toLowerCase();
-      return name.includes(searchQuery.toLowerCase());
+      const nameMatch = name.includes(searchQuery.toLowerCase());
+      return nameMatch && studentMatchesFilter(student);
     });
 
     const startIndex = (currentPage - 1) * studentsPerPage;
@@ -305,12 +347,32 @@ export function QuizTable({
     }
   }, [selectedDate]);
 
+  const validateQuizName = (name: string) => {
+    if (!name.trim()) {
+      return 'Quiz name is required';
+    }
+    if (name.length > 25) {
+      return 'Quiz name must not exceed 25 characters';
+    }
+    if (!/^[a-zA-Z0-9\s]+$/.test(name)) {
+      return 'Quiz name can only contain letters, numbers, and spaces';
+    }
+    // Check for duplicate names
+    const isDuplicate = quizzes.some(
+      (quiz) => quiz.name.toLowerCase() === name.toLowerCase(),
+    );
+    if (isDuplicate) {
+      return 'A quiz with this name already exists';
+    }
+    return '';
+  };
+
   return (
     <div className='max-w-6xl mx-auto'>
       <div className='bg-white rounded-lg shadow-md'>
         {/* Card Header */}
         <div className='flex items-center justify-between px-4 py-3 border-b'>
-          <div className='flex items-center gap-2'>
+          <div className='flex items-center gap-4'>
             <Button
               variant='ghost'
               className='h-9 w-9 p-0 hover:bg-gray-100'
@@ -332,12 +394,6 @@ export function QuizTable({
               </span>
               <span className='text-sm text-gray-500'>{courseSection}</span>
             </div>
-          </div>
-
-          {/* Remove attendance date range and passing rate from header controls */}
-
-          {/* Only show single date picker in header (for quiz selection) */}
-          <div className='flex items-center gap-4'>
             <div className='relative'>
               <Search className='absolute left-2 top-2.5 h-4 w-4 text-gray-500' />
               <Input
@@ -347,32 +403,109 @@ export function QuizTable({
                 className='pl-8 w-[200px]'
               />
             </div>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  ref={datePickerButtonRef}
-                  variant='outline'
-                  className={cn(
-                    'w-[180px] justify-start text-left font-normal',
-                    !selectedDate && 'text-muted-foreground',
+            <div className='flex items-center gap-2'>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant='outline'
+                    className='w-[140px] h-9 rounded-full border-gray-200 bg-[#F5F6FA] justify-between'
+                  >
+                    <span>Filter</span>
+                    <svg
+                      className='h-4 w-4 text-gray-500'
+                      fill='none'
+                      stroke='currentColor'
+                      strokeWidth='2'
+                      viewBox='0 0 24 24'
+                    >
+                      <path d='M19 9l-7 7-7-7' />
+                    </svg>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className='w-[200px] p-4'>
+                  <div className='space-y-3'>
+                    <div className='flex items-center space-x-2'>
+                      <Checkbox
+                        id='passed'
+                        checked={gradeFilter.passed}
+                        onCheckedChange={() => handleFilterChange('passed')}
+                      />
+                      <label
+                        htmlFor='passed'
+                        className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+                      >
+                        Passed
+                      </label>
+                    </div>
+                    <div className='flex items-center space-x-2'>
+                      <Checkbox
+                        id='failed'
+                        checked={gradeFilter.failed}
+                        onCheckedChange={() => handleFilterChange('failed')}
+                      />
+                      <label
+                        htmlFor='failed'
+                        className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+                      >
+                        Failed
+                      </label>
+                    </div>
+                    <div className='flex items-center space-x-2'>
+                      <Checkbox
+                        id='noGrades'
+                        checked={gradeFilter.noGrades}
+                        onCheckedChange={() => handleFilterChange('noGrades')}
+                      />
+                      <label
+                        htmlFor='noGrades'
+                        className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+                      >
+                        No Grades
+                      </label>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              {Object.entries(gradeFilter).some(([_, value]) => !value) && (
+                <div className='flex items-center gap-1.5'>
+                  {gradeFilter.passed && (
+                    <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700'>
+                      Passed
+                    </span>
                   )}
-                >
-                  <CalendarIcon className='mr-2 h-4 w-4' />
-                  {selectedDate
-                    ? format(selectedDate, 'PPP')
-                    : 'Pick a quiz date'}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className='w-auto p-0' align='start'>
-                <Calendar
-                  mode='single'
-                  selected={selectedDate}
-                  onSelect={onDateSelect}
-                  initialFocus
-                  numberOfMonths={1}
-                />
-              </PopoverContent>
-            </Popover>
+                  {gradeFilter.failed && (
+                    <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700'>
+                      Failed
+                    </span>
+                  )}
+                  {gradeFilter.noGrades && (
+                    <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700'>
+                      No Grades
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className='flex items-center gap-2'>
+            <Button
+              variant='outline'
+              className={cn(
+                'w-[180px] justify-start text-left font-normal',
+                !selectedDate && 'text-muted-foreground',
+              )}
+            >
+              <CalendarIcon className='mr-2 h-4 w-4' />
+              {selectedDate ? format(selectedDate, 'PPP') : 'Pick a quiz date'}
+            </Button>
+            <Button
+              variant='outline'
+              onClick={() => setShowSetupModal(true)}
+              className='bg-[#124A69] text-white hover:bg-[#0d3a56]'
+            >
+              Quiz Manager
+            </Button>
           </div>
         </div>
 
@@ -418,6 +551,27 @@ export function QuizTable({
                     <div className='flex flex-col items-center gap-2'>
                       <Loader2 className='h-8 w-8 animate-spin text-[#124A69]' />
                       <p className='text-sm text-gray-600'>{loadingMessage}</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : !selectedQuiz ? (
+                <tr>
+                  <td colSpan={6} className='text-center py-8'>
+                    <div className='flex flex-col items-center gap-2'>
+                      <p className='text-lg font-medium text-gray-900'>
+                        No quiz selected yet
+                      </p>
+                      <p className='text-sm text-gray-500'>
+                        Please select a quiz from the Quiz Manager to start
+                        grading
+                      </p>
+                      <Button
+                        variant='outline'
+                        onClick={() => setShowSetupModal(true)}
+                        className='mt-2 bg-[#124A69] text-white hover:bg-[#0d3a56]'
+                      >
+                        Open Quiz Manager
+                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -492,9 +646,12 @@ export function QuizTable({
                             type='number'
                             min='0'
                             max={selectedQuiz?.maxScore || 100}
-                            value={studentScore.quizScore}
+                            value={studentScore.quizScore || ''}
                             onChange={(e) => {
-                              const value = parseInt(e.target.value) || 0;
+                              const value =
+                                e.target.value === ''
+                                  ? 0
+                                  : parseInt(e.target.value);
                               const maxScore = selectedQuiz?.maxScore || 100;
                               handleScoreChange(
                                 student.id,
@@ -503,6 +660,7 @@ export function QuizTable({
                               );
                             }}
                             className='w-20 p-1 border rounded text-center'
+                            placeholder='Score'
                           />
                         </td>
                         <td className='px-4 py-3 text-center'>
@@ -631,79 +789,6 @@ export function QuizTable({
               </PaginationContent>
             </Pagination>
           </div>
-
-          {/* Action Buttons */}
-          <div className='flex items-center gap-2'>
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={() => {
-                setScores({});
-                students.forEach((student) => {
-                  handleScoreChange(student.id, 'quizScore', 0);
-                });
-                toast.success('Grades reset successfully', {
-                  duration: 3000,
-                  style: {
-                    background: '#fff',
-                    color: '#124A69',
-                    border: '1px solid #e5e7eb',
-                  },
-                });
-              }}
-              className='h-8 px-3 text-sm border-gray-200 text-gray-600 hover:bg-gray-50'
-              disabled={loading}
-            >
-              Reset Grades
-            </Button>
-            <Button
-              variant='default'
-              size='sm'
-              className='h-8 px-3 text-sm bg-[#124A69] hover:bg-[#0d3a56] text-white'
-              onClick={async () => {
-                if (!selectedQuiz?.id) return;
-
-                try {
-                  // Convert scores object to array
-                  const scoresArray = Object.values(scores);
-
-                  // Save all scores in one request
-                  await axios.post(`/api/quizzes/${selectedQuiz.id}/scores`, {
-                    scores: scoresArray,
-                  });
-
-                  toast.success('Grades saved successfully', {
-                    duration: 3000,
-                    style: {
-                      background: '#fff',
-                      color: '#124A69',
-                      border: '1px solid #e5e7eb',
-                    },
-                  });
-                } catch (error) {
-                  console.error('Error saving quiz scores:', error);
-                  toast.error('Failed to save grades', {
-                    duration: 3000,
-                    style: {
-                      background: '#fff',
-                      color: '#dc2626',
-                      border: '1px solid #e5e7eb',
-                    },
-                  });
-                }
-              }}
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                  Saving...
-                </>
-              ) : (
-                'Save Grades'
-              )}
-            </Button>
-          </div>
         </div>
       </div>
 
@@ -712,11 +797,11 @@ export function QuizTable({
         <DialogContent className='sm:max-w-[450px]'>
           <DialogHeader>
             <DialogTitle className='text-[#124A69] text-2xl font-bold'>
-              Quiz Setup
+              Quiz Manager
             </DialogTitle>
-            <div className='text-gray-500'>
+            <DialogDescription className='text-gray-500'>
               Select an existing quiz or create a new one for this course.
-            </div>
+            </DialogDescription>
           </DialogHeader>
           <Tabs value={modalTab} onValueChange={setModalTab} className='w-full'>
             <TabsList className='grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg mb-4'>
@@ -735,33 +820,63 @@ export function QuizTable({
             </TabsList>
             <TabsContent value='existing'>
               <div className='space-y-4 py-4'>
-                {quizzes.length === 0 ? (
-                  <div className='text-gray-500 text-center'>
+                <div className='text-sm font-medium text-gray-700 mb-2'>
+                  Select a quiz
+                </div>
+                {loadingMessage ? (
+                  <div className='flex flex-col items-center justify-center py-8'>
+                    <Loader2 className='h-8 w-8 animate-spin text-[#124A69]' />
+                    <p className='text-sm text-gray-500 mt-2'>
+                      {loadingMessage}
+                    </p>
+                  </div>
+                ) : quizzes.length === 0 ? (
+                  <div className='text-gray-500 text-center py-4'>
                     No quizzes found.
                   </div>
                 ) : (
-                  <div className='flex flex-col items-center gap-2'>
-                    {quizzes.map((quiz) => (
-                      <Button
-                        key={quiz.id}
-                        variant='outline'
-                        className='justify-between w-full max-w-[400px] bg-gray-50 border-gray-200'
-                        onClick={() => handleSelectQuiz(quiz)}
-                      >
-                        <span>{quiz.name}</span>
-                        <span className='text-xs text-gray-500'>
-                          {quiz.quizDate
-                            ? format(new Date(quiz.quizDate), 'PPP')
-                            : ''}
-                        </span>
-                      </Button>
-                    ))}
+                  <div className='flex flex-col gap-4'>
+                    <Select
+                      onValueChange={(quizId) => {
+                        const selectedQuiz = quizzes.find(
+                          (q) => q.id === quizId,
+                        );
+                        if (selectedQuiz) {
+                          handleSelectQuiz(selectedQuiz);
+                        }
+                      }}
+                    >
+                      <SelectTrigger className='w-full bg-gray-50 border-gray-200'>
+                        <SelectValue placeholder='Select a quiz' />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {quizzes.map((quiz) => (
+                          <SelectItem key={quiz.id} value={quiz.id}>
+                            <div className='flex flex-col items-start'>
+                              <span className='font-medium text-[#124A69]'>
+                                {quiz.name}
+                              </span>
+                              <span className='text-xs text-gray-500'>
+                                {quiz.quizDate
+                                  ? format(new Date(quiz.quizDate), 'PPP')
+                                  : 'No date'}{' '}
+                                | Max Score: {quiz.maxScore} | Passing Rate:{' '}
+                                {quiz.passingRate}%
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 )}
               </div>
             </TabsContent>
             <TabsContent value='new'>
               <div className='space-y-4 py-4'>
+                <div className='text-sm font-medium text-gray-700 mb-2'>
+                  Create a new quiz
+                </div>
                 <div className='grid gap-4'>
                   <div className='grid gap-2'>
                     <label className='text-sm font-medium text-gray-700'>
@@ -838,7 +953,7 @@ export function QuizTable({
                         <SelectContent>
                           {[50, 60, 70, 75, 80, 85, 90].map((rate) => (
                             <SelectItem key={rate} value={rate.toString()}>
-                              {rate}
+                              {rate}%
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -847,12 +962,19 @@ export function QuizTable({
                   </div>
                 </div>
                 <DialogFooter className='gap-2 sm:gap-2 mt-4'>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    onClick={handleChooseAnotherDate}
+                    className='border-gray-200'
+                  >
+                    Cancel
+                  </Button>
                   <DialogClose asChild>
                     <Button
                       type='button'
                       className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
                       onClick={() => {
-                        // Create new quiz API call here, then set selectedQuiz
                         const newQuiz = {
                           name: quizName,
                           maxScore,
@@ -863,7 +985,6 @@ export function QuizTable({
                           quizDate: selectedDate?.toISOString(),
                         };
 
-                        // Save the quiz to the database
                         axios
                           .post(`/api/courses/${courseId}/quizzes`, newQuiz)
                           .then((response) => {
@@ -874,27 +995,128 @@ export function QuizTable({
                           })
                           .catch((error) => {
                             console.error('Error creating quiz:', error);
-                            // You might want to show an error message to the user here
+                            toast.error('Failed to create quiz', {
+                              duration: 3000,
+                              style: {
+                                background: '#fff',
+                                color: '#dc2626',
+                                border: '1px solid #e5e7eb',
+                              },
+                            });
                           });
                       }}
                     >
                       Save & Continue
                     </Button>
                   </DialogClose>
-                  <Button
-                    type='button'
-                    variant='outline'
-                    onClick={handleChooseAnotherDate}
-                    className='border-gray-200'
-                  >
-                    Choose another date
-                  </Button>
                 </DialogFooter>
               </div>
             </TabsContent>
           </Tabs>
         </DialogContent>
       </Dialog>
+      {/* Action Buttons */}
+      <div className='flex justify-end mt-3 gap-2'>
+        {previousScores ? (
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => {
+              setScores(previousScores);
+              setPreviousScores(null);
+              toast.success('Grades restored', {
+                duration: 3000,
+                style: {
+                  background: '#fff',
+                  color: '#124A69',
+                  border: '1px solid #e5e7eb',
+                },
+              });
+            }}
+            className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
+            disabled={loading}
+          >
+            Undo Reset
+          </Button>
+        ) : (
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => {
+              setPreviousScores(scores);
+              setScores({});
+              students.forEach((student) => {
+                handleScoreChange(student.id, 'quizScore', 0);
+              });
+              toast.success('Grades reset successfully', {
+                duration: 3000,
+                style: {
+                  background: '#fff',
+                  color: '#124A69',
+                  border: '1px solid #e5e7eb',
+                },
+              });
+            }}
+            className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
+            disabled={loading}
+          >
+            Reset Grades
+          </Button>
+        )}
+        <Button
+          variant='default'
+          size='sm'
+          className='h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden'
+          onClick={async () => {
+            if (!selectedQuiz?.id) return;
+
+            try {
+              // Convert scores object to array and format each score
+              const scoresArray = Object.values(scores).map((score) => ({
+                studentId: score.studentId,
+                score: score.quizScore,
+                attendance: score.attendance,
+                plusPoints: score.plusPoints,
+                totalGrade: score.totalGrade,
+              }));
+
+              // Save all scores in one request
+              await axios.post(`/api/quizzes/${selectedQuiz.id}/scores`, {
+                scores: scoresArray,
+              });
+
+              toast.success('Grades saved successfully', {
+                duration: 3000,
+                style: {
+                  background: '#fff',
+                  color: '#124A69',
+                  border: '1px solid #e5e7eb',
+                },
+              });
+            } catch (error) {
+              console.error('Error saving quiz scores:', error);
+              toast.error('Failed to save grades', {
+                duration: 3000,
+                style: {
+                  background: '#fff',
+                  color: '#dc2626',
+                  border: '1px solid #e5e7eb',
+                },
+              });
+            }
+          }}
+          disabled={loading}
+        >
+          {loading ? (
+            <>
+              <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+              Saving...
+            </>
+          ) : (
+            'Save Grades'
+          )}
+        </Button>
+      </div>
     </div>
   );
 }

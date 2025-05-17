@@ -57,23 +57,22 @@ export default function ReportingTypePage({
             <Header />
 
             <div className='flex-1 overflow-y-auto pb-6'>
-              <div className='container mx-auto py-6 max-w-4xl'>
-                <div className='mb-6 flex items-center gap-4'>
-                  <Button asChild variant='ghost' size='icon'>
-                    <Link href='/grading/reporting'>
-                      <ArrowLeft className='h-4 w-4' />
-                    </Link>
-                  </Button>
-                  <div>
-                    <h1 className='text-2xl font-semibold'>
-                      {course?.title || 'Loading...'}
-                    </h1>
-                    <p className='text-sm text-muted-foreground'>
-                      {course?.code} - Section {course?.section || 'Loading...'}
-                    </p>
-                  </div>
+              <div className='mb-6 flex items-center mt-2 gap-4'>
+                <Button asChild variant='ghost' size='icon'>
+                  <Link href='/grading/reporting'>
+                    <ArrowLeft className='h-4 w-4' />
+                  </Link>
+                </Button>
+                <div>
+                  <h1 className='text-2xl font-semibold'>
+                    {course?.title || 'Loading...'}
+                  </h1>
+                  <p className='text-sm text-muted-foreground'>
+                    Section {course?.section || 'Loading...'}
+                  </p>
                 </div>
-
+              </div>
+              <div className='container mx-auto py-6 max-w-4xl'>
                 <div className='grid md:grid-cols-2 gap-6'>
                   <Link
                     href={`/grading/reporting/${course_code}/${course_section}/individual`}
@@ -91,7 +90,7 @@ export default function ReportingTypePage({
                             Grade students one at a time
                           </p>
                         </div>
-                        <Button 
+                        <Button
                           className='w-full bg-[#124A69] hover:bg-gray-800'
                           disabled={isLoading}
                         >
@@ -117,7 +116,7 @@ export default function ReportingTypePage({
                             Grade multiple students at once
                           </p>
                         </div>
-                        <Button 
+                        <Button
                           className='w-full bg-[#124A69] hover:bg-gray-800'
                           disabled={isLoading}
                         >
