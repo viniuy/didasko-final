@@ -7,7 +7,7 @@ import Rightsidebar from '@/components/shared/layout/right-sidebar';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import Link from 'next/link';
-import { ArrowLeft, User, Users } from 'lucide-react';
+import { ArrowLeft, User, Users, Loader2 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 
@@ -25,6 +25,7 @@ export default function ReportingTypePage({
   params: Promise<{ course_code: string; course_section: string }>;
 }) {
   const [open, setOpen] = React.useState(false);
+  const [isRedirecting, setIsRedirecting] = React.useState(false);
   const { course_code, course_section } = React.use(params);
   const [course, setCourse] = useState<Course | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -74,36 +75,47 @@ export default function ReportingTypePage({
               </div>
               <div className='container mx-auto py-6 max-w-4xl'>
                 <div className='grid md:grid-cols-2 gap-6'>
-                  <Link
-                    href={`/grading/reporting/${course_code}/${course_section}/individual`}
-                  >
-                    <Card className='p-6 hover:bg-accent transition-colors cursor-pointer h-full'>
-                      <div className='flex flex-col items-center text-center space-y-4'>
-                        <div className='h-24 w-24 rounded-full bg-secondary flex items-center justify-center'>
-                          <User className='h-12 w-12' />
-                        </div>
-                        <div>
-                          <h2 className='text-xl font-semibold'>
-                            Individual Reporting
-                          </h2>
-                          <p className='text-sm text-muted-foreground mt-1'>
-                            Grade students one at a time
-                          </p>
-                        </div>
-                        <Button
-                          className='w-full bg-[#124A69] hover:bg-gray-800'
-                          disabled={isLoading}
-                        >
-                          {isLoading ? 'Loading...' : 'Select student'}
-                        </Button>
+                  <Card className='p-6 hover:bg-accent transition-colors h-full'>
+                    <div className='flex flex-col items-center text-center space-y-4'>
+                      <div className='h-24 w-24 rounded-full bg-secondary flex items-center justify-center'>
+                        <User className='h-12 w-12' />
                       </div>
-                    </Card>
-                  </Link>
+                      <div>
+                        <h2 className='text-xl font-semibold'>
+                          Individual Reporting
+                        </h2>
+                        <p className='text-sm text-muted-foreground mt-1'>
+                          Grade students one at a time
+                        </p>
+                      </div>
+                      <Button
+                        className='w-full bg-[#124A69] hover:bg-gray-800 cursor-pointer'
+                        disabled={isLoading || isRedirecting}
+                        asChild
+                      >
+                        <Link
+                          href={`/grading/reporting/${course_code}/${course_section}/individual`}
+                          onClick={() => setIsRedirecting(true)}
+                        >
+                          {isLoading ? (
+                            'Loading...'
+                          ) : isRedirecting ? (
+                            <span className='flex items-center gap-2'>
+                              <Loader2 className='h-4 w-4 animate-spin' />
+                              Redirecting...
+                            </span>
+                          ) : (
+                            'Select student'
+                          )}
+                        </Link>
+                      </Button>
+                    </div>
+                  </Card>
 
                   <Link
                     href={`/grading/reporting/${course_code}/${course_section}/group`}
                   >
-                    <Card className='p-6 hover:bg-accent transition-colors cursor-pointer h-full'>
+                    <Card className='p-6 hover:bg-accent transition-colors  h-full'>
                       <div className='flex flex-col items-center text-center space-y-4'>
                         <div className='h-24 w-24 rounded-full bg-secondary flex items-center justify-center'>
                           <Users className='h-12 w-12' />

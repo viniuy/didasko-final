@@ -99,7 +99,7 @@ const CourseCard = ({
         <Button
           onClick={handleClick}
           variant='secondary'
-          className='bg-[#FAEDCB] text-black text-sm min-w-[120px]'
+          className='bg-[#FAEDCB] text-black text-sm min-w-[120px] cursor-pointer'
           disabled={isLoading}
         >
           {isLoading ? <Loader2 className='h-4 w-4 animate-spin mr-2' /> : null}

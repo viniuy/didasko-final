@@ -388,41 +388,41 @@ export function GradingTable({
       try {
         const formattedDate = selectedDate.toISOString().split('T')[0];
 
-        // Get the latest grade configuration
-        const configResponse = await axiosInstance.get(
-          `/courses/${courseId}/grade-components`,
-        );
-        const gradeConfig = configResponse.data.configurations[0];
-
-        if (!gradeConfig) {
-          throw new Error('No grade configuration found');
-        }
-
         // Calculate total scores for each student
         const gradesToSave = Object.values(scores).map((score) => {
           const total = calculateTotal(score.scores);
 
           return {
             studentId: score.studentId,
+            scores: score.scores,
+            total: total,
             reportingScore: isRecitationCriteria ? 0 : total,
             recitationScore: isRecitationCriteria ? total : 0,
-            quizScore: 0, // Quiz scores are handled separately
           };
         });
 
-        // Save grades for all students
-        const savePromises = gradesToSave.map((grade) =>
-          axiosInstance.post(
-            `/courses/${courseId}/students/${grade.studentId}/grades`,
-            {
-              reportingScore: grade.reportingScore,
-              recitationScore: grade.recitationScore,
-              quizScore: grade.quizScore,
-            },
-          ),
-        );
+        // Log the data being sent
+        console.log('Saving grades data:', {
+          date: formattedDate,
+          criteriaId: activeReport.id,
+          courseCode,
+          courseSection,
+          grades: gradesToSave,
+          isRecitationCriteria,
+        });
 
-        await Promise.all(savePromises);
+        // Save all grades in a single request
+        const response = await axiosInstance.post(
+          `/courses/${courseId}/grades`,
+          {
+            date: formattedDate,
+            criteriaId: activeReport.id,
+            courseCode,
+            courseSection,
+            grades: gradesToSave,
+            isRecitationCriteria,
+          },
+        );
 
         // Update original scores after successful save
         setOriginalScores(JSON.parse(JSON.stringify(scores)));

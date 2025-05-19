@@ -18,7 +18,6 @@ const handler = NextAuth({
   callbacks: {
     async signIn({ user, account }) {
       if (!user.email) {
-        console.error('SignIn Error: No email provided');
         return false;
       }
 

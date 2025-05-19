@@ -536,10 +536,10 @@ const GradeConfigDialog = ({
                           }}
                           placeholder='Enter gradebook name'
                           className=' border-gray-300 focus:border-[#124A69] focus:ring-[#124A69]'
-                          maxLength={100}
+                          maxLength={20}
                         />
-                        <div className='absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500'>
-                          {config.name.length}/100
+                        <div className='flex justify-end mt-1  text-xs text-gray-500'>
+                          {config.name.length}/20
                         </div>
                       </div>
                       {nameWarning && nameTouched && (
