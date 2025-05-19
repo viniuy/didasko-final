@@ -92,6 +92,8 @@ interface GradingScore {
   studentId: string;
   scores: number[];
   total: number;
+  reportingScore?: number | null;
+  recitationScore?: number | null;
 }
 
 export function GradingTable({
@@ -307,9 +309,11 @@ export function GradingTable({
       }
 
       try {
-        const response = await axiosInstance.get(
-          `/courses/${courseId}/criteria`,
-        );
+        let endpoint = `/courses/${courseId}/criteria`;
+        if (isRecitationCriteria) {
+          endpoint = `/courses/${courseId}/recitation-criteria`;
+        }
+        const response = await axiosInstance.get(endpoint);
         setSavedReports(response.data);
       } catch (error: any) {
         console.error('Error fetching criteria:', {
@@ -326,7 +330,7 @@ export function GradingTable({
     if (session?.user?.id) {
       fetchCriteria();
     }
-  }, [courseId, session?.user?.id]);
+  }, [courseId, session?.user?.id, isRecitationCriteria]);
 
   // Update originalScores when scores are first loaded
   useEffect(() => {
@@ -384,53 +388,60 @@ export function GradingTable({
       try {
         const formattedDate = selectedDate.toISOString().split('T')[0];
 
-        // Ensure all students have the correct number of scores
-        const gradesToSave = Object.values(scores).map((score) => {
-          const correctScores = new Array(activeReport.rubrics.length).fill(0);
-          score.scores.forEach((s, i) => {
-            if (i < correctScores.length) {
-              correctScores[i] = s;
-            }
-          });
+        // Get the latest grade configuration
+        const configResponse = await axiosInstance.get(
+          `/courses/${courseId}/grade-components`,
+        );
+        const gradeConfig = configResponse.data.configurations[0];
 
-          const total = calculateTotal(correctScores);
+        if (!gradeConfig) {
+          throw new Error('No grade configuration found');
+        }
+
+        // Calculate total scores for each student
+        const gradesToSave = Object.values(scores).map((score) => {
+          const total = calculateTotal(score.scores);
 
           return {
             studentId: score.studentId,
-            scores: correctScores,
-            total: total,
+            reportingScore: isRecitationCriteria ? 0 : total,
+            recitationScore: isRecitationCriteria ? total : 0,
+            quizScore: 0, // Quiz scores are handled separately
           };
         });
 
-        const payload = {
-          date: formattedDate,
-          criteriaId: activeReport.id,
-          courseCode,
-          courseSection,
-          grades: gradesToSave,
-        };
-
-        const response = await axiosInstance.post(
-          `/courses/${courseId}/grades`,
-          payload,
+        // Save grades for all students
+        const savePromises = gradesToSave.map((grade) =>
+          axiosInstance.post(
+            `/courses/${courseId}/students/${grade.studentId}/grades`,
+            {
+              reportingScore: grade.reportingScore,
+              recitationScore: grade.recitationScore,
+              quizScore: grade.quizScore,
+            },
+          ),
         );
 
-        if (response.data) {
-          // Update original scores after successful save
-          setOriginalScores(JSON.parse(JSON.stringify(scores)));
-          resolve('Grades saved successfully');
-        }
+        await Promise.all(savePromises);
+
+        // Update original scores after successful save
+        setOriginalScores(JSON.parse(JSON.stringify(scores)));
+        resolve('Grades saved successfully');
       } catch (error: any) {
         console.error('Error saving grades:', {
           error,
           message: error.message,
           response: error.response?.data,
           status: error.response?.status,
+          url: error.config?.url,
+          params: error.config?.params,
+          stack: error.stack,
         });
 
         if (error.response?.status === 500) {
           reject(
-            'Server error occurred while saving grades. Please try again.',
+            error.response?.data?.details ||
+              'Server error occurred while saving grades. Please try again.',
           );
         } else if (error.response?.data?.message) {
           reject(error.response.data.message);
@@ -513,13 +524,19 @@ export function GradingTable({
       const newScores = [...studentScores];
       newScores[rubricIndex] = value;
 
+      const total = calculateTotal(newScores);
+
+      const updatedScore: GradingScore = {
+        studentId,
+        scores: newScores,
+        total,
+        reportingScore: isRecitationCriteria ? null : total,
+        recitationScore: isRecitationCriteria ? total : null,
+      };
+
       return {
         ...prev,
-        [studentId]: {
-          studentId,
-          scores: newScores,
-          total: calculateTotal(newScores),
-        },
+        [studentId]: updatedScore,
       };
     });
   };
@@ -918,6 +935,8 @@ export function GradingTable({
       [
         'Student Name',
         ...rubricDetails.map((r) => `${r.name} (${r.percentage}%)`),
+        'Reporting Score',
+        'Recitation Score',
         'Total Grade',
         'Remarks',
       ],
@@ -929,6 +948,8 @@ export function GradingTable({
         studentId: student.id,
         scores: new Array(rubricDetails.length).fill(0),
         total: 0,
+        reportingScore: 0,
+        recitationScore: 0,
       };
 
       return [
@@ -938,6 +959,8 @@ export function GradingTable({
         ...studentScore.scores.map((score) =>
           score ? score.toString() : '---',
         ),
+        `${studentScore.reportingScore?.toFixed(0) || '---'}%`,
+        `${studentScore.recitationScore?.toFixed(0) || '---'}%`,
         `${studentScore.total.toFixed(0)}%`,
         studentScore.scores.some((score) => score === 0)
           ? '---'

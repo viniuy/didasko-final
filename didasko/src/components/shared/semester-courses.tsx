@@ -64,6 +64,8 @@ const CourseCard = ({
       ? `/grading/quiz/${course.code}/${course.section}`
       : type === 'reporting'
       ? `/grading/reporting/${course.code}/${course.section}`
+      : type === 'gradebook'
+      ? `/grading/gradebook/${course.code}/${course.section}`
       : `/grading/gradebook`;
 
   const handleClick = (e: React.MouseEvent) => {

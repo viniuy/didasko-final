@@ -32,22 +32,22 @@ enum AttendanceStatus {
 }
 
 model User {
-  id         String   @id @default(uuid())
+  id         String     @id @default(uuid())
   name       String
-  email      String   @unique
+  email      String     @unique
   department String
-  workType   WorkType @map("work_type")
+  workType   WorkType   @map("work_type")
   role       Role
   permission Permission @default(DENIED)
-  image      String?   // Optional profile image URL/path
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  image      String? // Optional profile image URL/path
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
 
-  accounts   Account[]
-  sessions   Session[]
-  notes      Note[]
-  coursesTeaching Course[]    @relation("FacultyCourses")
-  criteria   Criteria[]
+  accounts        Account[]
+  sessions        Session[]
+  notes           Note[]
+  coursesTeaching Course[]   @relation("FacultyCourses")
+  criteria        Criteria[]
 
   @@map("users")
 }
@@ -110,40 +110,42 @@ model Class {
 }
 
 model Student {
-  id            String    @id @default(uuid())
-  lastName      String
-  firstName     String
-  middleInitial String?
-  image         String?
-  studentId     String    @unique
-  grades        Grade[]
-  attendance    Attendance[]
-  coursesEnrolled Course[] @relation("StudentCourses")
-  groups        Group[]    @relation("GroupStudents")
-  leadingGroups Group[]    @relation("GroupLeader")
-  quizScores    QuizScore[]
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  id              String       @id @default(uuid())
+  lastName        String
+  firstName       String
+  middleInitial   String?
+  image           String?
+  studentId       String       @unique
+  grades          Grade[]
+  attendance      Attendance[]
+  coursesEnrolled Course[]     @relation("StudentCourses")
+  groups          Group[]      @relation("GroupStudents")
+  leadingGroups   Group[]      @relation("GroupLeader")
+  quizScores      QuizScore[]
+  gradeScores     GradeScore[]
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
 
   @@map("students")
 }
 
 model Grade {
-  id          String   @id @default(uuid())
-  value       Float
-  scores      Json     // Array of scores for each rubric
-  total       Float    // Total score
-  date        DateTime // Date when the grade was given
-  studentId   String
-  student     Student  @relation(fields: [studentId], references: [id])
-  courseId    String
-  course      Course   @relation(fields: [courseId], references: [id])
-  criteriaId  String
-  criteria    Criteria @relation(fields: [criteriaId], references: [id])
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(uuid())
+  value           Float
+  scores          Json
+  total           Float
+  reportingScore  Boolean
+  recitationScore Boolean
+  date            DateTime
+  studentId       String
+  student         Student  @relation(fields: [studentId], references: [id])
+  courseId        String
+  course          Course   @relation(fields: [courseId], references: [id])
+  criteriaId      String
+  criteria        Criteria @relation(fields: [criteriaId], references: [id])
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
-  @@unique([studentId, courseId, date])
   @@index([date])
   @@index([courseId])
   @@index([criteriaId])
@@ -162,82 +164,120 @@ model GradeItem {
 }
 
 model Criteria {
-  id           String    @id @default(uuid())
-  name         String
-  courseId     String
-  course       Course    @relation(fields: [courseId], references: [id])
-  userId       String    @map("user_id")
-  user         User      @relation(fields: [userId], references: [id])
-  scoringRange String    // "1-5" or "1-10"
-  passingScore String    // "75" or "80"
-  grades       Grade[]
-  rubrics      Rubric[]  // NEW: relation to Rubric
-  date         DateTime
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  isGroupCriteria Boolean @default(false)
-  isRecitationCriteria Boolean @default(false)
+  id                   String   @id @default(uuid())
+  name                 String
+  courseId             String
+  course               Course   @relation(fields: [courseId], references: [id])
+  userId               String   @map("user_id")
+  user                 User     @relation(fields: [userId], references: [id])
+  scoringRange         String // "1-5" or "1-10"
+  passingScore         String // "75" or "80"
+  grades               Grade[]
+  rubrics              Rubric[] // NEW: relation to Rubric
+  date                 DateTime
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  isGroupCriteria      Boolean  @default(false)
+  isRecitationCriteria Boolean  @default(false)
 
   @@map("criteria")
 }
 
 model Rubric {
-  id             String    @id @default(uuid())
-  criteria       Criteria  @relation(fields: [criteriaId], references: [id])
-  criteriaId     String
-  name           String
-  percentage     Int
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id         String   @id @default(uuid())
+  criteria   Criteria @relation(fields: [criteriaId], references: [id])
+  criteriaId String
+  name       String
+  percentage Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@map("rubrics")
 }
 
 model Event {
-  id          String    @id @default(uuid())
+  id          String   @id @default(uuid())
   title       String
   description String?
-  date        DateTime 
+  date        DateTime
   fromTime    String?
   toTime      String?
   role        Role
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("events")
 }
 
 model Note {
-  id          String    @id @default(uuid())
+  id          String   @id @default(uuid())
   title       String
   description String?
-  date        DateTime  // Date for the note
-  userId      String    @map("user_id")
-  user        User      @relation(fields: [userId], references: [id])
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  date        DateTime // Date for the note
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("notes")
 }
 
+model GradeConfiguration {
+  id               String   @id @default(uuid())
+  name             String
+  courseId         String
+  course           Course   @relation(fields: [courseId], references: [id])
+  reportingWeight  Float
+  recitationWeight Float
+  quizWeight       Float
+  passingThreshold Float
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  scores GradeScore[]
+
+  @@map("grade_configurations")
+}
+
+model GradeScore {
+  id              String             @id @default(uuid())
+  studentId       String
+  student         Student            @relation(fields: [studentId], references: [id])
+  courseId        String
+  course          Course             @relation(fields: [courseId], references: [id])
+  configId        String
+  config          GradeConfiguration @relation(fields: [configId], references: [id])
+  reportingScore  Float?
+  recitationScore Float?
+  quizScore       Float?
+  totalScore      Float
+  remarks         String
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  @@map("grade_scores")
+}
+
 model Course {
-  id          String   @id @default(uuid())
-  code        String   @unique
-  title       String
-  room        String
-  semester    String   
-  section     String   
-  facultyId   String
-  faculty     User     @relation("FacultyCourses", fields: [facultyId], references: [id])
-  students    Student[]   @relation("StudentCourses")
-  schedules   CourseSchedule[]
-  attendance  Attendance[]
-  criteria    Criteria[]
-  grades      Grade[]
-  groups      Group[]
-  quizzes     Quiz[]
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id           String               @id @default(uuid())
+  code         String               @unique
+  title        String
+  room         String
+  semester     String
+  section      String
+  facultyId    String
+  faculty      User                 @relation("FacultyCourses", fields: [facultyId], references: [id])
+  students     Student[]            @relation("StudentCourses")
+  schedules    CourseSchedule[]
+  attendance   Attendance[]
+  criteria     Criteria[]
+  grades       Grade[]
+  groups       Group[]
+  quizzes      Quiz[]
+  gradeConfigs GradeConfiguration[]
+  gradeScores  GradeScore[]
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
 
   @@map("courses")
 }
@@ -256,75 +296,75 @@ model CourseSchedule {
 }
 
 model Attendance {
-  id          String           @id @default(uuid())
-  studentId   String
-  student     Student         @relation(fields: [studentId], references: [id])
-  courseId    String
-  course      Course          @relation(fields: [courseId], references: [id])
-  date        DateTime
-  status      AttendanceStatus
-  reason      String?         // Optional reason field for excused absences
-  createdAt   DateTime        @default(now()) @map("created_at")
-  updatedAt   DateTime        @updatedAt @map("updated_at")
+  id        String           @id @default(uuid())
+  studentId String
+  student   Student          @relation(fields: [studentId], references: [id])
+  courseId  String
+  course    Course           @relation(fields: [courseId], references: [id])
+  date      DateTime
+  status    AttendanceStatus
+  reason    String? // Optional reason field for excused absences
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
 
-  @@map("attendance")
   @@index([studentId])
   @@index([courseId])
   @@index([date])
+  @@map("attendance")
 }
 
 model Group {
-  id          String   @id @default(uuid())
-  number      String
-  name        String?
-  courseId    String
-  course      Course   @relation(fields: [courseId], references: [id])
-  students    Student[] @relation("GroupStudents")
-  leaderId    String?  // Optional leader ID
-  leader      Student? @relation("GroupLeader", fields: [leaderId], references: [id])
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id        String    @id @default(uuid())
+  number    String
+  name      String?
+  courseId  String
+  course    Course    @relation(fields: [courseId], references: [id])
+  students  Student[] @relation("GroupStudents")
+  leaderId  String? // Optional leader ID
+  leader    Student?  @relation("GroupLeader", fields: [leaderId], references: [id])
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
   @@map("groups")
 }
 
 model Quiz {
-  id          String   @id @default(uuid())
-  name        String
-  courseId    String
-  course      Course   @relation(fields: [courseId], references: [id])
-  quizDate    DateTime
+  id                   String      @id @default(uuid())
+  name                 String
+  courseId             String
+  course               Course      @relation(fields: [courseId], references: [id])
+  quizDate             DateTime
   attendanceRangeStart DateTime
   attendanceRangeEnd   DateTime
-  maxScore    Float
-  passingRate Float
-  scores      QuizScore[]
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  maxScore             Float
+  passingRate          Float
+  scores               QuizScore[]
+  createdAt            DateTime    @default(now()) @map("created_at")
+  updatedAt            DateTime    @updatedAt @map("updated_at")
 
-  @@map("quizzes")
   @@index([courseId])
   @@index([attendanceRangeStart])
   @@index([attendanceRangeEnd])
+  @@map("quizzes")
 }
 
 model QuizScore {
-  id          String   @id @default(uuid())
-  quizId      String
-  quiz        Quiz     @relation(fields: [quizId], references: [id])
-  studentId   String
-  student     Student  @relation(fields: [studentId], references: [id])
-  score       Float
-  attendance  String
-  plusPoints  Float
-  totalGrade  Float
-  remarks     String?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(uuid())
+  quizId     String
+  quiz       Quiz     @relation(fields: [quizId], references: [id])
+  studentId  String
+  student    Student  @relation(fields: [studentId], references: [id])
+  score      Float
+  attendance String
+  plusPoints Float
+  totalGrade Float
+  remarks    String?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   @@unique([quizId, studentId])
-  @@map("quiz_scores")
   @@index([quizId])
   @@index([studentId])
+  @@map("quiz_scores")
 }
 

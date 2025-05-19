@@ -47,14 +47,14 @@ export async function GET(
     // Try to find the course by ID first, then by code
     let course = await prisma.course.findUnique({
       where: { id: courseId },
-      select: { id: true }
+      select: { id: true, code: true, section: true, students: true },
     });
 
     // If not found by ID, try by code
     if (!course) {
       course = await prisma.course.findFirst({
         where: { code: courseId.toUpperCase() },
-        select: { id: true }
+        select: { id: true, code: true, section: true, students: true },
       });
     }
 
@@ -71,7 +71,7 @@ export async function GET(
 
     console.log('Date range for attendance:', {
       start: today.toISOString(),
-      end: tomorrow.toISOString()
+      end: tomorrow.toISOString(),
     });
 
     // Now fetch the course with students using the course ID
@@ -90,58 +90,71 @@ export async function GET(
                 courseId: course.id,
                 date: {
                   gte: today,
-                  lt: tomorrow
-                }
+                  lt: tomorrow,
+                },
               },
               select: {
                 id: true,
                 status: true,
                 date: true,
-                courseId: true
+                courseId: true,
               },
               orderBy: {
-                date: 'desc'
+                date: 'desc',
               },
-              take: 1
+              take: 1,
             },
+            quizScores: true,
           },
         },
       },
     });
 
-    console.log('Course fetch result:', courseWithStudents ? 'Found' : 'Not found');
+    console.log(
+      'Course fetch result:',
+      courseWithStudents ? 'Found' : 'Not found',
+    );
 
     if (!courseWithStudents) {
       console.log('Course not found in database');
       return NextResponse.json({ error: 'Course not found' }, { status: 404 });
     }
 
-    console.log('Number of students found:', courseWithStudents.students.length);
+    console.log(
+      'Number of students found:',
+      courseWithStudents.students.length,
+    );
 
     // Transform the data to match the frontend interface
-    const students = courseWithStudents.students.map((student) => {
-      console.log('Processing student:', {
-        id: student.id,
-        name: `${student.firstName} ${student.lastName}`,
-        attendanceCount: student.attendance.length,
-        attendanceStatus: student.attendance[0]?.status || 'NOT_SET',
-        attendanceDetails: student.attendance[0] ? {
-          date: student.attendance[0].date,
-          courseId: student.attendance[0].courseId
-        } : null
-      });
-      
-      return {
-        id: student.id,
-        name: `${student.firstName} ${student.lastName}`,
-        firstName: student.firstName,
-        lastName: student.lastName,
-        middleInitial: student.middleInitial,
-        image: student.image || undefined,
-        status: student.attendance[0]?.status || 'NOT_SET',
-        attendanceRecords: student.attendance,
-      };
-    });
+    const students = await Promise.all(
+      courseWithStudents.students.map(async (student) => {
+        // Fetch latest gradeScore for this student in this course
+        const latestGradeScore = await prisma.gradeScore.findFirst({
+          where: {
+            studentId: student.id,
+            courseId: course.id,
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        return {
+          id: student.id,
+          name: `${student.firstName} ${student.lastName}`,
+          firstName: student.firstName,
+          lastName: student.lastName,
+          middleInitial: student.middleInitial,
+          image: student.image || undefined,
+          status: student.attendance[0]?.status || 'NOT_SET',
+          attendanceRecords: student.attendance,
+          reportingScore: latestGradeScore?.reportingScore ?? 0,
+          recitationScore: latestGradeScore?.recitationScore ?? 0,
+          quizScore: latestGradeScore?.quizScore ?? 0,
+          totalScore: latestGradeScore?.totalScore ?? 0,
+          remarks: latestGradeScore?.remarks ?? '',
+          quizScores: student.quizScores,
+        };
+      }),
+    );
 
     console.log('Successfully processed all students');
 

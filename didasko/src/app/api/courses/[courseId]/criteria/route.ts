@@ -20,6 +20,7 @@ export async function GET(
       where: {
         courseId: courseId,
         isGroupCriteria: false,
+        isRecitationCriteria: false,
       },
       include: {
         user: {

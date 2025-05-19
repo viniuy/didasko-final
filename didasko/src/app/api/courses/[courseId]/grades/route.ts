@@ -109,8 +109,14 @@ export async function POST(
   { params }: { params: { courseId: string } },
 ) {
   try {
-    const { date, criteriaId, grades, courseCode, courseSection } =
-      await request.json();
+    const {
+      date,
+      criteriaId,
+      grades,
+      courseCode,
+      courseSection,
+      isRecitationCriteria,
+    } = await request.json();
     const authCookie = getAuthCookie();
 
     console.log('POST grades request:', {
@@ -118,6 +124,7 @@ export async function POST(
       date,
       criteriaId,
       gradesCount: grades?.length,
+      isRecitationCriteria,
     });
 
     if (!authCookie) {
@@ -163,6 +170,7 @@ export async function POST(
         studentId: {
           in: studentIds,
         },
+        criteriaId: criteriaId,
         date: {
           gte: new Date(date + 'T00:00:00.000Z'),
           lt: new Date(date + 'T23:59:59.999Z'),
@@ -174,13 +182,21 @@ export async function POST(
     console.log('Creating new grades');
     const createdGrades = await prisma.grade.createMany({
       data: grades.map(
-        (grade: { studentId: string; scores: number[]; total: number }) => ({
+        (grade: {
+          studentId: string;
+          scores: number[];
+          total: number;
+          reportingScore?: boolean;
+          recitationScore?: boolean;
+        }) => ({
           courseId: course.id,
           criteriaId: criteriaId,
           studentId: grade.studentId,
           value: grade.total,
           scores: grade.scores,
           total: grade.total,
+          reportingScore: !isRecitationCriteria,
+          recitationScore: isRecitationCriteria,
           date: new Date(date + 'T00:00:00.000Z'),
         }),
       ),
@@ -189,9 +205,17 @@ export async function POST(
     console.log('Created grades:', createdGrades);
     return NextResponse.json(createdGrades);
   } catch (error) {
-    console.error('Error saving grades:', error);
+    console.error('Error saving grades:', {
+      error,
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      details: error instanceof Error ? error : JSON.stringify(error, null, 2),
+    });
     return NextResponse.json(
-      { error: 'Failed to save grades' },
+      {
+        error: 'Failed to save grades',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
       { status: 500 },
     );
   }

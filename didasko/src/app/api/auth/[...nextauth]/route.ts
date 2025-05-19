@@ -10,11 +10,17 @@ const handler = NextAuth({
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+      httpOptions: {
+        timeout: 10000,
+      },
     }),
   ],
   callbacks: {
     async signIn({ user, account }) {
-      if (!user.email) return false;
+      if (!user.email) {
+        console.error('SignIn Error: No email provided');
+        return false;
+      }
 
       try {
         // Check if user exists in our database
@@ -22,42 +28,62 @@ const handler = NextAuth({
           where: { email: user.email },
         });
 
-        // If user doesn't exist or doesn't have GRANTED permission, deny access
-        if (!dbUser || dbUser.permission !== 'GRANTED') {
-          console.log('Access denied for user:', user.email);
+        if (!dbUser) {
+          console.error(
+            `SignIn Error: User ${user.email} not found in database`,
+          );
+          return false;
+        }
+
+        if (dbUser.permission !== 'GRANTED') {
+          console.error(
+            `SignIn Error: User ${user.email} does not have GRANTED permission`,
+          );
           return false;
         }
 
         // Set the user's role and id from the database
         user.role = dbUser.role;
         user.id = dbUser.id;
-        console.log('SignIn Callback - User with role and id:', user);
+        console.log('SignIn Success - User authenticated:', {
+          email: user.email,
+          role: user.role,
+        });
 
         // If this is a Google account, ensure it's linked
         if (account?.provider === 'google') {
-          const existingAccount = await prisma.account.findFirst({
-            where: {
-              userId: dbUser.id,
-              provider: 'google',
-            },
-          });
-
-          if (!existingAccount) {
-            await prisma.account.create({
-              data: {
+          try {
+            const existingAccount = await prisma.account.findFirst({
+              where: {
                 userId: dbUser.id,
-                type: 'oauth',
                 provider: 'google',
-                providerAccountId: account.providerAccountId,
-                access_token: account.access_token,
-                refresh_token: account.refresh_token,
-                expires_at: account.expires_at,
-                token_type: account.token_type,
-                scope: account.scope,
-                id_token: account.id_token,
-                session_state: account.session_state,
               },
             });
+
+            if (!existingAccount) {
+              await prisma.account.create({
+                data: {
+                  userId: dbUser.id,
+                  type: 'oauth',
+                  provider: 'google',
+                  providerAccountId: account.providerAccountId,
+                  access_token: account.access_token,
+                  refresh_token: account.refresh_token,
+                  expires_at: account.expires_at,
+                  token_type: account.token_type,
+                  scope: account.scope,
+                  id_token: account.id_token,
+                  session_state: account.session_state,
+                },
+              });
+              console.log(
+                'Google account linked successfully for user:',
+                user.email,
+              );
+            }
+          } catch (error) {
+            console.error('Error linking Google account:', error);
+            // Don't fail the sign in if account linking fails
           }
         }
 
@@ -68,38 +94,40 @@ const handler = NextAuth({
       }
     },
     async jwt({ token, user, account, trigger }) {
-      console.log('JWT Callback - Incoming token:', token);
-      console.log('JWT Callback - User:', user);
+      try {
+        if (user) {
+          token.id = user.id;
+          token.role = user.role;
+          token.email = user.email;
+          token.image = user.image;
+        } else if (token?.email) {
+          const dbUser = await prisma.user.findUnique({
+            where: { email: token.email },
+            select: { name: true, id: true, role: true, image: true },
+          });
 
-      if (user) {
-        token.id = user.id;
-        token.role = user.role;
-        token.email = user.email;
-        token.image = user.image;
-      } else if (token) {
-        // If we have a token but no user, ensure the ID is preserved
-        const dbUser = await prisma.user.findUnique({
-          where: { email: token.email as string },
-          select: { name: true, id: true, role: true, image: true },
-        });
-
-        if (dbUser) {
-          token.name = dbUser.name;
-          token.id = dbUser.id;
-          token.role = dbUser.role;
-          token.image = dbUser.image;
+          if (dbUser) {
+            token.name = dbUser.name;
+            token.id = dbUser.id;
+            token.role = dbUser.role;
+            token.image = dbUser.image;
+          } else {
+            console.error(
+              'JWT Error: User not found in database for token:',
+              token.email,
+            );
+          }
         }
-      }
 
-      console.log('JWT Callback - Final Token:', token);
-      return token;
+        return token;
+      } catch (error) {
+        console.error('JWT callback error:', error);
+        return token;
+      }
     },
     async session({ session, token }) {
-      console.log('Session Callback - Incoming Token:', token);
-
-      if (session.user && session.user.email) {
-        try {
-          // Query the user from database using email
+      try {
+        if (session.user?.email) {
           const dbUser = await prisma.user.findUnique({
             where: { email: session.user.email },
             select: { name: true, id: true, role: true, image: true },
@@ -110,47 +138,47 @@ const handler = NextAuth({
             session.user.id = dbUser.id;
             session.user.role = dbUser.role;
             session.user.image = dbUser.image || undefined;
-            console.log('Found user in database:', dbUser);
           } else {
-            console.log('User not found in database');
+            console.error(
+              'Session Error: User not found in database:',
+              session.user.email,
+            );
           }
-        } catch (error) {
-          console.error('Error fetching user in session callback:', error);
         }
+        return session;
+      } catch (error) {
+        console.error('Session callback error:', error);
+        return session;
       }
-
-      console.log('Session Callback - Final Session:', session);
-      return session;
     },
-    async redirect({ url, baseUrl }: { url: string; baseUrl: string }) {
-      console.log('Redirect Callback - URL:', url);
-      if (
-        url.includes('callbackUrl') ||
-        url === baseUrl ||
-        url === `${baseUrl}/`
-      ) {
-        // Get the session from the token
-        const session = await getServerSession(authOptions);
+    async redirect({ url, baseUrl }) {
+      try {
+        if (
+          url.includes('callbackUrl') ||
+          url === baseUrl ||
+          url === `${baseUrl}/`
+        ) {
+          const session = await getServerSession(authOptions);
 
-        console.log('Redirect Callback - Session:', session);
+          if (session?.user?.role) {
+            const roleBasedRedirects = {
+              ADMIN: `${baseUrl}/dashboard/admin`,
+              ACADEMIC_HEAD: `${baseUrl}/dashboard/academic-head`,
+              FACULTY: `${baseUrl}/dashboard/faculty`,
+            };
 
-        if (session?.user?.role) {
-          switch (session.user.role) {
-            case 'ADMIN':
-              return `${baseUrl}/dashboard/admin`;
-            case 'ACADEMIC_HEAD':
-              return `${baseUrl}/dashboard/academic-head`;
-            case 'FACULTY':
-              return `${baseUrl}/dashboard/faculty`;
-            default:
-              console.log(
-                'Redirect Callback - No role found, redirecting to default dashboard',
-              );
-              return `${baseUrl}/dashboard`;
+            return (
+              roleBasedRedirects[
+                session.user.role as keyof typeof roleBasedRedirects
+              ] || `${baseUrl}/dashboard`
+            );
           }
         }
+        return url;
+      } catch (error) {
+        console.error('Redirect callback error:', error);
+        return baseUrl;
       }
-      return url;
     },
   },
   pages: {
@@ -159,8 +187,9 @@ const handler = NextAuth({
   },
   session: {
     strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60,
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
+  debug: process.env.NODE_ENV === 'development',
 });
 
 export { handler as GET, handler as POST };
