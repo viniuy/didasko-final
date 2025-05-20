@@ -181,13 +181,13 @@ export function AddUserSheet({ onSuccess }: AddUserSheetProps) {
           <Plus className='mr-2 h-4 w-4' /> Add User
         </Button>
       </SheetTrigger>
-      <SheetContent side='right' className='sm:max-w-md'>
+      <SheetContent side='right' className='sm:max-w-md p-4'>
         <SheetHeader>
           <SheetTitle>Add User</SheetTitle>
         </SheetHeader>
         <form
           onSubmit={form.handleSubmit(onSubmit)}
-          className='space-y-4 py-4 p-4'
+          className='space-y-4 py-4'
         >
           <div className='space-y-1 w-97'>
             <Label htmlFor='lastName'>Last Name *</Label>
@@ -376,7 +376,7 @@ export function AddUserSheet({ onSuccess }: AddUserSheetProps) {
             )}
           </div>
 
-          <div className='flex justify-end pt-4 gap-2'>
+          <div className='flex justify-end gap-2 pt-4 mt-auto'>
             <Button
               type='button'
               variant='outline'

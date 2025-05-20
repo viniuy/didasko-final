@@ -17,6 +17,8 @@ export async function GET(request: Request) {
     const search = searchParams.get('search');
     const department = searchParams.get('department');
     const semester = searchParams.get('semester');
+    const code = searchParams.get('code');
+    const section = searchParams.get('section');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
     const skip = (page - 1) * limit;
@@ -27,6 +29,8 @@ export async function GET(request: Request) {
         facultyId ? { facultyId } : {},
         department ? { faculty: { department } } : {},
         semester ? { semester } : {},
+        code ? { code } : {},
+        section ? { section } : {},
         search
           ? {
               OR: [

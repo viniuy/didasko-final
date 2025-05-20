@@ -51,6 +51,7 @@ interface EditUserSheetProps {
 }
 
 export function EditUserSheet({ user, onClose, onSave }: EditUserSheetProps) {
+  const [open, setOpen] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
 
@@ -78,9 +79,7 @@ export function EditUserSheet({ user, onClose, onSave }: EditUserSheetProps) {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
-
-    // Clear name error when user types
-    if (['firstName', 'middleInitial', 'lastName'].includes(name)) {
+    if (["firstName", "middleInitial", "lastName"].includes(name)) {
       setNameError(null);
     }
   };
@@ -92,31 +91,17 @@ export function EditUserSheet({ user, onClose, onSave }: EditUserSheetProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-
-    // Validate names
     const hasNameErrors =
       !validateName(formData.firstName) ||
       !validateName(formData.lastName) ||
       (formData.middleInitial && !validateName(formData.middleInitial));
-
     if (hasNameErrors) {
       setNameError('Names can only contain letters, spaces, and hyphens');
       setIsLoading(false);
       return;
     }
-
     try {
-      // Construct the full name in the correct order: Last, First M.
-      const fullName = `${formData.firstName} ${
-        formData.middleInitial ? ' ' + formData.middleInitial : ''
-      }${formData.lastName}`;
-
-      console.log('Full name parts:', {
-        firstName: formData.firstName,
-        middleInitial: formData.middleInitial,
-        lastName: formData.lastName,
-      });
-      console.log('Full name:', fullName);
+      const fullName = `${formData.lastName}, ${formData.firstName}${formData.middleInitial ? ` ${formData.middleInitial}.` : ''}`;
       const updateData = {
         name: fullName,
         email: formData.email,
@@ -125,13 +110,9 @@ export function EditUserSheet({ user, onClose, onSave }: EditUserSheetProps) {
         role: formData.role,
         permission: formData.permission,
       };
-
-      console.log('Saving user changes:', { userId: user.id, updateData });
       await onSave(user.id, updateData);
-      console.log('User changes saved successfully');
-      onClose();
+      setOpen(false);
     } catch (error) {
-      console.error('Error updating user:', error);
       if (error instanceof Error) {
         toast.error(error.message || 'Failed to update user');
       } else {
@@ -153,155 +134,149 @@ export function EditUserSheet({ user, onClose, onSave }: EditUserSheetProps) {
 
   return (
     <Sheet
-      defaultOpen={true}
-      onOpenChange={(open) => {
-        if (!open) {
+      open={open}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) {
+          setOpen(false);
+          setFormData(initialFormData);
+          setNameError(null);
           cleanup();
           onClose();
+        } else {
+          setOpen(true);
         }
       }}
     >
-      <SheetContent side='right' className='sm:max-w-md p-3'>
+      <SheetContent side="right" className="sm:max-w-md p-4">
         <SheetHeader>
           <SheetTitle>Edit User</SheetTitle>
         </SheetHeader>
-        <form onSubmit={handleSubmit} className='space-y-4 py-4'>
-          <div className='space-y-4'>
-            <div className='space-y-1'>
-              <Label htmlFor='lastName'>Last Name</Label>
-              <Input
-                id='lastName'
-                name='lastName'
-                value={formData.lastName}
-                onChange={handleInputChange}
-                required
-                className={nameError ? 'border-red-500' : ''}
-              />
-            </div>
-
-            <div className='flex gap-4'>
-              <div className='flex-1 space-y-1'>
-                <Label htmlFor='firstName'>First Name</Label>
-                <Input
-                  id='firstName'
-                  name='firstName'
-                  value={formData.firstName}
-                  onChange={handleInputChange}
-                  required
-                  className={nameError ? 'border-red-500' : ''}
-                />
-              </div>
-
-              <div className='w-24 space-y-1'>
-                <Label htmlFor='middleInitial'>M.I.</Label>
-                <Input
-                  id='middleInitial'
-                  name='middleInitial'
-                  value={formData.middleInitial}
-                  onChange={handleInputChange}
-                  className={nameError ? 'border-red-500' : ''}
-                  maxLength={1}
-                />
-              </div>
-            </div>
-
-            {nameError && (
-              <p className='text-sm text-red-500 mt-1'>{nameError}</p>
-            )}
-          </div>
-
-          <div className='space-y-1'>
-            <Label htmlFor='email'>Email</Label>
+        <form onSubmit={handleSubmit} className="space-y-4 py-4">
+          <div className="space-y-1 w-97">
+            <Label htmlFor="lastName">Last Name *</Label>
             <Input
-              id='email'
-              name='email'
-              type='email'
-              value={formData.email}
+              id="lastName"
+              name="lastName"
+              value={formData.lastName}
               onChange={handleInputChange}
               required
+              className={nameError ? 'border-red-500 focus-visible:ring-red-500' : ''}
+              maxLength={30}
             />
+            <div className="flex justify-between">
+              <div className="text-xs text-muted-foreground">{formData.lastName.length}/30</div>
+              {nameError && <p className="text-sm text-red-500">{nameError}</p>}
+            </div>
           </div>
-
-          <div className='space-y-1'>
-            <Label htmlFor='department'>Department</Label>
-            <Select
-              value={formData.department}
-              onValueChange={(value) => handleSelectChange('department', value)}
-              required
-            >
-              <SelectTrigger>
-                <SelectValue placeholder='Select department' />
-              </SelectTrigger>
-              <SelectContent>
-                {DEPARTMENTS.map((dept) => (
-                  <SelectItem key={dept} value={dept}>
-                    {dept}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex flex-row gap-2">
+            <div className="space-y-1">
+              <Label htmlFor="firstName">First Name *</Label>
+              <Input
+                id="firstName"
+                name="firstName"
+                value={formData.firstName}
+                onChange={handleInputChange}
+                required
+                className={nameError ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                maxLength={30}
+              />
+              <div className="flex justify-between">
+                <div className="text-xs text-muted-foreground">{formData.firstName.length}/30</div>
+              </div>
+            </div>
+            <div className="space-y-1 w-40">
+              <Label htmlFor="middleInitial">Middle Initial</Label>
+              <Input
+                id="middleInitial"
+                name="middleInitial"
+                value={formData.middleInitial}
+                onChange={handleInputChange}
+                className={nameError ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                maxLength={1}
+              />
+            </div>
           </div>
-
-          <div className='space-y-1'>
-            <Label htmlFor='workType'>Work Type</Label>
-            <Select
-              value={formData.workType}
-              onValueChange={(value) => handleSelectChange('workType', value)}
-              required
-            >
-              <SelectTrigger>
-                <SelectValue placeholder='Select work type' />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={WorkType.FULL_TIME}>Full Time</SelectItem>
-                <SelectItem value={WorkType.PART_TIME}>Part Time</SelectItem>
-                <SelectItem value={WorkType.CONTRACT}>Contract</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex flex-row gap-2">
+            <div className="space-y-1 flex-1">
+              <Label htmlFor="department">Department</Label>
+              <Select
+                value={formData.department}
+                onValueChange={(value) => handleSelectChange('department', value)}
+                required
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select department" />
+                </SelectTrigger>
+                <SelectContent>
+                  {DEPARTMENTS.map((dept) => (
+                    <SelectItem key={dept} value={dept}>
+                      {dept}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1 flex-1">
+              <Label htmlFor="workType">Work Type</Label>
+              <Select
+                value={formData.workType}
+                onValueChange={(value) => handleSelectChange('workType', value)}
+                required
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select work type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="FULL_TIME">Full Time</SelectItem>
+                  <SelectItem value="PART_TIME">Part Time</SelectItem>
+                  <SelectItem value="CONTRACT">Contract</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-
-          <div className='space-y-1'>
-            <Label htmlFor='role'>Role</Label>
-            <Select
-              value={formData.role}
-              onValueChange={(value) => handleSelectChange('role', value)}
-              required
-            >
-              <SelectTrigger>
-                <SelectValue placeholder='Select role' />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={Role.ADMIN}>Admin</SelectItem>
-                <SelectItem value={Role.FACULTY}>Faculty</SelectItem>
-                <SelectItem value={Role.ACADEMIC_HEAD}>
-                  Academic Head
-                </SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex flex-row gap-2">
+            <div className="space-y-1 flex-1">
+              <Label htmlFor="role">Role</Label>
+              <Select
+                value={formData.role}
+                onValueChange={(value) => handleSelectChange('role', value)}
+                required
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ADMIN">Admin</SelectItem>
+                  <SelectItem value="FACULTY">Faculty</SelectItem>
+                  <SelectItem value="ACADEMIC_HEAD">Academic Head</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1 flex-1">
+              <Label htmlFor="permission">Permission</Label>
+              <Select
+                value={formData.permission}
+                onValueChange={(value) => handleSelectChange('permission', value)}
+                required
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select permission" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="GRANTED">Granted</SelectItem>
+                  <SelectItem value="DENIED">Denied</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-
-          <div className='space-y-1'>
-            <Label htmlFor='permission'>Permission</Label>
-            <Select
-              value={formData.permission}
-              onValueChange={(value) => handleSelectChange('permission', value)}
-              required
-            >
-              <SelectTrigger>
-                <SelectValue placeholder='Select permission' />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={Permission.GRANTED}>Granted</SelectItem>
-                <SelectItem value={Permission.DENIED}>Denied</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className='flex justify-between pt-4'>
+          <div className="flex justify-end gap-2 pt-4 mt-auto">
             <Button
-              type='button'
-              variant='outline'
+              type="button"
+              variant="outline"
               onClick={() => {
+                setOpen(false);
+                setFormData(initialFormData);
+                setNameError(null);
                 cleanup();
                 onClose();
               }}
@@ -309,7 +284,11 @@ export function EditUserSheet({ user, onClose, onSave }: EditUserSheetProps) {
             >
               Cancel
             </Button>
-            <Button type='submit' disabled={isLoading}>
+            <Button
+              type="submit"
+              disabled={isLoading}
+              className="bg-[#124A69] text-white hover:bg-gray-700"
+            >
               {isLoading ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>

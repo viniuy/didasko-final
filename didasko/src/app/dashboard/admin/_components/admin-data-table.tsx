@@ -29,7 +29,7 @@ import {
   Download,
   Upload,
 } from 'lucide-react';
-import { AddUserSheet } from './add-user-sheet';
+import { UserSheet } from './user-sheet';
 import { editUser, deleteUser } from '@/lib/actions/users';
 import {
   DropdownMenu,
@@ -37,7 +37,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { EditUserSheet } from './edit-user-sheet';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,13 +49,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet';
 import {
   Dialog,
   DialogContent,
@@ -116,14 +108,19 @@ export function AdminDataTable({
   onUserAdded,
 }: AdminDataTableProps) {
   const [editedUsers, setEditedUsers] = useState<{
-    [key: string]: { role: Role; permission: Permission };
+    [key: string]: {
+      name?: string;
+      email?: string;
+      department?: string;
+      workType?: WorkType;
+      role?: Role;
+      permission?: Permission;
+    };
   }>({});
   const [isSaving, setIsSaving] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [deletingUser, setDeletingUser] = useState<{
-    id: string;
-    name: string;
-  } | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [previewData, setPreviewData] = useState<CsvRow[]>([]);
@@ -166,6 +163,16 @@ export function AdminDataTable({
         role: newRole,
       },
     }));
+    toast.success(`Role updated to ${newRole.split('_').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    ).join(' ')}`, {
+      duration: 3000,
+      style: {
+        background: '#fff',
+        color: '#124A69',
+        border: '1px solid #e5e7eb',
+      },
+    });
   };
 
   const handlePermissionChange = (
@@ -179,6 +186,14 @@ export function AdminDataTable({
         permission: newPermission,
       },
     }));
+    toast.success(`Permission ${newPermission.toLowerCase()}`, {
+      duration: 3000,
+      style: {
+        background: '#fff',
+        color: '#124A69',
+        border: '1px solid #e5e7eb',
+      },
+    });
   };
 
   const handleSaveChanges = async () => {
@@ -195,6 +210,14 @@ export function AdminDataTable({
         if (changes.role) {
           const roleResult = await editUser(userId, { role: changes.role });
           if (!roleResult.success) {
+            toast.error(`Failed to update role: ${roleResult.error}`, {
+              duration: 3000,
+              style: {
+                background: '#fff',
+                color: '#dc2626',
+                border: '1px solid #e5e7eb',
+              },
+            });
             throw new Error(`Failed to update role: ${roleResult.error}`);
           }
         }
@@ -205,6 +228,14 @@ export function AdminDataTable({
             permission: changes.permission,
           });
           if (!permissionResult.success) {
+            toast.error(`Failed to update permission: ${permissionResult.error}`, {
+              duration: 3000,
+              style: {
+                background: '#fff',
+                color: '#dc2626',
+                border: '1px solid #e5e7eb',
+              },
+            });
             throw new Error(
               `Failed to update permission: ${permissionResult.error}`,
             );
@@ -218,7 +249,14 @@ export function AdminDataTable({
       // Refresh the table data
       await refreshTableData();
 
-      toast.success('All changes saved successfully');
+      toast.success('All changes saved successfully', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+        },
+      });
 
       // Call onUserAdded callback if provided
       if (onUserAdded) {
@@ -228,6 +266,14 @@ export function AdminDataTable({
       console.error('Error saving changes:', error);
       toast.error(
         error instanceof Error ? error.message : 'Failed to save changes',
+        {
+          duration: 3000,
+          style: {
+            background: '#fff',
+            color: '#dc2626',
+            border: '1px solid #e5e7eb',
+          },
+        }
       );
     } finally {
       setIsSaving(false);
@@ -235,14 +281,14 @@ export function AdminDataTable({
   };
 
   const handleDeleteUser = async () => {
-    if (!deletingUser) return;
+    if (!userToDelete) return;
 
     try {
       setIsRefreshing(true);
-      const result = await deleteUser(deletingUser.id);
+      const result = await deleteUser(userToDelete.id);
 
       if (result.success) {
-        console.log('User deleted successfully:', { userId: deletingUser.id });
+        console.log('User deleted successfully:', { userId: userToDelete.id });
         toast.success('User deleted successfully');
 
         // Refresh the table data
@@ -265,7 +311,7 @@ export function AdminDataTable({
       console.error('Error deleting user:', error);
       toast.error('An error occurred while deleting the user');
     } finally {
-      setDeletingUser(null);
+      setUserToDelete(null);
     }
   };
 
@@ -287,9 +333,18 @@ export function AdminDataTable({
 
       if (result.success) {
         console.log('User updated successfully:', { userId });
-        toast.success('User updated successfully');
+        toast.success('User updated successfully', {
+          duration: 3000,
+          style: {
+            background: '#fff',
+            color: '#124A69',
+            border: '1px solid #e5e7eb',
+          },
+        });
+        // Refresh the table data
+        await refreshTableData();
         if (onUserAdded) {
-          onUserAdded(); // Refresh the user list
+          await onUserAdded(); // Refresh the user list
         }
       } else {
         console.error('Failed to update user:', result.error);
@@ -325,6 +380,16 @@ export function AdminDataTable({
   };
 
   const handleCancelChanges = () => {
+    if (Object.keys(editedUsers).length > 0) {
+      toast.error('Changes discarded', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+      });
+    }
     setEditedUsers({});
   };
 
@@ -747,7 +812,7 @@ export function AdminDataTable({
   const refreshTableData = async () => {
     try {
       setIsRefreshing(true);
-      const response = await axiosInstance.get('/api/users');
+      const response = await axiosInstance.get('/users');
       const data = await response.data;
       if (data.users) {
         setTableData(data.users);
@@ -796,38 +861,36 @@ export function AdminDataTable({
 
   return (
     <div className='space-y-4'>
-      <div className='flex justify-between items-center'>
-        <h2 className='text-lg font-semibold'>User Management</h2>
-        <div className='flex gap-2'>
-          <Button
-            variant='outline'
-            onClick={handleImportPreview}
-            className='flex items-center gap-2'
-          >
-            <Download className='h-4 w-4' />
-            Import Users
-          </Button>
-          <Button
-            variant='outline'
-            onClick={handlePreviewData}
-            className='flex items-center gap-2'
-          >
-            <Download className='h-4 w-4' />
-            Export Data
-          </Button>
-          <AddUserSheet onSuccess={refreshTableData} />
+      <div className='flex items-center justify-between'>
+        <div className='flex items-center gap-2'>
+          <div className='relative'>
+            <Search className='absolute left-2 top-2.5 h-4 w-4 text-muted-foreground' />
+            <Input
+              placeholder='Search users...'
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className='pl-8'
+            />
+          </div>
         </div>
-      </div>
-
-      <div className='flex items-center gap-2'>
-        <div className='relative flex-1 max-w-sm'>
-          <Search className='absolute left-2 top-2.5 h-4 w-4 text-muted-foreground' />
-          <Input
-            placeholder='Search users...'
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className='pl-8'
-          />
+        <div className='flex items-center gap-2'>
+          <Button
+            variant='outline'
+            size='icon'
+            onClick={() => setShowImportPreview(true)}
+            title='Import Users'
+          >
+            <Upload className='h-4 w-4' />
+          </Button>
+          <Button
+            variant='outline'
+            size='icon'
+            onClick={handleExport}
+            title='Export Users'
+          >
+            <Download className='h-4 w-4' />
+          </Button>
+          <UserSheet mode='add' onSuccess={onUserAdded} />
         </div>
       </div>
 
@@ -964,15 +1027,13 @@ export function AdminDataTable({
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className='flex items-center gap-2 text-red-600'
-                              onClick={() =>
-                                setDeletingUser({
-                                  id: user.id,
-                                  name: user.name,
-                                })
-                              }
+                              onClick={() => {
+                                setUserToDelete(user);
+                                setIsDeleteDialogOpen(true);
+                              }}
                             >
                               <Trash2 className='h-4 w-4' />
-                              Delete User
+                              Delete
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -1011,32 +1072,38 @@ export function AdminDataTable({
         </div>
       )}
       {editingUser && (
-        <EditUserSheet
+        <UserSheet
+          mode='edit'
           user={editingUser}
           onClose={handleCloseEditSheet}
           onSave={handleEditUser}
         />
       )}
       <AlertDialog
-        open={!!deletingUser}
-        onOpenChange={(open) => !open && setDeletingUser(null)}
+        open={isDeleteDialogOpen}
+        onOpenChange={(open) => {
+          setIsDeleteDialogOpen(open);
+          if (!open) {
+            setUserToDelete(null);
+          }
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete{' '}
-              <span className='font-semibold'>{deletingUser?.name}</span>'s
+              <span className='font-semibold'>{userToDelete?.name}</span>'s
               account and remove their data from the system.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className='bg-red-600 hover:bg-red-700 text-white'
               onClick={handleDeleteUser}
+              className='bg-red-600 text-white hover:bg-red-700'
             >
-              Delete User
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -80,6 +80,7 @@ interface GradeConfiguration {
 interface ExistingConfig extends GradeConfiguration {
   id: string;
   createdAt: string;
+  isCurrent?: boolean;
 }
 
 const SearchBar = ({
@@ -158,7 +159,7 @@ const StudentTable = ({ students }: { students: Student[] }) => (
               {s.quizScore?.toFixed(2) ?? '--'}
             </td>
             <td className='px-2 py-1 border'>
-              {s.totalScore?.toFixed(2) ?? '--'}
+              {typeof s.totalScore === 'number' ? `${s.totalScore.toFixed(2)}%` : '--'}
             </td>
             <td
               className={cn(
@@ -254,11 +255,15 @@ const GradeConfigDialog = ({
   onOpenChange,
   courseId,
   onConfigSaved,
+  setGradebookConfigDate,
+  setHasSelectedConfig,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   courseId: string;
   onConfigSaved: () => void;
+  setGradebookConfigDate: (date: string | null) => void;
+  setHasSelectedConfig: (value: boolean) => void;
 }) => {
   const { data: session } = useSession();
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -400,34 +405,24 @@ const GradeConfigDialog = ({
     console.log('Using existing configuration:', configId);
     setIsLoading(true);
     try {
-      // First, get the configuration details
-      const configResponse = await axiosInstance.get(
-        `/courses/${courseId}/grade-components`,
-      );
-      const config = configResponse.data.configurations.find(
-        (c: ExistingConfig) => c.id === configId,
-      );
-
-      if (!config) {
+      // Find the selected configuration
+      const selectedConfig = existingConfigs.find(c => c.id === configId);
+      
+      if (!selectedConfig) {
         throw new Error('Configuration not found');
       }
 
-      // Create a new grade configuration with the same settings
-      const response = await axiosInstance.post(
-        `/courses/${courseId}/grade-components`,
-        {
-          components: {
-            name: config.name,
-            reportingWeight: config.reportingWeight,
-            recitationWeight: config.recitationWeight,
-            quizWeight: config.quizWeight,
-            passingThreshold: config.passingThreshold,
-          },
-        },
+      // Set this configuration as current using PUT instead of POST
+      await axiosInstance.put(
+        `/courses/${courseId}/grade-components/${configId}/current`
       );
 
-      console.log('Successfully created new configuration:', response.data);
+      // Update the gradebook config date
+      setGradebookConfigDate(selectedConfig.createdAt);
+      
+      console.log('Successfully set current configuration:', selectedConfig);
       toast.success('Using existing grade configuration');
+      setHasSelectedConfig(true);
       onConfigSaved();
       onOpenChange(false);
     } catch (error) {
@@ -786,18 +781,13 @@ export function GradebookTable({
     failed: true,
     noGrades: true,
   });
+  const [gradebookConfigDate, setGradebookConfigDate] = useState<string | null>(null);
+  const [hasSelectedConfig, setHasSelectedConfig] = useState(false);
   const itemsPerPage = 10;
-
-  const handleFilterChange = (filter: keyof typeof gradeFilter) => {
-    setGradeFilter((prev) => ({
-      ...prev,
-      [filter]: !prev[filter],
-    }));
-  };
 
   const fetchData = useCallback(async () => {
     if (!courseId) {
-      console.error('No courseId provided');
+      console.error('No courseId provided to GradebookTable');
       return;
     }
     console.log('Starting to fetch data for courseId:', courseId);
@@ -807,7 +797,7 @@ export function GradebookTable({
       // Fetch all students in the course with their scores
       console.log('Fetching students from:', `/courses/${courseId}/students`);
       const studentsRes = await axiosInstance.get(
-        `/courses/${courseId}/students`,
+        `/courses/${courseId}/students`
       );
       console.log('Students API Response:', studentsRes.data);
 
@@ -824,7 +814,7 @@ export function GradebookTable({
         return;
       }
 
-      // Fetch grades for each student
+      // Fetch grades for each student with date range
       console.log(
         'Starting to fetch grades for',
         studentsData.length,
@@ -834,8 +824,19 @@ export function GradebookTable({
         studentsData.map(async (student: Student) => {
           try {
             console.log('Fetching grades for student:', student.id);
+            const params: any = {};
+            
+            if (dateRange?.from) {
+              params.startDate = dateRange.from.toISOString().split('T')[0]; // YYYY-MM-DD format
+            }
+            if (dateRange?.to) {
+              params.endDate = dateRange.to.toISOString().split('T')[0]; // YYYY-MM-DD format
+            }
+
+            console.log('Fetching grades with params:', params);
             const gradesRes = await axiosInstance.get(
               `/courses/${courseId}/students/${student.id}/grades`,
+              { params }
             );
             console.log(
               'Grades response for student',
@@ -891,19 +892,67 @@ export function GradebookTable({
     } finally {
       setLoadingStudents(false);
     }
-  }, [courseId]);
+  }, [courseId, dateRange]);
 
-  // Only fetch data when the modal is closed
+  const handleFilterChange = (filter: keyof typeof gradeFilter) => {
+    setGradeFilter((prev) => ({
+      ...prev,
+      [filter]: !prev[filter],
+    }));
+  };
+
+  // Add useEffect to check for existing current configuration on mount
+  useEffect(() => {
+    const fetchGradebookConfig = async () => {
+      try {
+        const response = await axiosInstance.get(
+          `/courses/${courseId}/grade-components`
+        );
+        
+        // Find the current configuration
+        const currentConfig = response.data.configurations?.find(
+          (config: ExistingConfig) => config.isCurrent
+        );
+
+        if (currentConfig) {
+          setGradebookConfigDate(currentConfig.createdAt);
+          setHasSelectedConfig(true);
+          fetchData();
+        } else {
+          setHasSelectedConfig(false);
+          setShowConfigDialog(true);
+        }
+      } catch (error) {
+        console.error('Error checking current configuration:', error);
+        setHasSelectedConfig(false);
+        setShowConfigDialog(true);
+      }
+    };
+
+    if (courseId) {
+      fetchGradebookConfig();
+    }
+  }, [courseId, fetchData]);
+
+  // Modify the date picker button to show selected date range
+  const formatDateRange = (range: DateRange | undefined) => {
+    if (!range?.from) return 'Pick a date range';
+    if (!range.to) return format(range.from, 'MMM d, yyyy');
+    return `${format(range.from, 'MMM d, yyyy')} - ${format(range.to, 'MMM d, yyyy')}`;
+  };
+
+  // Modify handleConfigSaved to handle both new and existing configurations
   const handleConfigSaved = () => {
+    setHasSelectedConfig(true);
     fetchData();
   };
 
   // Initial data fetch
   useEffect(() => {
-    if (!showConfigDialog) {
+    if (!showConfigDialog && hasSelectedConfig) {
       fetchData();
     }
-  }, [fetchData, showConfigDialog]);
+  }, [fetchData, showConfigDialog, hasSelectedConfig]);
 
   const filteredStudents = students.filter((student) => {
     const name = `${student.lastName || ''} ${student.firstName || ''} ${
@@ -962,7 +1011,7 @@ export function GradebookTable({
         student.reportingScore?.toFixed(2) || '--',
         student.recitationScore?.toFixed(2) || '--',
         student.quizScore?.toFixed(2) || '--',
-        student.totalScore?.toFixed(2) || '--',
+        typeof student.totalScore === 'number' ? `${student.totalScore.toFixed(2)}%` : '--',
         student.remarks || 'No Grade',
       ]);
 
@@ -1010,6 +1059,7 @@ export function GradebookTable({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className='pl-8 w-[200px]'
+                  disabled={!hasSelectedConfig}
                 />
               </div>
             </div>
@@ -1019,6 +1069,7 @@ export function GradebookTable({
                   <Button
                     variant='outline'
                     className='w-[140px] h-9 rounded-full border-gray-200 bg-[#F5F6FA] justify-between'
+                    disabled={!hasSelectedConfig}
                   >
                     <span>Filter</span>
                     <svg
@@ -1039,6 +1090,7 @@ export function GradebookTable({
                         id='passed'
                         checked={gradeFilter.passed}
                         onCheckedChange={() => handleFilterChange('passed')}
+                        disabled={!hasSelectedConfig}
                       />
                       <label
                         htmlFor='passed'
@@ -1052,6 +1104,7 @@ export function GradebookTable({
                         id='failed'
                         checked={gradeFilter.failed}
                         onCheckedChange={() => handleFilterChange('failed')}
+                        disabled={!hasSelectedConfig}
                       />
                       <label
                         htmlFor='failed'
@@ -1065,6 +1118,7 @@ export function GradebookTable({
                         id='noGrades'
                         checked={gradeFilter.noGrades}
                         onCheckedChange={() => handleFilterChange('noGrades')}
+                        disabled={!hasSelectedConfig}
                       />
                       <label
                         htmlFor='noGrades'
@@ -1076,49 +1130,49 @@ export function GradebookTable({
                   </div>
                 </PopoverContent>
               </Popover>
-              {Object.entries(gradeFilter).some(([_, value]) => !value) && (
-                <div className='flex items-center gap-1.5'>
-                  {gradeFilter.passed && (
-                    <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700'>
-                      Passed
-                    </span>
-                  )}
-                  {gradeFilter.failed && (
-                    <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700'>
-                      Failed
-                    </span>
-                  )}
-                  {gradeFilter.noGrades && (
-                    <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700'>
-                      No Grades
-                    </span>
-                  )}
-                </div>
-              )}
             </div>
           </div>
           <div className='flex items-center gap-1'>
             <Button
               variant='outline'
               className={cn(
-                'w-[180px] justify-start text-left font-normal',
-                !selectedDate && 'text-muted-foreground',
+                'w-[280px] justify-start text-left font-normal',
+                !dateRange && 'text-muted-foreground',
               )}
+              disabled={!hasSelectedConfig}
             >
               <CalendarIcon className='mr-2 h-4 w-4' />
-              {selectedDate ? format(selectedDate, 'PPP') : 'Pick a date'}
+              {formatDateRange(dateRange)}
             </Button>
-            <Button
-              onClick={() => setShowConfigDialog(true)}
-              className='ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center'
-            >
-              Configure Gradebook
-            </Button>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  onClick={() => setShowConfigDialog(true)}
+                  className='ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center'
+                >
+                  Configure Gradebook
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className='w-[200px] p-4'>
+                <div className='space-y-2'>
+                  <h4 className='font-medium text-sm text-[#124A69]'>Gradebook Configuration</h4>
+                  <p className='text-sm text-gray-500'>
+                    {gradebookConfigDate 
+                      ? `Last configured: ${format(new Date(gradebookConfigDate), 'MMM d, yyyy')}`
+                      : 'No configuration found'}
+                  </p>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
 
         {/* Table Content */}
-        {loadingStudents ? (
+        {!hasSelectedConfig ? (
+          <div className='p-8 text-center text-gray-500'>
+            <p>Please configure the gradebook first to view students and grades.</p>
+          </div>
+        ) : loadingStudents ? (
           <div className='p-4 text-center text-gray-500'>
             <div className='flex flex-col items-center gap-2'>
               <Loader2 className='h-8 w-8 animate-spin text-[#124A69]' />
@@ -1199,7 +1253,7 @@ export function GradebookTable({
                         {student.quizScore?.toFixed(2) ?? '--'}
                       </td>
                       <td className='text-center px-4 py-2 align-middle w-[120px] border-b font-medium'>
-                        {student.totalScore?.toFixed(2) ?? '--'}
+                        {typeof student.totalScore === 'number' ? `${student.totalScore.toFixed(2)}%` : '--'}
                       </td>
                       <td className='text-center px-4 py-2 align-middle w-[120px] border-b'>
                         <span
@@ -1298,6 +1352,8 @@ export function GradebookTable({
           onOpenChange={setShowConfigDialog}
           courseId={courseId}
           onConfigSaved={handleConfigSaved}
+          setGradebookConfigDate={setGradebookConfigDate}
+          setHasSelectedConfig={setHasSelectedConfig}
         />
 
         {/* Export Preview Dialog */}
@@ -1313,7 +1369,11 @@ export function GradebookTable({
         <Button
           variant='outline'
           onClick={handleExport}
-          className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
+          disabled={students.length === 0 || loadingStudents}
+          className={cn(
+            'h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50',
+            (students.length === 0 || loadingStudents) && 'opacity-50 cursor-not-allowed'
+          )}
         >
           Export to Excel
         </Button>
@@ -1356,13 +1416,16 @@ export function GradebookTable({
               );
 
               toast.success('Grades saved successfully');
-              fetchData(); // Refresh the data
             } catch (error) {
               console.error('Error saving grades:', error);
               toast.error('Failed to save grades');
             }
           }}
-          className='ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center'
+          disabled={students.length === 0 || loadingStudents}
+          className={cn(
+            'ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center',
+            (students.length === 0 || loadingStudents) && 'opacity-50 cursor-not-allowed'
+          )}
         >
           Save Grades
         </Button>

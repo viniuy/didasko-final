@@ -30,6 +30,10 @@ export default function GradebookCoursePage({
   useEffect(() => {
     const fetchCourseId = async () => {
       try {
+        console.log('Fetching course ID for:', {
+          code: resolvedParams.course_code,
+          section: resolvedParams.course_section
+        });
         const response = await axiosInstance.get(`/courses`, {
           params: {
             code: resolvedParams.course_code,
@@ -37,7 +41,11 @@ export default function GradebookCoursePage({
           },
         });
         if (response.data.courses && response.data.courses.length > 0) {
-          setCourseId(response.data.courses[0].id);
+          const fetchedCourseId = response.data.courses[0].id;
+          console.log('Fetched course ID:', fetchedCourseId);
+          setCourseId(fetchedCourseId);
+        } else {
+          console.warn('No course found for the given code and section');
         }
       } catch (error) {
         console.error('Error fetching course ID:', error);
