@@ -281,6 +281,7 @@ const GradeConfigDialog = ({
   const [nameWarning, setNameWarning] = useState('');
   const [nameTouched, setNameTouched] = useState(false);
   const [dateTouched, setDateTouched] = useState(false);
+  const [selectedConfig, setSelectedConfig] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchExistingConfigs = async () => {
@@ -402,7 +403,6 @@ const GradeConfigDialog = ({
   };
 
   const handleUseExistingConfig = async (configId: string) => {
-    console.log('Using existing configuration:', configId);
     setIsLoading(true);
     try {
       // Find the selected configuration
@@ -411,23 +411,42 @@ const GradeConfigDialog = ({
       if (!selectedConfig) {
         throw new Error('Configuration not found');
       }
-
-      // Set this configuration as current using PUT instead of POST
-      await axiosInstance.put(
-        `/courses/${courseId}/grade-components/${configId}/current`
-      );
-
       // Update the gradebook config date
       setGradebookConfigDate(selectedConfig.createdAt);
       
-      console.log('Successfully set current configuration:', selectedConfig);
+      // Set the selected configuration
+      setSelectedConfig(configId);
+      
+    } catch (error) {
+      toast.error('Failed to select configuration');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleApplySelectedConfig = async () => {
+    setIsLoading(true);
+    try {
+      // Find the selected configuration
+      const config = existingConfigs.find(c => c.id === selectedConfig);
+      
+      if (!config) {
+        throw new Error('Configuration not found');
+      }
+
+      // Set this configuration as current
+      const response = await axiosInstance.put(
+        `/courses/${courseId}/grade-components/${config.id}/current`
+      );
+
+      console.log('Successfully applied configuration:', config);
       toast.success('Using existing grade configuration');
       setHasSelectedConfig(true);
       onConfigSaved();
       onOpenChange(false);
     } catch (error) {
-      console.error('Error using existing configuration:', error);
-      toast.error('Failed to use existing configuration');
+      console.error('Error applying configuration:', error);
+      toast.error('Failed to apply configuration');
     } finally {
       setIsLoading(false);
     }
@@ -435,13 +454,13 @@ const GradeConfigDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='max-w-[500px] w-full bg-white rounded-lg shadow-md p-0'>
-        <DialogTitle className='text-lg font-bold text-[#124A69] leading-tight px-6 pt-6'>
+      <DialogContent className='max-w-[550px] min-x-[550px] bg-white rounded-lg shadow-md p-0'>
+        <DialogTitle className='text-lg font-bold text-[#124A69] leading-tight px-3 pt-6'>
           Configure Gradebook
         </DialogTitle>
-        <div className='px-6'>
+        <div className='px-3'>
           <Tabs defaultValue='existing' className='w-full'>
-            <TabsList className='grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg -mt-2'>
+            <TabsList className='grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg'>
               <TabsTrigger
                 value='existing'
                 className='data-[state=active]:bg-white data-[state=active]:shadow-sm'
@@ -455,7 +474,7 @@ const GradeConfigDialog = ({
                 Create New Gradebook
               </TabsTrigger>
             </TabsList>
-            <div className='mt-4'>
+            <div className='-mt-2'>
               <TabsContent value='existing'>
                 <Card className='border-none shadow-none'>
                   <CardHeader className='px-0'>
@@ -465,20 +484,20 @@ const GradeConfigDialog = ({
                   </CardHeader>
                   <CardContent className='px-0'>
                     {isLoadingConfigs ? (
-                      <div className='text-center py-8 text-gray-500'>
+                      <div className='text-center py-8 text-gray-500 -mt-2'>
                         Loading configurations...
                       </div>
                     ) : existingConfigs.length === 0 ? (
-                      <div className='text-center py-8 text-gray-500'>
+                      <div className='text-center py-8 text-gray-500 -mt-2'>
                         No existing configurations found
                       </div>
                     ) : (
-                      <div className='space-y-4'>
+                      <div className='space-y-4 -mt-2'>
                         <Select
                           onValueChange={handleUseExistingConfig}
                           disabled={isLoading}
                         >
-                          <SelectTrigger className='w-full'>
+                          <SelectTrigger className='w-full '>
                             <SelectValue placeholder='Select a gradebook configuration' />
                           </SelectTrigger>
                           <SelectContent>
@@ -500,6 +519,22 @@ const GradeConfigDialog = ({
                             ))}
                           </SelectContent>
                         </Select>
+                        <div className='flex justify-end gap-3 pt-4 border-t'>
+                          <Button
+                            variant='outline'
+                            onClick={() => onOpenChange(false)}
+                            className='border-gray-300 hover:bg-gray-50'
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={handleApplySelectedConfig}
+                            disabled={isLoading || !selectedConfig}
+                            className='bg-[#124A69] hover:bg-[#0D3A56] text-white'
+                          >
+                            {isLoading ? 'Applying...' : 'Apply Selected Configuration'}
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </CardContent>
@@ -783,6 +818,7 @@ export function GradebookTable({
   });
   const [gradebookConfigDate, setGradebookConfigDate] = useState<string | null>(null);
   const [hasSelectedConfig, setHasSelectedConfig] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const itemsPerPage = 10;
 
   const fetchData = useCallback(async () => {
@@ -868,6 +904,7 @@ export function GradebookTable({
 
       console.log('Final students with grades:', studentsWithGrades);
       setStudents(studentsWithGrades);
+      setHasUnsavedChanges(false);
     } catch (err: any) {
       console.error('Error fetching data:', {
         message: err.message,
@@ -1105,7 +1142,7 @@ export function GradebookTable({
                         checked={gradeFilter.failed}
                         onCheckedChange={() => handleFilterChange('failed')}
                         disabled={!hasSelectedConfig}
-                      />
+                      />    
                       <label
                         htmlFor='failed'
                         className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
@@ -1415,16 +1452,17 @@ export function GradebookTable({
                 ),
               );
 
+              setHasUnsavedChanges(false);
               toast.success('Grades saved successfully');
             } catch (error) {
               console.error('Error saving grades:', error);
               toast.error('Failed to save grades');
             }
           }}
-          disabled={students.length === 0 || loadingStudents}
+          disabled={students.length === 0 || loadingStudents || !hasUnsavedChanges}
           className={cn(
             'ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center',
-            (students.length === 0 || loadingStudents) && 'opacity-50 cursor-not-allowed'
+            (students.length === 0 || loadingStudents || !hasUnsavedChanges) && 'opacity-50 cursor-not-allowed'
           )}
         >
           Save Grades

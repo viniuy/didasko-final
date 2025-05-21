@@ -138,11 +138,13 @@ export function ExportQuiz({
       ws['!merges'] = [
         { s: { r: 0, c: 0 }, e: { r: 0, c: range.e.c } }, // Title row
         { s: { r: 1, c: 0 }, e: { r: 1, c: range.e.c } }, // Empty row
-        { s: { r: 2, c: 1 }, e: { r: 2, c: range.e.c } }, // Date row
-        { s: { r: 3, c: 1 }, e: { r: 3, c: range.e.c } }, // Quiz name row
-        { s: { r: 4, c: 1 }, e: { r: 4, c: range.e.c } }, // Max score row
-        { s: { r: 5, c: 1 }, e: { r: 5, c: range.e.c } }, // Passing rate row
-        { s: { r: 6, c: 0 }, e: { r: 6, c: range.e.c } }, // Empty row
+        { s: { r: 2, c: 0 }, e: { r: 2, c: range.e.c } }, // Quiz and date row
+        { s: { r: 3, c: 0 }, e: { r: 3, c: range.e.c } }, // Max score and passing rate row
+        { s: { r: 4, c: 0 }, e: { r: 4, c: range.e.c } }, // Empty row
+        { s: { r: 5, c: 0 }, e: { r: 5, c: range.e.c } }, // Attendance range row
+        { s: { r: 6, c: 0 }, e: { r: 6, c: range.e.c } }, // Attendance summary label
+        { s: { r: 7, c: 0 }, e: { r: 7, c: range.e.c } }, // Attendance summary row
+        { s: { r: 8, c: 0 }, e: { r: 8, c: range.e.c } }, // Empty row
       ];
 
       const wb = XLSX.utils.book_new();
@@ -199,12 +201,18 @@ export function ExportQuiz({
                         className={`border border-gray-200 p-2 ${
                           rowIndex === 0
                             ? 'bg-[#124A69] text-white text-center font-bold'
-                            : rowIndex === 7
+                            : rowIndex === 9
                             ? 'bg-gray-100 font-medium'
+                            : rowIndex === 7
+                            ? 'text-center'
                             : ''
                         }`}
                         colSpan={
-                          rowIndex === 0 ? exportData.header[7].length : 1
+                          rowIndex === 0 || rowIndex === 1 || rowIndex === 2 || 
+                          rowIndex === 3 || rowIndex === 4 || rowIndex === 5 || 
+                          rowIndex === 6 || rowIndex === 8
+                            ? exportData.header[9].length 
+                            : 1
                         }
                       >
                         {cell}

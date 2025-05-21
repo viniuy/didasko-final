@@ -135,6 +135,10 @@ export function QuizTable({
     header: string[][];
     studentRows: string[][];
   } | null>(null);
+  const [originalScores, setOriginalScores] = useState<Record<string, QuizScore>>({});
+  const [saving, setSaving] = useState(false);
+  const [showResetConfirmation, setShowResetConfirmation] = useState(false);
+  const [showUndoButton, setShowUndoButton] = useState(false);
 
   // Fetch quizzes for the course when modal opens
   useEffect(() => {
@@ -187,23 +191,6 @@ export function QuizTable({
     fetchData();
   }, [selectedQuiz, courseId, dateRange]);
 
-  // Calculate plus points based on attendance rate
-  const calculatePlusPoints = (studentId: string): number => {
-    if (!attendanceStats) return 0;
-
-    const studentStat = attendanceStats.studentStats.find(
-      (stat) => stat.studentId === studentId,
-    );
-
-    if (!studentStat) return 0;
-
-    // Calculate plus points based on attendance rate
-    if (studentStat.attendanceRate >= 90) return 5; // 90% or higher
-    if (studentStat.attendanceRate >= 80) return 3; // 80-89%
-    if (studentStat.attendanceRate >= 70) return 2; // 70-79%
-    return 0; // Below 70%
-  };
-
   // Calculate total grade
   const calculateTotalGrade = (
     quizScore: number,
@@ -227,19 +214,20 @@ export function QuizTable({
         studentId,
         quizScore: 0,
         attendance: 'PRESENT',
-        plusPoints: calculatePlusPoints(studentId),
+        plusPoints: 0,
         totalGrade: 0,
         remarks: '',
       };
 
       let updatedScore = { ...currentScore, [field]: value };
 
-      // Recalculate total grade if quiz score changes
-      if (field === 'quizScore') {
-        const quizScore = typeof value === 'number' ? value : 0;
+      // Recalculate total grade if quiz score or plus points change
+      if (field === 'quizScore' || field === 'plusPoints') {
+        const quizScore = field === 'quizScore' ? value : currentScore.quizScore;
+        const plusPoints = field === 'plusPoints' ? value : currentScore.plusPoints;
         updatedScore.totalGrade = calculateTotalGrade(
           quizScore,
-          updatedScore.plusPoints,
+          plusPoints,
           selectedQuiz?.maxScore || 100,
         );
       }
@@ -365,9 +353,24 @@ export function QuizTable({
           {},
         );
         setScores(existingScores);
+        setOriginalScores(existingScores);
       })
       .catch((error) => {
         console.error('Error fetching quiz scores:', error);
+        // Initialize with empty scores for new quizzes
+        const emptyScores = students.reduce((acc: Record<string, QuizScore>, student) => {
+          acc[student.id] = {
+            studentId: student.id,
+            quizScore: 0,
+            attendance: 'PRESENT',
+            plusPoints: 0,
+            totalGrade: 0,
+            remarks: '',
+          };
+          return acc;
+        }, {});
+        setScores(emptyScores);
+        setOriginalScores(emptyScores);
         toast.error('Failed to load quiz scores', {
           duration: 3000,
           style: {
@@ -440,6 +443,28 @@ export function QuizTable({
 
     setExportData(data);
     setShowExportPreview(true);
+  };
+
+  // Add function to check if there are any changes
+  const hasChanges = () => {
+    // For new quizzes, if there are any scores with non-zero values, consider it changed
+    if (Object.keys(originalScores).length === 0) {
+      return Object.values(scores).some(score => 
+        score.quizScore > 0 || score.plusPoints > 0
+      );
+    }
+    
+    return Object.entries(scores).some(([studentId, currentScore]) => {
+      const originalScore = originalScores[studentId];
+      if (!originalScore) return true;
+      
+      return (
+        currentScore.quizScore !== originalScore.quizScore ||
+        currentScore.attendance !== originalScore.attendance ||
+        currentScore.plusPoints !== originalScore.plusPoints ||
+        currentScore.totalGrade !== originalScore.totalGrade
+      );
+    });
   };
 
   return (
@@ -609,7 +634,9 @@ export function QuizTable({
                   )}
                 </th>
                 <th className='border-b font-bold text-[#124A69] text-center px-4 py-3 w-[120px]'>
-                  Plus Points
+                  Plus Points                     <div className='text-xs font-normal text-gray-500'>
+                      (Max: 20)
+                    </div>
                 </th>
                 <th className='border-b font-bold text-[#124A69] text-center px-4 py-3 w-[120px]'>
                   Total Grade
@@ -639,7 +666,7 @@ export function QuizTable({
                     </span>
                     <span className='flex items-center gap-1'>
                       <span className='w-2 h-2 rounded-full bg-gray-700'></span>
-                      Missing
+                      No Attendance
                     </span>
                   </div>
                 </td>
@@ -698,7 +725,7 @@ export function QuizTable({
                       studentId: student.id,
                       quizScore: 0,
                       attendance: 'PRESENT',
-                      plusPoints: calculatePlusPoints(student.id),
+                      plusPoints: 0,
                       totalGrade: 0,
                       remarks: '',
                     };
@@ -759,6 +786,11 @@ export function QuizTable({
                                 'quizScore',
                                 Math.min(value, maxScore),
                               );
+                            }}
+                            onKeyPress={(e) => {
+                              if (!/[0-9]/.test(e.key)) {
+                                e.preventDefault();
+                              }
                             }}
                             className='w-20 p-1 border rounded text-center'
                             placeholder='Score'
@@ -824,7 +856,7 @@ export function QuizTable({
                                     <span className='w-2 h-2 rounded-full bg-gray-700'></span>
                                     {missingRecords}
                                     <span className='absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap'>
-                                      Missing
+                                      No Attendance
                                     </span>
                                   </span>
                                 )}
@@ -833,7 +865,27 @@ export function QuizTable({
                           })()}
                         </td>
                         <td className='px-4 py-2 text-center'>
-                          {studentScore.plusPoints}
+                          <input
+                            type='number'
+                            min='0'
+                            max='20'
+                            value={studentScore.plusPoints || ''}
+                            onChange={(e) => {
+                              const value = e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value));
+                              handleScoreChange(
+                                student.id,
+                                'plusPoints',
+                                Math.min(value, 20)
+                              );
+                            }}
+                            onKeyPress={(e) => {
+                              if (!/[0-9]/.test(e.key)) {
+                                e.preventDefault();
+                              }
+                            }}
+                            className='w-20 p-1 border rounded text-center'
+                            placeholder='Points'
+                          />
                         </td>
                         <td className='px-4 py-2 text-center font-semibold'>
                           {studentScore.totalGrade
@@ -1179,58 +1231,60 @@ export function QuizTable({
       </Dialog>
       {/* Action Buttons */}
       <div className='flex justify-end mt-3 gap-2'>
-        {previousScores ? (
-          <Button
-            variant='outline'
-            size='sm'
-            onClick={() => {
-              setScores(previousScores);
-              setPreviousScores(null);
-              toast.success('Grades restored', {
-                duration: 3000,
-                style: {
-                  background: '#fff',
-                  color: '#124A69',
-                  border: '1px solid #e5e7eb',
-                },
+        <Button
+          variant='outline'
+          size='sm'
+          onClick={() => {
+            if (previousScores) {
+              // Undo action
+              if (!previousScores) return;
+              
+              // Create a new object to ensure state update triggers re-render
+              const restoredScores = { ...previousScores };
+              
+              // Recalculate total grades for all students
+              Object.keys(restoredScores).forEach((studentId) => {
+                const score = restoredScores[studentId];
+                score.totalGrade = calculateTotalGrade(
+                  score.quizScore,
+                  score.plusPoints,
+                  selectedQuiz?.maxScore || 100
+                );
               });
-            }}
-            className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
-            disabled={loading}
-          >
-            Undo Reset
-          </Button>
-        ) : (
-          <Button
-            variant='outline'
-            size='sm'
-            onClick={() => {
-              setPreviousScores(scores);
-              setScores({});
-              students.forEach((student) => {
-                handleScoreChange(student.id, 'quizScore', 0);
-              });
-              toast.success('Grades reset successfully', {
-                duration: 3000,
-                style: {
-                  background: '#fff',
-                  color: '#124A69',
-                  border: '1px solid #e5e7eb',
-                },
-              });
-            }}
-            className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
-            disabled={loading}
-          >
-            Reset Grades
-          </Button>
-        )}
+
+              // Update states in sequence to ensure proper re-render
+              setScores({});  // Clear current scores first
+              setTimeout(() => {
+                setScores(restoredScores);
+                setPreviousScores(null);
+                toast.success('Grades restored', {
+                  duration: 3000,
+                  style: {
+                    background: '#fff',
+                    color: '#124A69',
+                    border: '1px solid #e5e7eb',
+                  },
+                });
+              }, 0);
+            } else {
+              // Show reset confirmation modal
+              setShowResetConfirmation(true);
+            }
+          }}
+          className={previousScores 
+            ? 'h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] border-none' 
+            : 'h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
+          }
+          disabled={loading || (!previousScores && hasChanges())}
+        >
+          {previousScores ? 'Undo Reset' : 'Reset Grades'}
+        </Button>
         <Button
           variant='outline'
           size='sm'
           onClick={handleExport}
           className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
-          disabled={loading || !selectedQuiz}
+          disabled={loading || !selectedQuiz || hasChanges()}
         >
           Export to Excel
         </Button>
@@ -1242,6 +1296,7 @@ export function QuizTable({
             if (!selectedQuiz?.id) return;
 
             try {
+              setSaving(true);
               // Convert scores object to array and format each score
               const scoresArray = Object.values(scores).map((score) => ({
                 studentId: score.studentId,
@@ -1255,6 +1310,10 @@ export function QuizTable({
               await axios.post(`/api/quizzes/${selectedQuiz.id}/scores`, {
                 scores: scoresArray,
               });
+
+              // Update original scores after successful save
+              setOriginalScores(scores);
+              setPreviousScores(null); // Clear previous scores after saving
 
               toast.success('Grades saved successfully', {
                 duration: 3000,
@@ -1274,11 +1333,13 @@ export function QuizTable({
                   border: '1px solid #e5e7eb',
                 },
               });
+            } finally {
+              setSaving(false);
             }
           }}
-          disabled={loading}
+          disabled={loading || !hasChanges() || saving}
         >
-          {loading ? (
+          {saving ? (
             <>
               <Loader2 className='mr-2 h-4 w-4 animate-spin' />
               Saving...
@@ -1299,6 +1360,50 @@ export function QuizTable({
         courseSection={courseSection}
         selectedQuiz={selectedQuiz}
       />
+
+      {/* Reset Confirmation Modal */}
+      <Dialog open={showResetConfirmation} onOpenChange={setShowResetConfirmation}>
+        <DialogContent className='sm:max-w-[425px]'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              Reset Grades
+            </DialogTitle>
+            <DialogDescription className='text-gray-500'>
+              Are you sure you want to reset all grades? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className='gap-2 sm:gap-2 mt-4'>
+            <Button
+              variant='outline'
+              onClick={() => setShowResetConfirmation(false)}
+              className='border-gray-200'
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                setPreviousScores(scores);
+                setScores({});
+                students.forEach((student) => {
+                  handleScoreChange(student.id, 'quizScore', 0);
+                });
+                setShowResetConfirmation(false);
+                toast.success('Grades reset successfully', {
+                  duration: 5000,
+                  style: {
+                    background: '#fff',
+                    color: '#124A69',
+                    border: '1px solid #e5e7eb',
+                  },
+                });
+              }}
+              className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+            >
+              Reset Grades
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

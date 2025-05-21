@@ -65,7 +65,7 @@ export function prepareExportData({
     late: 0,
     excused: 0,
     absent: 0,
-    missing: 0,
+    noAttendance: 0,
   };
 
   students.forEach((student) => {
@@ -84,26 +84,24 @@ export function prepareExportData({
       (studentStat?.absent || 0) +
       (studentStat?.excused || 0);
     const missingRecords = (attendanceStats?.totalClasses || 0) - totalRecords;
-    attendanceCounts.missing += missingRecords;
+    attendanceCounts.noAttendance += missingRecords;
   });
 
   // Create header rows
   const header = [
     [`${courseCode} - ${courseSection} QUIZ REPORT`],
     [''],
-    ['Date:', formattedDate],
-    ['Quiz:', selectedQuiz.name],
-    ['Max Score:', selectedQuiz.maxScore.toString()],
-    ['Passing Rate:', `${selectedQuiz.passingRate}%`],
+    [`Quiz: ${selectedQuiz.name} (${formattedDate})`],
+    [`Max Score: ${selectedQuiz.maxScore} | Passing Rate: ${selectedQuiz.passingRate}%`],
     [''],
-    ['Attendance Range:', `${formattedStartDate} to ${formattedEndDate}`],
+    [`Attendance Range: ${formattedStartDate} to ${formattedEndDate}`],
     ['Attendance Summary:'],
     [
       `Present: ${attendanceCounts.present}`,
       `Late: ${attendanceCounts.late}`,
       `Excused: ${attendanceCounts.excused}`,
       `Absent: ${attendanceCounts.absent}`,
-      `Missing: ${attendanceCounts.missing}`,
+      `No Attendance: ${attendanceCounts.noAttendance}`,
     ],
     [''],
     // Column headers
@@ -144,7 +142,7 @@ export function prepareExportData({
       studentStat?.late ? `Late: ${studentStat.late}` : null,
       studentStat?.excused ? `Excused: ${studentStat.excused}` : null,
       studentStat?.absent ? `Absent: ${studentStat.absent}` : null,
-      missingRecords > 0 ? `Missing: ${missingRecords}` : null,
+      missingRecords > 0 ? `No Attendance: ${missingRecords}` : null,
     ]
       .filter(Boolean)
       .join(' | ');

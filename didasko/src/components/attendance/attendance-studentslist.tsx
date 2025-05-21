@@ -31,6 +31,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -180,6 +181,8 @@ export default function StudentList() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [attendanceDates, setAttendanceDates] = useState<Date[]>([]);
+  const [previousAttendance, setPreviousAttendance] = useState<Record<string, AttendanceStatus> | null>(null);
+  const [showResetConfirmation, setShowResetConfirmation] = useState(false);
 
   const fetchStudents = async () => {
     if (!courseId) return;
@@ -1661,6 +1664,93 @@ export default function StudentList() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <div className='flex justify-end mt-3 gap-2'>
+        <Button
+          variant='outline'
+          size='sm'
+          onClick={() => {
+            if (previousAttendance) {
+              // Undo action
+              if (!previousAttendance) return;
+              
+              // Create a new object to ensure state update triggers re-render
+              const restoredAttendance = { ...previousAttendance };
+              
+              // Update states in sequence to ensure proper re-render
+              setUnsavedChanges({});  // Clear current changes first
+              setTimeout(() => {
+                setUnsavedChanges(restoredAttendance);
+                setPreviousAttendance(null);
+                toast.success('Attendance restored', {
+                  duration: 3000,
+                  style: {
+                    background: '#fff',
+                    color: '#124A69',
+                    border: '1px solid #e5e7eb',
+                  },
+                });
+              }, 0);
+            } else {
+              // Show reset confirmation modal
+              setShowResetConfirmation(true);
+            }
+          }}
+          className={previousAttendance 
+            ? 'h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] border-none' 
+            : 'h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
+          }
+          disabled={isLoading || (!previousAttendance && Object.keys(unsavedChanges).length === 0)}
+        >
+          {previousAttendance ? 'Undo Reset' : 'Reset Attendance'}
+        </Button>
+      </div>
+
+      <Dialog open={showResetConfirmation} onOpenChange={setShowResetConfirmation}>
+        <DialogContent className='sm:max-w-[425px]'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              Reset Attendance
+            </DialogTitle>
+            <DialogDescription className='text-gray-500'>
+              Are you sure you want to reset all attendance records? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className='gap-2 sm:gap-2 mt-4'>
+            <Button
+              variant='outline'
+              onClick={() => setShowResetConfirmation(false)}
+              className='border-gray-200'
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                setPreviousAttendance(unsavedChanges);
+                setUnsavedChanges({});
+                setStudentList(prevStudents => 
+                  prevStudents.map(student => ({
+                    ...student,
+                    status: 'NOT_SET'
+                  }))
+                );
+                setShowResetConfirmation(false);
+                toast.success('Attendance reset successfully', {
+                  duration: 5000,
+                  style: {
+                    background: '#fff',
+                    color: '#124A69',
+                    border: '1px solid #e5e7eb',
+                  },
+                });
+              }}
+              className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+            >
+              Reset Attendance
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

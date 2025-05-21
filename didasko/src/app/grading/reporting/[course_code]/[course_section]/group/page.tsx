@@ -57,7 +57,7 @@ interface Course {
 interface Student {
   id: string;
   name: string;
-  status: 'PRESENT' | 'LATE' | 'ABSENT' | 'NOT_SET';
+  status: 'PRESENT' | 'LATE' | 'ABSENT' | 'No Attendance';
 }
 
 interface Group {
@@ -199,6 +199,8 @@ function AddGroupModal({
         return 'bg-yellow-100 text-yellow-700 border-yellow-300';
       case 'ABSENT':
         return 'bg-red-100 text-red-700 border-red-300';
+      case 'No Attendance':
+        return 'bg-gray-100 text-gray-500 border-gray-300';
       default:
         return 'bg-gray-100 text-gray-500 border-gray-300';
     }
@@ -281,7 +283,7 @@ function AddGroupModal({
               </div>
             </div>
             <div className='flex flex-col'>
-              <label className='text-sm font-semibold mb-1'>Group Leader</label>
+              <label className='text-sm font-semibold mb-1'>Group Leader <span className='text-gray-400'>(optional)</span></label>
               <Select
                 value={selectedLeader}
                 onValueChange={setSelectedLeader}
@@ -345,7 +347,7 @@ function AddGroupModal({
                           ? 'Late'
                           : student.status === 'ABSENT'
                           ? 'Absent'
-                          : 'Not Set'}
+                          : 'No Attendance'}
                       </span>
                     </label>
                   ))

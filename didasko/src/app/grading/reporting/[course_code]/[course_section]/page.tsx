@@ -112,31 +112,42 @@ export default function ReportingTypePage({
                     </div>
                   </Card>
 
-                  <Link
-                    href={`/grading/reporting/${course_code}/${course_section}/group`}
-                  >
-                    <Card className='p-6 hover:bg-accent transition-colors  h-full'>
-                      <div className='flex flex-col items-center text-center space-y-4'>
-                        <div className='h-24 w-24 rounded-full bg-secondary flex items-center justify-center'>
-                          <Users className='h-12 w-12' />
-                        </div>
-                        <div>
-                          <h2 className='text-xl font-semibold'>
-                            Group Reporting
-                          </h2>
-                          <p className='text-sm text-muted-foreground mt-1'>
-                            Grade multiple students at once
-                          </p>
-                        </div>
-                        <Button
-                          className='w-full bg-[#124A69] hover:bg-gray-800'
-                          disabled={isLoading}
-                        >
-                          {isLoading ? 'Loading...' : 'Select group'}
-                        </Button>
+                  <Card className='p-6 hover:bg-accent transition-colors  h-full'>
+                    <div className='flex flex-col items-center text-center space-y-4'>
+                      <div className='h-24 w-24 rounded-full bg-secondary flex items-center justify-center'>
+                        <Users className='h-12 w-12' />
                       </div>
-                    </Card>
-                  </Link>
+                      <div>
+                        <h2 className='text-xl font-semibold'>
+                          Group Reporting
+                        </h2>
+                        <p className='text-sm text-muted-foreground mt-1'>
+                          Grade multiple students at once
+                        </p>
+                      </div>
+                      <Button
+                        className='w-full bg-[#124A69] hover:bg-gray-800 cursor-pointer'
+                        disabled={isLoading || isRedirecting}
+                        asChild
+                      >
+                        <Link
+                          href={`/grading/reporting/${course_code}/${course_section}/group`}
+                          onClick={() => setIsRedirecting(true)}
+                        >
+                          {isLoading ? (
+                            'Loading...'
+                          ) : isRedirecting ? (
+                            <span className='flex items-center gap-2'>
+                              <Loader2 className='h-4 w-4 animate-spin' />
+                              Redirecting...
+                            </span>
+                          ) : (
+                            'Select group'
+                          )}
+                        </Link>
+                      </Button>
+                    </div>
+                  </Card>
                 </div>
               </div>
             </div>

@@ -157,9 +157,10 @@ export function GradingTable({
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
   const [previousScores, setPreviousScores] = useState<
-    Record<string, GradingScore>
-  >({});
+    Record<string, any> | null
+  >(null);
   const [showExportWarning, setShowExportWarning] = useState(false);
+  const [showResetConfirmation, setShowResetConfirmation] = useState(false);
 
   // Function to handle dialog close
   const handleDialogClose = () => {
@@ -259,7 +260,6 @@ export function GradingTable({
       setCriteriaLoading(true);
       setShowCriteriaDialog(true); // Always show dialog to let user select
       try {
-        const formattedDate = selectedDate.toISOString().split('T')[0];
         // Fetch all criteria for this course
         let endpoint = `/courses/${courseId}/criteria`;
         if (isGroupView && groupId) {
@@ -583,7 +583,7 @@ export function GradingTable({
     return '';
   };
 
-  const validateRubricName = (name: string) => {
+  const validateRubricName = (name: string, index: number) => {
     if (!name.trim()) {
       return 'Rubric name is required';
     }
@@ -592,6 +592,13 @@ export function GradingTable({
     }
     if (!/^[a-zA-Z0-9\s]+$/.test(name)) {
       return 'Rubric name can only contain letters, numbers, and spaces';
+    }
+    // Check for duplicate names
+    const isDuplicate = newReport.rubricDetails.some((r, i) => 
+      i !== index && r.name.toLowerCase() === name.toLowerCase()
+    );
+    if (isDuplicate) {
+      return 'Rubric name must be unique';
     }
     return '';
   };
@@ -723,7 +730,7 @@ export function GradingTable({
       } else {
         // Validate name input
         const nameValue = value as string;
-        const error = validateRubricName(nameValue);
+        const error = validateRubricName(nameValue, index);
         setValidationErrors((prev) => ({
           ...prev,
           rubrics: prev.rubrics
@@ -768,7 +775,7 @@ export function GradingTable({
         // Skip validation for Participation rubric in group view
         return '';
       }
-      return validateRubricName(rubric.name);
+      return validateRubricName(rubric.name, idx);
     });
     const hasRubricErrors = rubricErrors.some((error) => error);
     if (hasRubricErrors) {
@@ -935,8 +942,7 @@ export function GradingTable({
       [
         'Student Name',
         ...rubricDetails.map((r) => `${r.name} (${r.percentage}%)`),
-        'Reporting Score',
-        'Recitation Score',
+        ...(isRecitationCriteria ? ['Recitation Score'] : ['Reporting Score']),
         'Total Grade',
         'Remarks',
       ],
@@ -959,10 +965,12 @@ export function GradingTable({
         ...studentScore.scores.map((score) =>
           score ? score.toString() : '---',
         ),
-        `${studentScore.reportingScore?.toFixed(0) || '---'}%`,
-        `${studentScore.recitationScore?.toFixed(0) || '---'}%`,
-        `${studentScore.total.toFixed(0)}%`,
-        studentScore.scores.some((score) => score === 0)
+        ...(isRecitationCriteria 
+          ? [`${studentScore.recitationScore?.toFixed(0) || '---'}%`]
+          : [`${studentScore.reportingScore?.toFixed(0) || '---'}%`]
+        ),
+        studentScore.scores.some((score) => score === 0) || studentScore.total === 0 ? '---' : `${studentScore.total.toFixed(0)}%`,
+        studentScore.scores.some((score) => score === 0) || studentScore.total === 0
           ? '---'
           : studentScore.total >= Number(activeReport.passingScore)
           ? 'PASSED'
@@ -1461,7 +1469,7 @@ export function GradingTable({
             }
           })}
           <td className='text-center px-4 py-2 align-middle font-bold w-[100px]'>
-            {studentScore.total ? `${studentScore.total.toFixed(0)}%` : '--'}
+            {studentScore.scores.some((score) => score === 0) || studentScore.total === 0 ? '---' : `${studentScore.total.toFixed(0)}%`}
           </td>
           <td className='text-center px-4 py-2 align-middle w-[100px]'>
             {studentScore.scores.some((score) => score === 0) ? (
@@ -1968,7 +1976,7 @@ export function GradingTable({
                                     {validationErrors.rubrics[index]}
                                   </p>
                                 )}
-                                <p className='text-xs text-gray-500 -mt-1 ml-auto'>
+                                <p className='flex justify-end text-xs text-gray-500 ml-auto'>
                                   {rubric.name.length}/15
                                 </p>
                               </div>
@@ -2042,7 +2050,17 @@ export function GradingTable({
                       </Button>
                       <Button
                         onClick={handleCreateReport}
-                        disabled={!newReport.name || !newReport.rubrics}
+                        disabled={
+                          !newReport.name || 
+                          !newReport.rubrics || 
+                          newReport.rubricDetails.reduce((sum, r) => sum + r.weight, 0) !== 100 ||
+                          newReport.rubricDetails.some(r => !r.name.trim()) ||
+                          newReport.rubricDetails.some((r, i) => 
+                            newReport.rubricDetails.some((other, j) => 
+                              i !== j && r.name.toLowerCase() === other.name.toLowerCase()
+                            )
+                          )
+                        }
                         className='bg-[#124A69] hover:bg-[#0d3a56]'
                       >
                         {isRecitationCriteria
@@ -2263,15 +2281,48 @@ export function GradingTable({
         <div className='flex justify-end mt-3 gap-2'>
           <Button
             variant='outline'
-            onClick={() => setShowResetDialog(true)}
-            className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
+            size='sm'
+            onClick={() => {
+              if (previousScores) {
+                // Undo action
+                if (!previousScores) return;
+                
+                // Create a new object to ensure state update triggers re-render
+                const restoredScores = { ...previousScores };
+                
+                // Update states in sequence to ensure proper re-render
+                setScores({});  // Clear current scores first
+                setTimeout(() => {
+                  setScores(restoredScores);
+                  setPreviousScores(null);
+                  toast.success('Grades restored', {
+                    duration: 3000,
+                    style: {
+                      background: '#fff',
+                      color: '#124A69',
+                      border: '1px solid #e5e7eb',
+                    },
+                  });
+                }, 0);
+              } else {
+                // Show reset confirmation modal
+                setShowResetConfirmation(true);
+              }
+            }}
+            className={previousScores 
+              ? 'h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] border-none' 
+              : 'h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
+            }
+            disabled={isLoading || isLoadingStudents || (!previousScores && hasChanges())}
           >
-            Reset
+            {previousScores ? 'Undo Reset' : 'Reset Grades'}
           </Button>
+
           <Button
             variant='outline'
             onClick={handleExport}
             className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
+            disabled={isLoading || isLoadingStudents || !activeReport || hasChanges()}
           >
             Export to Excel
           </Button>
@@ -2365,6 +2416,54 @@ export function GradingTable({
           courseSection={courseSection}
           rubricDetails={rubricDetails}
         />
+
+        {/* Reset Confirmation Modal */}
+        <Dialog open={showResetConfirmation} onOpenChange={setShowResetConfirmation}>
+          <DialogContent className='sm:max-w-[425px]'>
+            <DialogHeader>
+              <DialogTitle className='text-[#124A69] text-xl font-bold'>
+                Reset Grades
+              </DialogTitle>
+              <DialogDescription className='text-gray-500'>
+                Are you sure you want to reset all grades? This action cannot be
+                undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className='gap-2 sm:gap-2 mt-4'>
+              <Button
+                variant='outline'
+                onClick={() => setShowResetConfirmation(false)}
+                className='border-gray-200'
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  setPreviousScores(scores);
+                  setScores({});
+                  students.forEach((student) => {
+                    // Reset each rubric score individually
+                    rubricDetails.forEach((_, index) => {
+                      handleScoreChange(student.id, index, 0);
+                    });
+                  });
+                  setShowResetConfirmation(false);
+                  toast.success('Grades reset successfully', {
+                    duration: 5000,
+                    style: {
+                      background: '#fff',
+                      color: '#124A69',
+                      border: '1px solid #e5e7eb',
+                    },
+                  });
+                }}
+                className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+              >
+                Reset Grades
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
