@@ -102,6 +102,52 @@ const formatName = (fullName: string) => {
   return fullName; // Return original if format is unexpected
 };
 
+// Function to format name as "FirstName M.I. LastName"
+const formatNameDisplay = (fullName: string) => {
+  const trimmedName = fullName.trim().replace(/\s+/g, ' ');
+  const commaParts = trimmedName.split(',');
+
+  let firstName = '';
+  let middleInitial = '';
+  let lastName = '';
+
+  if (commaParts.length > 1) {
+    // Format: "LastName, FirstName MiddleInitial"
+    lastName = commaParts[0].trim();
+    const restOfName = commaParts[1].trim();
+    const spaceParts = restOfName.split(' ');
+    firstName = spaceParts[0] || '';
+    middleInitial =
+      spaceParts.length > 1
+        ? spaceParts.slice(1).join(' ').replace('.', '')
+        : '';
+  } else {
+    // Assume Format: "FirstName MiddleInitial LastName" or "FirstName LastName"
+    const spaceParts = trimmedName.split(' ');
+    if (spaceParts.length === 1) {
+      firstName = spaceParts[0];
+    } else if (spaceParts.length === 2) {
+      firstName = spaceParts[0];
+      lastName = spaceParts[1];
+    } else if (spaceParts.length > 2) {
+      firstName = spaceParts[0];
+      lastName = spaceParts[spaceParts.length - 1];
+      middleInitial = spaceParts.slice(1, -1).join(' ').replace('.', '');
+    }
+  }
+
+  // Construct the display name
+  let displayName = firstName;
+  if (middleInitial) {
+    displayName += ` ${middleInitial}.`;
+  }
+  if (lastName) {
+    displayName += ` ${lastName}`;
+  }
+
+  return displayName.trim();
+};
+
 export function AdminDataTable({
   users,
   onSaveChanges,
@@ -163,16 +209,22 @@ export function AdminDataTable({
         role: newRole,
       },
     }));
-    toast.success(`Role updated to ${newRole.split('_').map(word => 
-      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-    ).join(' ')}`, {
-      duration: 3000,
-      style: {
-        background: '#fff',
-        color: '#124A69',
-        border: '1px solid #e5e7eb',
+    toast.success(
+      `Role updated to ${newRole
+        .split('_')
+        .map(
+          (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
+        )
+        .join(' ')}`,
+      {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+        },
       },
-    });
+    );
   };
 
   const handlePermissionChange = (
@@ -228,14 +280,17 @@ export function AdminDataTable({
             permission: changes.permission,
           });
           if (!permissionResult.success) {
-            toast.error(`Failed to update permission: ${permissionResult.error}`, {
-              duration: 3000,
-              style: {
-                background: '#fff',
-                color: '#dc2626',
-                border: '1px solid #e5e7eb',
+            toast.error(
+              `Failed to update permission: ${permissionResult.error}`,
+              {
+                duration: 3000,
+                style: {
+                  background: '#fff',
+                  color: '#dc2626',
+                  border: '1px solid #e5e7eb',
+                },
               },
-            });
+            );
             throw new Error(
               `Failed to update permission: ${permissionResult.error}`,
             );
@@ -273,7 +328,7 @@ export function AdminDataTable({
             color: '#dc2626',
             border: '1px solid #e5e7eb',
           },
-        }
+        },
       );
     } finally {
       setIsSaving(false);
@@ -929,13 +984,15 @@ export function AdminDataTable({
                       key={user.id}
                       className={isEdited ? 'bg-yellow-50' : ''}
                     >
-                      <TableCell className='flex items-center gap-3'>
-                        <Avatar className='h-8 w-8'>
-                          <AvatarFallback className='bg-white border-2 border-[#124A69] text-[#124A69]'>
-                            {getInitials(user.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span>{formatName(user.name)}</span>
+                      <TableCell className='font-medium'>
+                        <div className='flex items-center gap-2'>
+                          <Avatar>
+                            <AvatarFallback>
+                              {getInitials(user.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>{formatNameDisplay(user.name)}</div>
+                        </div>
                       </TableCell>
                       <TableCell>{user.email}</TableCell>
                       <TableCell>{user.department}</TableCell>

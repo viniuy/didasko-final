@@ -23,8 +23,8 @@ import { toast } from 'sonner';
 // Available departments
 const DEPARTMENTS = ['IT Department', 'BA Department', 'HM Department'];
 
-// Name validation regex - letters, spaces, and hyphens only
-const nameRegex = /^[a-zA-Z\s-]+$/;
+// Name validation regex - letters, spaces, hyphens, periods, and commas
+const nameRegex = /^[a-zA-Z\s\-.,]+$/;
 
 interface EditUserSheetProps {
   user: {
@@ -55,12 +55,61 @@ export function EditUserSheet({ user, onClose, onSave }: EditUserSheetProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
 
-  // Split the full name into parts
-  const nameParts = user.name.split(' ');
+  // Improved name parsing logic
+  const parseName = (fullName: string) => {
+    // Remove any extra spaces
+    const trimmedName = fullName.trim().replace(/\s+/g, ' ');
+
+    let firstName = '';
+    let middleInitial = '';
+    let lastName = '';
+
+    const commaIndex = trimmedName.indexOf(',');
+
+    if (commaIndex > -1) {
+      // Format: "LastName, FirstName MiddleInitial(s)"
+      lastName = trimmedName.substring(0, commaIndex).trim();
+      const restOfName = trimmedName.substring(commaIndex + 1).trim();
+      const spaceParts = restOfName.split(' ').filter((part) => part !== '');
+
+      firstName = spaceParts[0] || '';
+      // All parts after the first in the restOfName are middle initials
+      middleInitial =
+        spaceParts.length > 1
+          ? spaceParts.slice(1).join(' ').replace(/\./g, '')
+          : '';
+    } else {
+      // Assume Format: "FirstName MiddleInitial(s) LastName" or "FirstName LastName"
+      const spaceParts = trimmedName.split(' ').filter((part) => part !== '');
+
+      if (spaceParts.length === 3) {
+        // Format: "FirstName MiddleInitial LastName"
+        firstName = spaceParts[0];
+        middleInitial = spaceParts[1].replace(/\./g, ''); // Middle initial is the second part
+        lastName = spaceParts[2]; // Last name is the third part
+      } else if (spaceParts.length === 2) {
+        // Format: "FirstName LastName"
+        firstName = spaceParts[0];
+        lastName = spaceParts[1];
+        middleInitial = ''; // No middle initial
+      } else if (spaceParts.length === 1) {
+        // Just a first name
+        firstName = spaceParts[0];
+        lastName = '';
+        middleInitial = '';
+      }
+      // If spaceParts.length is 0, all remain empty strings
+    }
+
+    return { firstName, middleInitial, lastName };
+  };
+
+  const { firstName, middleInitial, lastName } = parseName(user.name);
+
   const initialFormData = {
-    firstName: nameParts[0] || '',
-    lastName: nameParts.length > 2 ? nameParts[2] : nameParts[1] || '',
-    middleInitial: nameParts.length > 2 ? nameParts[1] : '',
+    firstName: firstName || '',
+    lastName: lastName || '',
+    middleInitial: middleInitial || '',
     email: user.email,
     department: user.department,
     workType: user.workType,
@@ -79,7 +128,7 @@ export function EditUserSheet({ user, onClose, onSave }: EditUserSheetProps) {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
-    if (["firstName", "middleInitial", "lastName"].includes(name)) {
+    if (['firstName', 'middleInitial', 'lastName'].includes(name)) {
       setNameError(null);
     }
   };
@@ -96,12 +145,20 @@ export function EditUserSheet({ user, onClose, onSave }: EditUserSheetProps) {
       !validateName(formData.lastName) ||
       (formData.middleInitial && !validateName(formData.middleInitial));
     if (hasNameErrors) {
-      setNameError('Names can only contain letters, spaces, and hyphens');
+      setNameError(
+        'Names can only contain letters, spaces, hyphens, periods, and commas',
+      );
       setIsLoading(false);
       return;
     }
     try {
-      const fullName = `${formData.lastName}, ${formData.firstName}${formData.middleInitial ? ` ${formData.middleInitial}.` : ''}`;
+      // Format the name as "FirstName MiddleInitial LastName"
+      const formattedMiddleInitial = formData.middleInitial
+        ? ` ${formData.middleInitial}`
+        : '';
+      const fullName =
+        `${formData.firstName}${formattedMiddleInitial} ${formData.lastName}`.trim();
+
       const updateData = {
         name: fullName,
         email: formData.email,
@@ -147,65 +204,77 @@ export function EditUserSheet({ user, onClose, onSave }: EditUserSheetProps) {
         }
       }}
     >
-      <SheetContent side="right" className="sm:max-w-md p-4">
+      <SheetContent side='right' className='sm:max-w-md p-4'>
         <SheetHeader>
           <SheetTitle>Edit User</SheetTitle>
         </SheetHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 py-4">
-          <div className="space-y-1 w-97">
-            <Label htmlFor="lastName">Last Name *</Label>
+        <form onSubmit={handleSubmit} className='space-y-4 py-4'>
+          <div className='space-y-1 w-97'>
+            <Label htmlFor='lastName'>Last Name *</Label>
             <Input
-              id="lastName"
-              name="lastName"
+              id='lastName'
+              name='lastName'
               value={formData.lastName}
               onChange={handleInputChange}
               required
-              className={nameError ? 'border-red-500 focus-visible:ring-red-500' : ''}
+              className={
+                nameError ? 'border-red-500 focus-visible:ring-red-500' : ''
+              }
               maxLength={30}
             />
-            <div className="flex justify-between">
-              <div className="text-xs text-muted-foreground">{formData.lastName.length}/30</div>
-              {nameError && <p className="text-sm text-red-500">{nameError}</p>}
+            <div className='flex justify-between'>
+              <div className='text-xs text-muted-foreground'>
+                {formData.lastName.length}/30
+              </div>
+              {nameError && <p className='text-sm text-red-500'>{nameError}</p>}
             </div>
           </div>
-          <div className="flex flex-row gap-2">
-            <div className="space-y-1">
-              <Label htmlFor="firstName">First Name *</Label>
+          <div className='flex flex-row gap-2'>
+            <div className='space-y-1'>
+              <Label htmlFor='firstName'>First Name *</Label>
               <Input
-                id="firstName"
-                name="firstName"
+                id='firstName'
+                name='firstName'
                 value={formData.firstName}
                 onChange={handleInputChange}
                 required
-                className={nameError ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                className={
+                  nameError ? 'border-red-500 focus-visible:ring-red-500' : ''
+                }
                 maxLength={30}
               />
-              <div className="flex justify-between">
-                <div className="text-xs text-muted-foreground">{formData.firstName.length}/30</div>
+              <div className='flex justify-between'>
+                <div className='text-xs text-muted-foreground'>
+                  {formData.firstName.length}/30
+                </div>
               </div>
             </div>
-            <div className="space-y-1 w-40">
-              <Label htmlFor="middleInitial">Middle Initial</Label>
+            <div className='space-y-1 w-40'>
+              <Label htmlFor='middleInitial'>Middle Initial</Label>
               <Input
-                id="middleInitial"
-                name="middleInitial"
+                id='middleInitial'
+                name='middleInitial'
                 value={formData.middleInitial}
                 onChange={handleInputChange}
-                className={nameError ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                className={
+                  nameError ? 'border-red-500 focus-visible:ring-red-500' : ''
+                }
                 maxLength={1}
               />
             </div>
           </div>
-          <div className="flex flex-row gap-2">
-            <div className="space-y-1 flex-1">
-              <Label htmlFor="department">Department</Label>
+          <div className='flex flex-row gap-2'>
+            <div className='space-y-1 flex-1'>
+              <Label htmlFor='department'>Department</Label>
               <Select
                 value={formData.department}
-                onValueChange={(value) => handleSelectChange('department', value)}
+                onValueChange={(value) =>
+                  handleSelectChange('department', value)
+                }
                 required
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select department" />
+                  <SelectValue placeholder='Select department' />
                 </SelectTrigger>
                 <SelectContent>
                   {DEPARTMENTS.map((dept) => (
@@ -216,63 +285,65 @@ export function EditUserSheet({ user, onClose, onSave }: EditUserSheetProps) {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1 flex-1">
-              <Label htmlFor="workType">Work Type</Label>
+            <div className='space-y-1 flex-1'>
+              <Label htmlFor='workType'>Work Type</Label>
               <Select
                 value={formData.workType}
                 onValueChange={(value) => handleSelectChange('workType', value)}
                 required
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select work type" />
+                  <SelectValue placeholder='Select work type' />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="FULL_TIME">Full Time</SelectItem>
-                  <SelectItem value="PART_TIME">Part Time</SelectItem>
-                  <SelectItem value="CONTRACT">Contract</SelectItem>
+                  <SelectItem value='FULL_TIME'>Full Time</SelectItem>
+                  <SelectItem value='PART_TIME'>Part Time</SelectItem>
+                  <SelectItem value='CONTRACT'>Contract</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
-          <div className="flex flex-row gap-2">
-            <div className="space-y-1 flex-1">
-              <Label htmlFor="role">Role</Label>
+          <div className='flex flex-row gap-2'>
+            <div className='space-y-1 flex-1'>
+              <Label htmlFor='role'>Role</Label>
               <Select
                 value={formData.role}
                 onValueChange={(value) => handleSelectChange('role', value)}
                 required
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select role" />
+                  <SelectValue placeholder='Select role' />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ADMIN">Admin</SelectItem>
-                  <SelectItem value="FACULTY">Faculty</SelectItem>
-                  <SelectItem value="ACADEMIC_HEAD">Academic Head</SelectItem>
+                  <SelectItem value='ADMIN'>Admin</SelectItem>
+                  <SelectItem value='FACULTY'>Faculty</SelectItem>
+                  <SelectItem value='ACADEMIC_HEAD'>Academic Head</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1 flex-1">
-              <Label htmlFor="permission">Permission</Label>
+            <div className='space-y-1 flex-1'>
+              <Label htmlFor='permission'>Permission</Label>
               <Select
                 value={formData.permission}
-                onValueChange={(value) => handleSelectChange('permission', value)}
+                onValueChange={(value) =>
+                  handleSelectChange('permission', value)
+                }
                 required
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select permission" />
+                  <SelectValue placeholder='Select permission' />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="GRANTED">Granted</SelectItem>
-                  <SelectItem value="DENIED">Denied</SelectItem>
+                  <SelectItem value='GRANTED'>Granted</SelectItem>
+                  <SelectItem value='DENIED'>Denied</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
-          <div className="flex justify-end gap-2 pt-4 mt-auto">
+          <div className='flex justify-end gap-2 pt-4 mt-auto'>
             <Button
-              type="button"
-              variant="outline"
+              type='button'
+              variant='outline'
               onClick={() => {
                 setOpen(false);
                 setFormData(initialFormData);
@@ -285,9 +356,9 @@ export function EditUserSheet({ user, onClose, onSave }: EditUserSheetProps) {
               Cancel
             </Button>
             <Button
-              type="submit"
+              type='submit'
               disabled={isLoading}
-              className="bg-[#124A69] text-white hover:bg-gray-700"
+              className='bg-[#124A69] text-white hover:bg-gray-700'
             >
               {isLoading ? 'Saving...' : 'Save Changes'}
             </Button>
