@@ -298,18 +298,24 @@ export function AppSidebar() {
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>
+              <AlertDialogTitle className='text-xl font-semibold'>
                 Are you sure you want to logout?
               </AlertDialogTitle>
-              <AlertDialogDescription>
+              <AlertDialogDescription className='text-gray-600'>
                 This action will log you out of your account.
               </AlertDialogDescription>
             </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setOpen(false)}>
+            <AlertDialogFooter className='gap-2'>
+              <AlertDialogCancel
+                onClick={() => setOpen(false)}
+                className='border-0 bg-gray-100 hover:bg-gray-200 text-gray-900'
+              >
                 Cancel
               </AlertDialogCancel>
-              <AlertDialogAction onClick={handleLogout}>
+              <AlertDialogAction
+                onClick={handleLogout}
+                className='bg-[#124A69] hover:bg-[#0a2f42] text-white'
+              >
                 Confirm
               </AlertDialogAction>
             </AlertDialogFooter>

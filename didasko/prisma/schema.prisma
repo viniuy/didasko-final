@@ -231,6 +231,8 @@ model GradeConfiguration {
   recitationWeight Float
   quizWeight       Float
   passingThreshold Float
+  startDate        DateTime
+  endDate          DateTime
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 

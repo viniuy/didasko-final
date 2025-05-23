@@ -109,9 +109,12 @@ export default function Notes() {
   };
 
   useEffect(() => {
-    // Only fetch notes once when component mounts or session changes from unauthenticated to authenticated
+    // Only fetch notes when:
+    // 1. Component mounts and there are no notes
+    // 2. User logs in (status changes from unauthenticated to authenticated)
+    // 3. User explicitly refreshes the notes
     if (
-      !noteList.length ||
+      (!noteList.length && status === 'authenticated') ||
       (status === 'authenticated' &&
         previousStatus.current === 'unauthenticated')
     ) {
@@ -121,6 +124,21 @@ export default function Notes() {
     // Keep track of previous status to detect meaningful changes
     previousStatus.current = status;
   }, [status, session]);
+
+  // Add a visibility change handler to prevent unnecessary fetches
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      // Only fetch if the document becomes visible AND we have no notes
+      if (document.visibilityState === 'visible' && !noteList.length) {
+        fetchNotes();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [noteList.length]);
 
   async function fetchNotes() {
     try {

@@ -5,7 +5,7 @@ import { authOptions } from '@/lib/auth-options';
 
 export async function POST(
   request: Request,
-  context: { params: { courseId: string } }
+  context: { params: { courseId: string } },
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -19,7 +19,7 @@ export async function POST(
     // First get the course ID using the course code
     const course = await prisma.course.findFirst({
       where: { code: courseId.toUpperCase() },
-      select: { id: true }
+      select: { id: true },
     });
 
     if (!course) {
@@ -29,6 +29,23 @@ export async function POST(
     const body = await request.json();
     const { groupNumber, groupName, studentIds, leaderId } = body;
 
+    // Check if group name already exists in this course
+    if (groupName) {
+      const existingGroup = await prisma.group.findFirst({
+        where: {
+          courseId: course.id,
+          name: groupName,
+        },
+      });
+
+      if (existingGroup) {
+        return NextResponse.json(
+          { error: 'A group with this name already exists' },
+          { status: 400 },
+        );
+      }
+    }
+
     // Create the group
     const group = await prisma.group.create({
       data: {
@@ -37,13 +54,13 @@ export async function POST(
         courseId: course.id,
         leaderId: leaderId || null,
         students: {
-          connect: studentIds.map((id: string) => ({ id }))
-        }
+          connect: studentIds.map((id: string) => ({ id })),
+        },
       },
       include: {
         students: true,
-        leader: true
-      }
+        leader: true,
+      },
     });
 
     return NextResponse.json(group);
@@ -51,14 +68,14 @@ export async function POST(
     console.error('Error creating group:', error);
     return NextResponse.json(
       { error: 'Failed to create group' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 export async function GET(
   request: Request,
-  context: { params: { courseId: string } }
+  context: { params: { courseId: string } },
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -72,7 +89,7 @@ export async function GET(
     // First get the course ID using the course code
     const course = await prisma.course.findFirst({
       where: { code: courseId.toUpperCase() },
-      select: { id: true }
+      select: { id: true },
     });
 
     if (!course) {
@@ -82,7 +99,7 @@ export async function GET(
     // Get all groups for the course
     const groups = await prisma.group.findMany({
       where: {
-        courseId: course.id
+        courseId: course.id,
       },
       include: {
         students: {
@@ -91,10 +108,10 @@ export async function GET(
             firstName: true,
             lastName: true,
             middleInitial: true,
-            image: true
-          }
-        }
-      }
+            image: true,
+          },
+        },
+      },
     });
 
     return NextResponse.json(groups);
@@ -102,7 +119,7 @@ export async function GET(
     console.error('Error fetching groups:', error);
     return NextResponse.json(
       { error: 'Failed to fetch groups' },
-      { status: 500 }
+      { status: 500 },
     );
   }
-} 
+}

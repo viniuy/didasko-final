@@ -19,22 +19,29 @@ export async function GET(
     const from = searchParams.get('from');
     const to = searchParams.get('to');
 
+    console.log('Backend received from:', from, 'to:', to);
+
     // Get all grades for the student
     const grades = await prisma.grade.findMany({
       where: {
         courseId,
         studentId,
         ...(from && to
-          ? {
-              date: {
-                gte: new Date(from),
-                lte: new Date(to),
-              },
-            }
+          ? { date: { gte: new Date(from), lte: new Date(to) } }
+          : from
+          ? { date: { gte: new Date(from) } }
+          : to
+          ? { date: { lte: new Date(to) } }
           : {}),
       },
       orderBy: { date: 'desc' },
     });
+
+    console.log(
+      'Grades query date range:',
+      from ? new Date(`${from}T00:00:00.000Z`) : 'no from',
+      to ? new Date(`${to}T23:59:59.999Z`) : 'no to',
+    );
 
     // Get the latest grade configuration
     const gradeConfig = await prisma.gradeConfiguration.findFirst({
@@ -72,16 +79,21 @@ export async function GET(
         student: { id: studentId },
         quiz: { courseId },
         ...(from && to
-          ? {
-              createdAt: {
-                gte: new Date(from),
-                lte: new Date(to),
-              },
-            }
+          ? { createdAt: { gte: new Date(from), lte: new Date(to) } }
+          : from
+          ? { createdAt: { gte: new Date(from) } }
+          : to
+          ? { createdAt: { lte: new Date(to) } }
           : {}),
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    console.log(
+      'Quiz scores query date range:',
+      from ? new Date(`${from}T00:00:00.000Z`) : 'no from',
+      to ? new Date(`${to}T23:59:59.999Z`) : 'no to',
+    );
 
     // Calculate quiz score average
     const quizScore =
@@ -115,6 +127,8 @@ export async function GET(
         recitationGrades: recitationGrades.length,
         quizGrades: quizScores.length,
       },
+      rawGrades: grades,
+      rawQuizScores: quizScores,
     });
   } catch (error) {
     console.error('Error fetching student grades:', error);

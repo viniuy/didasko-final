@@ -156,9 +156,10 @@ export function GradingTable({
   const [totalStudents, setTotalStudents] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
-  const [previousScores, setPreviousScores] = useState<
-    Record<string, any> | null
-  >(null);
+  const [previousScores, setPreviousScores] = useState<Record<
+    string,
+    any
+  > | null>(null);
   const [showExportWarning, setShowExportWarning] = useState(false);
   const [showResetConfirmation, setShowResetConfirmation] = useState(false);
 
@@ -594,8 +595,8 @@ export function GradingTable({
       return 'Rubric name can only contain letters, numbers, and spaces';
     }
     // Check for duplicate names
-    const isDuplicate = newReport.rubricDetails.some((r, i) => 
-      i !== index && r.name.toLowerCase() === name.toLowerCase()
+    const isDuplicate = newReport.rubricDetails.some(
+      (r, i) => i !== index && r.name.toLowerCase() === name.toLowerCase(),
     );
     if (isDuplicate) {
       return 'Rubric name must be unique';
@@ -965,12 +966,15 @@ export function GradingTable({
         ...studentScore.scores.map((score) =>
           score ? score.toString() : '---',
         ),
-        ...(isRecitationCriteria 
+        ...(isRecitationCriteria
           ? [`${studentScore.recitationScore?.toFixed(0) || '---'}%`]
-          : [`${studentScore.reportingScore?.toFixed(0) || '---'}%`]
-        ),
-        studentScore.scores.some((score) => score === 0) || studentScore.total === 0 ? '---' : `${studentScore.total.toFixed(0)}%`,
-        studentScore.scores.some((score) => score === 0) || studentScore.total === 0
+          : [`${studentScore.reportingScore?.toFixed(0) || '---'}%`]),
+        studentScore.scores.some((score) => score === 0) ||
+        studentScore.total === 0
+          ? '---'
+          : `${studentScore.total.toFixed(0)}%`,
+        studentScore.scores.some((score) => score === 0) ||
+        studentScore.total === 0
           ? '---'
           : studentScore.total >= Number(activeReport.passingScore)
           ? 'PASSED'
@@ -1350,82 +1354,67 @@ export function GradingTable({
             </div>
           </td>
           {rubricDetails.map((rubric, rubricIdx) => {
-            // If this is not the last rubric (should be merged)
-            if (rubricIdx !== rubricDetails.length - 1) {
+            // If this is one of the first two rubrics (should be grouped)
+            if (rubricIdx < 2) {
               // Only render for the first student row
               if (idx === 0) {
-                // Find how many rubrics to merge (all except last)
-                const mergeCount = rubricDetails.length - 1;
-                // Only render the merged cell for the first rubric
-                if (rubricIdx === 0) {
-                  // Get the value from the first student
-                  const groupValue =
-                    students.length > 0 &&
-                    scores[students[0].id]?.scores[rubricIdx] !== undefined
-                      ? scores[students[0].id].scores[rubricIdx]
-                      : '';
-                  let cellBg = '';
-                  if (groupValue) {
-                    if (groupValue <= 3) {
-                      cellBg = 'bg-red-50';
-                    } else {
-                      cellBg = 'bg-green-50';
-                    }
+                // Get the value from the first student
+                const groupValue =
+                  students.length > 0 &&
+                  scores[students[0].id]?.scores[rubricIdx] !== undefined
+                    ? scores[students[0].id].scores[rubricIdx]
+                    : '';
+                let cellBg = '';
+                if (groupValue) {
+                  if (groupValue <= 3) {
+                    cellBg = 'bg-red-50';
+                  } else {
+                    cellBg = 'bg-green-50';
                   }
-                  return (
-                    <td
-                      key={'group-rubric-merged'}
-                      rowSpan={paginatedStudents.length}
-                      colSpan={mergeCount}
-                      className={`text-center px-4 py-2 align-middle w-[${
-                        120 * mergeCount
-                      }px] ${cellBg}`}
-                    >
-                      <div className='flex flex-col items-center gap-2'>
-                        <select
-                          className='w-full border rounded px-2 py-1'
-                          value={groupValue}
-                          onChange={(e) => {
-                            const value = Number(e.target.value);
-                            setScores((prev) => {
-                              const updated = { ...prev };
-                              students.forEach((student) => {
-                                const studentScores =
-                                  updated[student.id]?.scores ||
-                                  new Array(rubricDetails.length).fill(0);
-                                // Set all merged rubric scores
-                                rubricDetails.forEach((r, i) => {
-                                  if (i !== rubricDetails.length - 1) {
-                                    studentScores[i] = value;
-                                  }
-                                });
-                                updated[student.id] = {
-                                  ...updated[student.id],
-                                  scores: studentScores,
-                                  total: calculateTotal(studentScores),
-                                };
-                              });
-                              return updated;
-                            });
-                          }}
-                        >
-                          <option value=''>Select grade</option>
-                          {Array.from(
-                            { length: Number(activeReport?.scoringRange) || 5 },
-                            (_, i) => (
-                              <option key={i + 1} value={i + 1}>
-                                {i + 1}
-                              </option>
-                            ),
-                          )}
-                        </select>
-                      </div>
-                    </td>
-                  );
-                } else {
-                  // Don't render for other group rubric columns
-                  return null;
                 }
+                return (
+                  <td
+                    key={`group-rubric-${rubricIdx}`}
+                    rowSpan={paginatedStudents.length}
+                    className={`text-center px-4 py-2 align-middle w-[120px] ${cellBg}`}
+                  >
+                    <div className='flex flex-col items-center gap-2'>
+                      <select
+                        className='w-full border rounded px-2 py-1'
+                        value={groupValue}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          setScores((prev) => {
+                            const updated = { ...prev };
+                            students.forEach((student) => {
+                              const studentScores =
+                                updated[student.id]?.scores ||
+                                new Array(rubricDetails.length).fill(0);
+                              // Set the group rubric score for all students
+                              studentScores[rubricIdx] = value;
+                              updated[student.id] = {
+                                ...updated[student.id],
+                                scores: studentScores,
+                                total: calculateTotal(studentScores),
+                              };
+                            });
+                            return updated;
+                          });
+                        }}
+                      >
+                        <option value=''>Select grade</option>
+                        {Array.from(
+                          { length: Number(activeReport?.scoringRange) || 5 },
+                          (_, i) => (
+                            <option key={i + 1} value={i + 1}>
+                              {i + 1}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </div>
+                  </td>
+                );
               } else {
                 // Don't render for other student rows
                 return null;
@@ -1469,7 +1458,10 @@ export function GradingTable({
             }
           })}
           <td className='text-center px-4 py-2 align-middle font-bold w-[100px]'>
-            {studentScore.scores.some((score) => score === 0) || studentScore.total === 0 ? '---' : `${studentScore.total.toFixed(0)}%`}
+            {studentScore.scores.some((score) => score === 0) ||
+            studentScore.total === 0
+              ? '---'
+              : `${studentScore.total.toFixed(0)}%`}
           </td>
           <td className='text-center px-4 py-2 align-middle w-[100px]'>
             {studentScore.scores.some((score) => score === 0) ? (
@@ -2051,14 +2043,20 @@ export function GradingTable({
                       <Button
                         onClick={handleCreateReport}
                         disabled={
-                          !newReport.name || 
-                          !newReport.rubrics || 
-                          newReport.rubricDetails.reduce((sum, r) => sum + r.weight, 0) !== 100 ||
-                          newReport.rubricDetails.some(r => !r.name.trim()) ||
-                          newReport.rubricDetails.some((r, i) => 
-                            newReport.rubricDetails.some((other, j) => 
-                              i !== j && r.name.toLowerCase() === other.name.toLowerCase()
-                            )
+                          !newReport.name ||
+                          !newReport.rubrics ||
+                          newReport.rubricDetails.reduce(
+                            (sum, r) => sum + r.weight,
+                            0,
+                          ) !== 100 ||
+                          newReport.rubricDetails.some((r) => !r.name.trim()) ||
+                          newReport.rubricDetails.some((r, i) =>
+                            newReport.rubricDetails.some(
+                              (other, j) =>
+                                i !== j &&
+                                r.name.toLowerCase() ===
+                                  other.name.toLowerCase(),
+                            ),
                           )
                         }
                         className='bg-[#124A69] hover:bg-[#0d3a56]'
@@ -2286,12 +2284,12 @@ export function GradingTable({
               if (previousScores) {
                 // Undo action
                 if (!previousScores) return;
-                
+
                 // Create a new object to ensure state update triggers re-render
                 const restoredScores = { ...previousScores };
-                
+
                 // Update states in sequence to ensure proper re-render
-                setScores({});  // Clear current scores first
+                setScores({}); // Clear current scores first
                 setTimeout(() => {
                   setScores(restoredScores);
                   setPreviousScores(null);
@@ -2309,11 +2307,16 @@ export function GradingTable({
                 setShowResetConfirmation(true);
               }
             }}
-            className={previousScores 
-              ? 'h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] border-none' 
-              : 'h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
+            className={
+              previousScores
+                ? 'h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] border-none'
+                : 'h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
             }
-            disabled={isLoading || isLoadingStudents || (!previousScores && hasChanges())}
+            disabled={
+              isLoading ||
+              isLoadingStudents ||
+              (!previousScores && hasChanges())
+            }
           >
             {previousScores ? 'Undo Reset' : 'Reset Grades'}
           </Button>
@@ -2322,7 +2325,9 @@ export function GradingTable({
             variant='outline'
             onClick={handleExport}
             className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
-            disabled={isLoading || isLoadingStudents || !activeReport || hasChanges()}
+            disabled={
+              isLoading || isLoadingStudents || !activeReport || hasChanges()
+            }
           >
             Export to Excel
           </Button>
@@ -2418,7 +2423,10 @@ export function GradingTable({
         />
 
         {/* Reset Confirmation Modal */}
-        <Dialog open={showResetConfirmation} onOpenChange={setShowResetConfirmation}>
+        <Dialog
+          open={showResetConfirmation}
+          onOpenChange={setShowResetConfirmation}
+        >
           <DialogContent className='sm:max-w-[425px]'>
             <DialogHeader>
               <DialogTitle className='text-[#124A69] text-xl font-bold'>

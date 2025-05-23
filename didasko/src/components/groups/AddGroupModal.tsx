@@ -162,6 +162,11 @@ export function AddGroupModal({
       });
 
       if (!response.ok) {
+        const data = await response.json();
+        if (data.error === 'A group with this name already exists') {
+          setGroupNameError('A group with this name already exists');
+          return;
+        }
         toast.error('Failed to create group');
         throw new Error('Failed to create group');
       }

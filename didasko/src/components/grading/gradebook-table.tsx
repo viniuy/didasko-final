@@ -81,6 +81,8 @@ interface ExistingConfig extends GradeConfiguration {
   id: string;
   createdAt: string;
   isCurrent?: boolean;
+  startDate?: string;
+  endDate?: string;
 }
 
 const SearchBar = ({
@@ -159,7 +161,9 @@ const StudentTable = ({ students }: { students: Student[] }) => (
               {s.quizScore?.toFixed(2) ?? '--'}
             </td>
             <td className='px-2 py-1 border'>
-              {typeof s.totalScore === 'number' ? `${s.totalScore.toFixed(2)}%` : '--'}
+              {typeof s.totalScore === 'number'
+                ? `${s.totalScore.toFixed(2)}%`
+                : '--'}
             </td>
             <td
               className={cn(
@@ -257,6 +261,7 @@ const GradeConfigDialog = ({
   onConfigSaved,
   setGradebookConfigDate,
   setHasSelectedConfig,
+  onDateRangeChange,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -264,6 +269,7 @@ const GradeConfigDialog = ({
   onConfigSaved: () => void;
   setGradebookConfigDate: (date: string | null) => void;
   setHasSelectedConfig: (value: boolean) => void;
+  onDateRangeChange: (range: DateRange | undefined) => void;
 }) => {
   const { data: session } = useSession();
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -282,6 +288,29 @@ const GradeConfigDialog = ({
   const [nameTouched, setNameTouched] = useState(false);
   const [dateTouched, setDateTouched] = useState(false);
   const [selectedConfig, setSelectedConfig] = useState<string | null>(null);
+
+  const resetForm = () => {
+    setConfig({
+      name: '',
+      reportingWeight: 50,
+      recitationWeight: 30,
+      quizWeight: 20,
+      passingThreshold: 75,
+    });
+    setDateRange(undefined);
+    setDateWarning('');
+    setNameWarning('');
+    setNameTouched(false);
+    setDateTouched(false);
+    setSelectedConfig(null);
+  };
+
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen) {
+      resetForm();
+    }
+    onOpenChange(newOpen);
+  };
 
   useEffect(() => {
     const fetchExistingConfigs = async () => {
@@ -333,6 +362,20 @@ const GradeConfigDialog = ({
     if (field === 'name') {
       const sanitizedValue = value.replace(/[^a-zA-Z0-9\s\-_.,]/g, '');
       const truncatedValue = sanitizedValue.slice(0, 50);
+
+      // Check if name already exists
+      const isDuplicate = existingConfigs.some(
+        (config) => config.name.toLowerCase() === truncatedValue.toLowerCase(),
+      );
+
+      if (isDuplicate) {
+        setNameWarning('A configuration with this name already exists');
+      } else if (!truncatedValue.trim()) {
+        setNameWarning('Gradebook name is required');
+      } else {
+        setNameWarning('');
+      }
+
       setConfig((prev) => ({ ...prev, [field]: truncatedValue }));
     } else {
       const numValue = parseFloat(value);
@@ -350,7 +393,17 @@ const GradeConfigDialog = ({
 
     if (!config.name.trim()) {
       console.log('Gradebook name is empty');
-      toast.error('Please enter a name for the gradebook');
+      setNameWarning('Gradebook name is required');
+      return;
+    }
+
+    // Check for duplicate name before saving
+    const isDuplicate = existingConfigs.some(
+      (config) => config.name.toLowerCase() === config.name.toLowerCase(),
+    );
+
+    if (isDuplicate) {
+      setNameWarning('A configuration with this name already exists');
       return;
     }
 
@@ -361,15 +414,6 @@ const GradeConfigDialog = ({
       toast.error('Total weights must equal 100%');
       return;
     }
-
-    console.log('Saving grade configuration:', {
-      name: config.name,
-      reportingWeight: config.reportingWeight,
-      recitationWeight: config.recitationWeight,
-      quizWeight: config.quizWeight,
-      passingThreshold: config.passingThreshold,
-      dateRange,
-    });
 
     setIsLoading(true);
     try {
@@ -390,13 +434,13 @@ const GradeConfigDialog = ({
           },
         },
       );
-      console.log('Grade configuration saved successfully:', response.data);
       toast.success('Grade configuration saved successfully');
       onConfigSaved();
+      onDateRangeChange(dateRange);
       onOpenChange(false);
+      resetForm();
     } catch (error) {
       console.error('Error saving grade configuration:', error);
-      toast.error('Failed to save grade configuration');
     } finally {
       setIsLoading(false);
     }
@@ -406,17 +450,16 @@ const GradeConfigDialog = ({
     setIsLoading(true);
     try {
       // Find the selected configuration
-      const selectedConfig = existingConfigs.find(c => c.id === configId);
-      
+      const selectedConfig = existingConfigs.find((c) => c.id === configId);
+
       if (!selectedConfig) {
         throw new Error('Configuration not found');
       }
       // Update the gradebook config date
       setGradebookConfigDate(selectedConfig.createdAt);
-      
+
       // Set the selected configuration
       setSelectedConfig(configId);
-      
     } catch (error) {
       toast.error('Failed to select configuration');
     } finally {
@@ -428,20 +471,28 @@ const GradeConfigDialog = ({
     setIsLoading(true);
     try {
       // Find the selected configuration
-      const config = existingConfigs.find(c => c.id === selectedConfig);
-      
+      const config = existingConfigs.find((c) => c.id === selectedConfig);
+
       if (!config) {
         throw new Error('Configuration not found');
       }
 
       // Set this configuration as current
       const response = await axiosInstance.put(
-        `/courses/${courseId}/grade-components/${config.id}/current`
+        `/courses/${courseId}/grade-components/${config.id}/current`,
       );
 
       console.log('Successfully applied configuration:', config);
       toast.success('Using existing grade configuration');
       setHasSelectedConfig(true);
+      if (config.startDate && config.endDate) {
+        onDateRangeChange({
+          from: new Date(config.startDate),
+          to: new Date(config.endDate),
+        });
+      } else {
+        onDateRangeChange(undefined);
+      }
       onConfigSaved();
       onOpenChange(false);
     } catch (error) {
@@ -453,7 +504,7 @@ const GradeConfigDialog = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className='max-w-[550px] min-x-[550px] bg-white rounded-lg shadow-md p-0'>
         <DialogTitle className='text-lg font-bold text-[#124A69] leading-tight px-3 pt-6'>
           Configure Gradebook
@@ -508,11 +559,26 @@ const GradeConfigDialog = ({
                                     {config.name}
                                   </span>
                                   <span className='text-xs text-gray-500'>
-                                    {format(new Date(config.createdAt), 'PPP')}{' '}
-                                    | Reporting: {config.reportingWeight}% |
-                                    Recitation: {config.recitationWeight}% |
-                                    Quiz: {config.quizWeight}% | Passing:{' '}
-                                    {config.passingThreshold}%
+                                    Created:{' '}
+                                    {format(
+                                      new Date(config.createdAt),
+                                      'MMM d, yyyy',
+                                    )}
+                                    {config.startDate && config.endDate && (
+                                      <>
+                                        {' '}
+                                        | Date Range:{' '}
+                                        {format(
+                                          new Date(config.startDate),
+                                          'MMM d, yyyy',
+                                        )}{' '}
+                                        -{' '}
+                                        {format(
+                                          new Date(config.endDate),
+                                          'MMM d, yyyy',
+                                        )}
+                                      </>
+                                    )}
                                   </span>
                                 </div>
                               </SelectItem>
@@ -532,7 +598,9 @@ const GradeConfigDialog = ({
                             disabled={isLoading || !selectedConfig}
                             className='bg-[#124A69] hover:bg-[#0D3A56] text-white'
                           >
-                            {isLoading ? 'Applying...' : 'Apply Selected Configuration'}
+                            {isLoading
+                              ? 'Applying...'
+                              : 'Apply Selected Configuration'}
                           </Button>
                         </div>
                       </div>
@@ -553,30 +621,46 @@ const GradeConfigDialog = ({
                         htmlFor='name'
                         className='text-sm font-medium text-gray-700'
                       >
-                        Gradebook Name
+                        Gradebook Name *
                       </Label>
                       <div className='relative'>
                         <Input
                           id='name'
                           type='text'
-                          value={config.name}
+                          value={
+                            selectedConfig
+                              ? existingConfigs.find(
+                                  (c) => c.id === selectedConfig,
+                                )?.name || ''
+                              : config.name
+                          }
                           onChange={(e) => {
-                            setNameTouched(true);
-                            handleConfigChange('name', e.target.value);
+                            if (!selectedConfig) {
+                              setNameTouched(true);
+                              handleConfigChange('name', e.target.value);
+                            }
                           }}
                           placeholder='Enter gradebook name'
-                          className=' border-gray-300 focus:border-[#124A69] focus:ring-[#124A69]'
+                          className='border-gray-300 focus:border-[#124A69] focus:ring-[#124A69]'
                           maxLength={20}
+                          disabled={!!selectedConfig}
                         />
-                        <div className='flex justify-end mt-1  text-xs text-gray-500'>
-                          {config.name.length}/20
+                        <div className='flex justify-between items-center mt-1 text-xs'>
+                          {nameWarning && nameTouched && !selectedConfig ? (
+                            <span className='text-red-500'>{nameWarning}</span>
+                          ) : (
+                            <span></span>
+                          )}
+                          <span className='text-gray-500'>
+                            {selectedConfig
+                              ? existingConfigs.find(
+                                  (c) => c.id === selectedConfig,
+                                )?.name.length || 0
+                              : config.name.length}
+                            /20
+                          </span>
                         </div>
                       </div>
-                      {nameWarning && nameTouched && (
-                        <div className='text-xs text-red-500 mt-1'>
-                          {nameWarning}
-                        </div>
-                      )}
                     </div>
                     <div className='grid grid-cols-2 gap-4 -mt-2'>
                       <div className='space-y-2'>
@@ -697,36 +781,51 @@ const GradeConfigDialog = ({
                         >
                           Passing Threshold (%)
                         </Label>
-                        <div className='flex items-center gap-2'>
-                          <Slider
-                            value={[config.passingThreshold]}
-                            onValueChange={(value: number[]) =>
-                              handleConfigChange(
-                                'passingThreshold',
-                                value[0].toString(),
-                              )
-                            }
-                            max={100}
-                            step={1}
-                            className='w-[100px]'
-                          />
-                          <Input
-                            id='threshold'
-                            type='number'
-                            value={config.passingThreshold}
-                            onChange={(e) =>
-                              handleConfigChange(
-                                'passingThreshold',
-                                e.target.value,
-                              )
-                            }
-                            min='0'
-                            max='100'
-                            className='w-[60px] bg-gray-50 border-gray-200 h-9'
-                          />
-                          <span className='text-sm text-gray-500'>%</span>
-                        </div>
+                        <Select
+                          value={config.passingThreshold.toString()}
+                          onValueChange={(value) =>
+                            handleConfigChange('passingThreshold', value)
+                          }
+                        >
+                          <SelectTrigger className='w-[100px] bg-gray-50 border-gray-200 h-9'>
+                            <SelectValue placeholder='Select passing threshold' />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value='60'>60%</SelectItem>
+                            <SelectItem value='65'>65%</SelectItem>
+                            <SelectItem value='70'>70%</SelectItem>
+                            <SelectItem value='75'>75%</SelectItem>
+                            <SelectItem value='80'>80%</SelectItem>
+                            <SelectItem value='85'>85%</SelectItem>
+                            <SelectItem value='90'>90%</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
+                    </div>
+                    <div className='flex justify-between items-center px-2 py-2 bg-gray-50 rounded-lg mt-2'>
+                      <span className='text-sm font-medium text-gray-700'>
+                        Total Weight:
+                      </span>
+                      <span
+                        className={cn(
+                          'text-sm font-medium',
+                          Math.abs(
+                            config.reportingWeight +
+                              config.recitationWeight +
+                              config.quizWeight -
+                              100,
+                          ) <= 0.01
+                            ? 'text-green-600'
+                            : 'text-red-600',
+                        )}
+                      >
+                        {(
+                          config.reportingWeight +
+                          config.recitationWeight +
+                          config.quizWeight
+                        ).toFixed(1)}
+                        %
+                      </span>
                     </div>
                     <div className='space-y-2'>
                       <Label className='text-sm font-medium text-gray-700'>
@@ -775,7 +874,18 @@ const GradeConfigDialog = ({
                           isLoading ||
                           !!dateWarning ||
                           !!nameWarning ||
-                          (!nameTouched && !dateTouched)
+                          !nameTouched ||
+                          !dateTouched ||
+                          Math.abs(
+                            config.reportingWeight +
+                              config.recitationWeight +
+                              config.quizWeight -
+                              100,
+                          ) > 0.01 ||
+                          config.reportingWeight === 0 ||
+                          config.recitationWeight === 0 ||
+                          config.quizWeight === 0 ||
+                          !config.name.trim()
                         }
                         className='bg-[#124A69] hover:bg-[#0D3A56] text-white'
                       >
@@ -798,14 +908,12 @@ export function GradebookTable({
   courseCode,
   courseSection,
 }: GradebookTableProps) {
-  const { data: session } = useSession();
   const [students, setStudents] = useState<Student[]>([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [showConfigDialog, setShowConfigDialog] = useState(true);
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
-  const [selectedDate, setSelectedDate] = useState<Date>();
   const [showExportPreview, setShowExportPreview] = useState(false);
   const [exportData, setExportData] = useState<{
     header: string[][];
@@ -816,9 +924,14 @@ export function GradebookTable({
     failed: true,
     noGrades: true,
   });
-  const [gradebookConfigDate, setGradebookConfigDate] = useState<string | null>(null);
+  const [gradebookConfigDate, setGradebookConfigDate] = useState<string | null>(
+    null,
+  );
   const [hasSelectedConfig, setHasSelectedConfig] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [currentConfig, setCurrentConfig] = useState<ExistingConfig | null>(
+    null,
+  );
   const itemsPerPage = 10;
 
   const fetchData = useCallback(async () => {
@@ -827,13 +940,14 @@ export function GradebookTable({
       return;
     }
     console.log('Starting to fetch data for courseId:', courseId);
+    console.log('Current date range:', dateRange);
     setLoadingStudents(true);
 
     try {
       // Fetch all students in the course with their scores
       console.log('Fetching students from:', `/courses/${courseId}/students`);
       const studentsRes = await axiosInstance.get(
-        `/courses/${courseId}/students`
+        `/courses/${courseId}/students`,
       );
       console.log('Students API Response:', studentsRes.data);
 
@@ -861,43 +975,69 @@ export function GradebookTable({
           try {
             console.log('Fetching grades for student:', student.id);
             const params: any = {};
-            
+
             if (dateRange?.from) {
-              params.startDate = dateRange.from.toISOString().split('T')[0]; // YYYY-MM-DD format
+              const fromDate = new Date(dateRange.from);
+              fromDate.setDate(fromDate.getDate() + 1);
+              params.from = fromDate.toISOString().split('T')[0]; // YYYY-MM-DD format
             }
             if (dateRange?.to) {
-              params.endDate = dateRange.to.toISOString().split('T')[0]; // YYYY-MM-DD format
+              const toDate = new Date(dateRange.to);
+              toDate.setDate(toDate.getDate() + 1);
+              params.to = toDate.toISOString().split('T')[0]; // YYYY-MM-DD format
             }
 
-            console.log('Fetching grades with params:', params);
-            const gradesRes = await axiosInstance.get(
-              `/courses/${courseId}/students/${student.id}/grades`,
-              { params }
-            );
-            console.log(
-              'Grades response for student',
-              student.id,
-              ':',
-              gradesRes.data,
-            );
+            console.log('Grade fetch params:', params);
 
-            if (gradesRes.data) {
-              return {
-                ...student,
-                reportingScore: gradesRes.data.reportingScore,
-                recitationScore: gradesRes.data.recitationScore,
-                quizScore: gradesRes.data.quizScore,
-                totalScore: gradesRes.data.totalScore,
-                remarks: gradesRes.data.remarks,
-              };
+            // Only fetch grades if we have a date range
+            if (dateRange?.from && dateRange?.to) {
+              console.log('Fetching grades with params:', params);
+              const gradesRes = await axiosInstance.get(
+                `/courses/${courseId}/students/${student.id}/grades`,
+                { params },
+              );
+              console.log(
+                'Grades response for student',
+                student.id,
+                ':',
+                gradesRes.data,
+              );
+
+              if (gradesRes.data) {
+                return {
+                  ...student,
+                  reportingScore: gradesRes.data.reportingScore,
+                  recitationScore: gradesRes.data.recitationScore,
+                  quizScore: gradesRes.data.quizScore,
+                  totalScore: gradesRes.data.totalScore,
+                  remarks: gradesRes.data.remarks,
+                };
+              }
+            } else {
+              console.log('No date range set, skipping grade fetch');
             }
-            return student;
+            // If no date range or no grades found, return student without grades
+            return {
+              ...student,
+              reportingScore: undefined,
+              recitationScore: undefined,
+              quizScore: undefined,
+              totalScore: undefined,
+              remarks: undefined,
+            };
           } catch (error) {
             console.error(
               `Error fetching grades for student ${student.id}:`,
               error,
             );
-            return student;
+            return {
+              ...student,
+              reportingScore: undefined,
+              recitationScore: undefined,
+              quizScore: undefined,
+              totalScore: undefined,
+              remarks: undefined,
+            };
           }
         }),
       );
@@ -942,54 +1082,69 @@ export function GradebookTable({
   useEffect(() => {
     const fetchGradebookConfig = async () => {
       try {
+        console.log('Fetching gradebook config for course:', courseId);
         const response = await axiosInstance.get(
-          `/courses/${courseId}/grade-components`
+          `/courses/${courseId}/grade-components`,
         );
-        
+
         // Find the current configuration
         const currentConfig = response.data.configurations?.find(
-          (config: ExistingConfig) => config.isCurrent
+          (config: ExistingConfig) => config.isCurrent,
         );
 
         if (currentConfig) {
           setGradebookConfigDate(currentConfig.createdAt);
+          setCurrentConfig(currentConfig);
+          if (currentConfig.startDate && currentConfig.endDate) {
+            setDateRange({
+              from: new Date(currentConfig.startDate),
+              to: new Date(currentConfig.endDate),
+            });
+          } else {
+            setDateRange(undefined);
+          }
           setHasSelectedConfig(true);
-          fetchData();
         } else {
           setHasSelectedConfig(false);
           setShowConfigDialog(true);
+          setDateRange(undefined);
         }
       } catch (error) {
-        console.error('Error checking current configuration:', error);
         setHasSelectedConfig(false);
         setShowConfigDialog(true);
+        setDateRange(undefined);
       }
     };
 
     if (courseId) {
       fetchGradebookConfig();
     }
-  }, [courseId, fetchData]);
+  }, [courseId]);
 
-  // Modify the date picker button to show selected date range
-  const formatDateRange = (range: DateRange | undefined) => {
-    if (!range?.from) return 'Pick a date range';
-    if (!range.to) return format(range.from, 'MMM d, yyyy');
-    return `${format(range.from, 'MMM d, yyyy')} - ${format(range.to, 'MMM d, yyyy')}`;
-  };
+  useEffect(() => {
+    if (courseId && dateRange?.from && dateRange?.to && hasSelectedConfig) {
+      fetchData();
+    } else if (hasSelectedConfig) {
+      setStudents([]); // Clear students if date range is not selected after config
+    } else {
+      setStudents([]); // Clear students if no config is selected
+    }
+  }, [courseId, dateRange, hasSelectedConfig, fetchData]);
 
   // Modify handleConfigSaved to handle both new and existing configurations
   const handleConfigSaved = () => {
     setHasSelectedConfig(true);
-    fetchData();
   };
 
-  // Initial data fetch
-  useEffect(() => {
-    if (!showConfigDialog && hasSelectedConfig) {
-      fetchData();
-    }
-  }, [fetchData, showConfigDialog, hasSelectedConfig]);
+  // Update the date range button to show the configuration's date range
+  const formatDateRange = (range: DateRange | undefined) => {
+    if (!range?.from) return 'Pick a date range';
+    if (!range.to) return format(range.from, 'MMM d, yyyy');
+    return `${format(range.from, 'MMM d, yyyy')} - ${format(
+      range.to,
+      'MMM d, yyyy',
+    )}`;
+  };
 
   const filteredStudents = students.filter((student) => {
     const name = `${student.lastName || ''} ${student.firstName || ''} ${
@@ -1048,7 +1203,9 @@ export function GradebookTable({
         student.reportingScore?.toFixed(2) || '--',
         student.recitationScore?.toFixed(2) || '--',
         student.quizScore?.toFixed(2) || '--',
-        typeof student.totalScore === 'number' ? `${student.totalScore.toFixed(2)}%` : '--',
+        typeof student.totalScore === 'number'
+          ? `${student.totalScore.toFixed(2)}%`
+          : '--',
         student.remarks || 'No Grade',
       ]);
 
@@ -1142,7 +1299,7 @@ export function GradebookTable({
                         checked={gradeFilter.failed}
                         onCheckedChange={() => handleFilterChange('failed')}
                         disabled={!hasSelectedConfig}
-                      />    
+                      />
                       <label
                         htmlFor='failed'
                         className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
@@ -1178,8 +1335,13 @@ export function GradebookTable({
               )}
               disabled={!hasSelectedConfig}
             >
-              <CalendarIcon className='mr-2 h-4 w-4' />
-              {formatDateRange(dateRange)}
+              <CalendarIcon className='mr-2 h-4 w-3' />
+              {dateRange?.from && dateRange?.to
+                ? `${format(
+                    new Date(dateRange.from),
+                    'MMM d, yyyy',
+                  )} - ${format(new Date(dateRange.to), 'MMM d, yyyy')}`
+                : 'Select Date Range'}
             </Button>
             <Popover>
               <PopoverTrigger asChild>
@@ -1192,10 +1354,15 @@ export function GradebookTable({
               </PopoverTrigger>
               <PopoverContent className='w-[200px] p-4'>
                 <div className='space-y-2'>
-                  <h4 className='font-medium text-sm text-[#124A69]'>Gradebook Configuration</h4>
+                  <h4 className='font-medium text-sm text-[#124A69]'>
+                    Gradebook Configuration
+                  </h4>
                   <p className='text-sm text-gray-500'>
-                    {gradebookConfigDate 
-                      ? `Last configured: ${format(new Date(gradebookConfigDate), 'MMM d, yyyy')}`
+                    {gradebookConfigDate
+                      ? `Last configured: ${format(
+                          new Date(gradebookConfigDate),
+                          'MMM d, yyyy',
+                        )}`
                       : 'No configuration found'}
                   </p>
                 </div>
@@ -1207,7 +1374,9 @@ export function GradebookTable({
         {/* Table Content */}
         {!hasSelectedConfig ? (
           <div className='p-8 text-center text-gray-500'>
-            <p>Please configure the gradebook first to view students and grades.</p>
+            <p>
+              Please configure the gradebook first to view students and grades.
+            </p>
           </div>
         ) : loadingStudents ? (
           <div className='p-4 text-center text-gray-500'>
@@ -1290,7 +1459,9 @@ export function GradebookTable({
                         {student.quizScore?.toFixed(2) ?? '--'}
                       </td>
                       <td className='text-center px-4 py-2 align-middle w-[120px] border-b font-medium'>
-                        {typeof student.totalScore === 'number' ? `${student.totalScore.toFixed(2)}%` : '--'}
+                        {typeof student.totalScore === 'number'
+                          ? `${student.totalScore.toFixed(2)}%`
+                          : '--'}
                       </td>
                       <td className='text-center px-4 py-2 align-middle w-[120px] border-b'>
                         <span
@@ -1391,6 +1562,7 @@ export function GradebookTable({
           onConfigSaved={handleConfigSaved}
           setGradebookConfigDate={setGradebookConfigDate}
           setHasSelectedConfig={setHasSelectedConfig}
+          onDateRangeChange={setDateRange}
         />
 
         {/* Export Preview Dialog */}
@@ -1409,7 +1581,8 @@ export function GradebookTable({
           disabled={students.length === 0 || loadingStudents}
           className={cn(
             'h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50',
-            (students.length === 0 || loadingStudents) && 'opacity-50 cursor-not-allowed'
+            (students.length === 0 || loadingStudents) &&
+              'opacity-50 cursor-not-allowed',
           )}
         >
           Export to Excel
@@ -1459,10 +1632,13 @@ export function GradebookTable({
               toast.error('Failed to save grades');
             }
           }}
-          disabled={students.length === 0 || loadingStudents || !hasUnsavedChanges}
+          disabled={
+            students.length === 0 || loadingStudents || !hasUnsavedChanges
+          }
           className={cn(
             'ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center',
-            (students.length === 0 || loadingStudents || !hasUnsavedChanges) && 'opacity-50 cursor-not-allowed'
+            (students.length === 0 || loadingStudents || !hasUnsavedChanges) &&
+              'opacity-50 cursor-not-allowed',
           )}
         >
           Save Grades

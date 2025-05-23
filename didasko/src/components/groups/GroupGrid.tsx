@@ -73,7 +73,7 @@ export function GroupGrid({
             courseSection={courseSection}
           />
         ))}
-        {groups.length < 10 && (
+        {currentPage === totalPages && (
           <div className='flex flex-col gap-2 ml-9 mt-3'>
             <AddGroupModal
               courseCode={courseCode}

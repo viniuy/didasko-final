@@ -89,6 +89,8 @@ export async function POST(
         recitationWeight: components.recitationWeight,
         quizWeight: components.quizWeight,
         passingThreshold: components.passingThreshold,
+        startDate: new Date(components.startDate),
+        endDate: new Date(components.endDate),
       },
     });
 
