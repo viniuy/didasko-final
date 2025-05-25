@@ -34,7 +34,7 @@ const GradingTableRow: React.FC<GradingTableRowProps> = ({
   handleScoreChange,
   idx,
 }) => (
-  <tr className={idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F6FA]'}>
+  <tr>
     <td className='sticky left-0 z-10 bg-white px-4 py-2 align-middle font-medium w-[300px]'>
       <div className='flex items-center gap-3'>
         {student.image ? (

@@ -73,10 +73,10 @@ export function EditUserSheet({ user, onClose, onSave }: EditUserSheetProps) {
       const spaceParts = restOfName.split(' ').filter((part) => part !== '');
 
       firstName = spaceParts[0] || '';
-      // All parts after the first in the restOfName are middle initials
+      // Take only the first letter of the middle initial
       middleInitial =
         spaceParts.length > 1
-          ? spaceParts.slice(1).join(' ').replace(/\./g, '')
+          ? spaceParts.slice(1).join(' ').replace(/\./g, '').charAt(0)
           : '';
     } else {
       // Assume Format: "FirstName MiddleInitial(s) LastName" or "FirstName LastName"
@@ -85,7 +85,7 @@ export function EditUserSheet({ user, onClose, onSave }: EditUserSheetProps) {
       if (spaceParts.length === 3) {
         // Format: "FirstName MiddleInitial LastName"
         firstName = spaceParts[0];
-        middleInitial = spaceParts[1].replace(/\./g, ''); // Middle initial is the second part
+        middleInitial = spaceParts[1].replace(/\./g, '').charAt(0); // Take only first letter
         lastName = spaceParts[2]; // Last name is the third part
       } else if (spaceParts.length === 2) {
         // Format: "FirstName LastName"

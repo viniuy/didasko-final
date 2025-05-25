@@ -127,8 +127,11 @@ async function main() {
   const courses = await Promise.all(
     mockSchedules.map(async (schedule) => {
       const courseCode = schedule.course.replace(/\s+/g, '').toUpperCase();
+      const academicYear = '2024-2025';
+      const slug =
+        `${courseCode}-${academicYear}-${schedule.section}`.toLowerCase();
       return prisma.course.upsert({
-        where: { code: courseCode },
+        where: { slug },
         update: {
           semester: schedule.semester,
         },
@@ -139,6 +142,9 @@ async function main() {
           semester: schedule.semester,
           section: schedule.section,
           facultyId: userId,
+          slug,
+          academicYear,
+          status: 'ACTIVE',
         },
       });
     }),

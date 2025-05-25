@@ -48,7 +48,7 @@ import { ExportQuiz } from '@/components/grading/export-quiz';
 import { prepareExportData } from '@/lib/prepare-export-data';
 
 interface QuizTableProps {
-  courseId: string;
+  course_slug: string;
   courseCode: string;
   courseSection: string;
   selectedDate: Date | undefined;
@@ -80,7 +80,7 @@ interface AttendanceStats {
 }
 
 export function QuizTable({
-  courseId,
+  course_slug,
   courseCode,
   courseSection,
   selectedDate,
@@ -135,21 +135,23 @@ export function QuizTable({
     header: string[][];
     studentRows: string[][];
   } | null>(null);
-  const [originalScores, setOriginalScores] = useState<Record<string, QuizScore>>({});
+  const [originalScores, setOriginalScores] = useState<
+    Record<string, QuizScore>
+  >({});
   const [saving, setSaving] = useState(false);
   const [showResetConfirmation, setShowResetConfirmation] = useState(false);
   const [showUndoButton, setShowUndoButton] = useState(false);
 
   // Fetch quizzes for the course when modal opens
   useEffect(() => {
-    if (showSetupModal && courseId) {
+    if (showSetupModal && course_slug) {
       setLoadingMessage('Loading quizzes...');
-      axios.get(`/api/courses/${courseId}/quizzes`).then((res) => {
+      axios.get(`/api/courses/${course_slug}/quizzes`).then((res) => {
         setQuizzes(res.data || []);
         setLoadingMessage('');
       });
     }
-  }, [showSetupModal, courseId]);
+  }, [showSetupModal, course_slug]);
 
   // Only fetch students and attendance stats if a quiz is selected/created
   useEffect(() => {
@@ -161,7 +163,7 @@ export function QuizTable({
 
         // Fetch students
         const studentsResponse = await axios.get(
-          `/api/courses/${courseId}/students`,
+          `/api/courses/${course_slug}/students`,
         );
         if (Array.isArray(studentsResponse.data.students)) {
           setStudents(studentsResponse.data.students);
@@ -174,7 +176,7 @@ export function QuizTable({
         if (dateRange?.from && dateRange?.to) {
           setLoadingMessage('Loading attendance stats...');
           const statsResponse = await axios.get(
-            `/api/courses/${courseId}/attendance/range?startDate=${dateRange.from.toISOString()}&endDate=${dateRange.to.toISOString()}`,
+            `/api/courses/${course_slug}/attendance/range?startDate=${dateRange.from.toISOString()}&endDate=${dateRange.to.toISOString()}`,
           );
           setAttendanceStats(statsResponse.data);
         }
@@ -189,7 +191,7 @@ export function QuizTable({
     };
 
     fetchData();
-  }, [selectedQuiz, courseId, dateRange]);
+  }, [selectedQuiz, course_slug, dateRange]);
 
   // Calculate total grade
   const calculateTotalGrade = (
@@ -197,10 +199,10 @@ export function QuizTable({
     plusPoints: number,
     maxScore: number,
   ): number => {
-    // Convert quiz score to percentage based on max score
-    const scorePercentage = (quizScore / maxScore) * 100;
-    // Add plus points and cap at 100%
-    return Math.min(100, scorePercentage + plusPoints);
+    // Add plus points to the raw score first, then calculate percentage
+    const totalRawScore = quizScore + plusPoints;
+    // Convert total raw score to percentage based on max score
+    return Math.min(100, (totalRawScore / maxScore) * 100);
   };
 
   // Handle score change
@@ -223,8 +225,10 @@ export function QuizTable({
 
       // Recalculate total grade if quiz score or plus points change
       if (field === 'quizScore' || field === 'plusPoints') {
-        const quizScore = field === 'quizScore' ? value : currentScore.quizScore;
-        const plusPoints = field === 'plusPoints' ? value : currentScore.plusPoints;
+        const quizScore =
+          field === 'quizScore' ? value : currentScore.quizScore;
+        const plusPoints =
+          field === 'plusPoints' ? value : currentScore.plusPoints;
         updatedScore.totalGrade = calculateTotalGrade(
           quizScore,
           plusPoints,
@@ -358,17 +362,20 @@ export function QuizTable({
       .catch((error) => {
         console.error('Error fetching quiz scores:', error);
         // Initialize with empty scores for new quizzes
-        const emptyScores = students.reduce((acc: Record<string, QuizScore>, student) => {
-          acc[student.id] = {
-            studentId: student.id,
-            quizScore: 0,
-            attendance: 'PRESENT',
-            plusPoints: 0,
-            totalGrade: 0,
-            remarks: '',
-          };
-          return acc;
-        }, {});
+        const emptyScores = students.reduce(
+          (acc: Record<string, QuizScore>, student) => {
+            acc[student.id] = {
+              studentId: student.id,
+              quizScore: 0,
+              attendance: 'PRESENT',
+              plusPoints: 0,
+              totalGrade: 0,
+              remarks: '',
+            };
+            return acc;
+          },
+          {},
+        );
         setScores(emptyScores);
         setOriginalScores(emptyScores);
         toast.error('Failed to load quiz scores', {
@@ -449,15 +456,15 @@ export function QuizTable({
   const hasChanges = () => {
     // For new quizzes, if there are any scores with non-zero values, consider it changed
     if (Object.keys(originalScores).length === 0) {
-      return Object.values(scores).some(score => 
-        score.quizScore > 0 || score.plusPoints > 0
+      return Object.values(scores).some(
+        (score) => score.quizScore > 0 || score.plusPoints > 0,
       );
     }
-    
+
     return Object.entries(scores).some(([studentId, currentScore]) => {
       const originalScore = originalScores[studentId];
       if (!originalScore) return true;
-      
+
       return (
         currentScore.quizScore !== originalScore.quizScore ||
         currentScore.attendance !== originalScore.attendance ||
@@ -465,6 +472,38 @@ export function QuizTable({
         currentScore.totalGrade !== originalScore.totalGrade
       );
     });
+  };
+
+  // Update the quiz creation API call
+  const handleCreateQuiz = () => {
+    const newQuiz = {
+      name: quizName,
+      quizDate: quizDate,
+      maxScore: maxScore,
+      passingRate: modalPassingRate,
+      attendanceRangeStart: modalDateRange?.from,
+      attendanceRangeEnd: modalDateRange?.to,
+    };
+
+    axios
+      .post(`/api/courses/${course_slug}/quizzes`, newQuiz)
+      .then((response) => {
+        setSelectedQuiz(response.data);
+        setShowSetupModal(false);
+        setPassingRate(modalPassingRate);
+        setDateRange(modalDateRange);
+      })
+      .catch((error) => {
+        console.error('Error creating quiz:', error);
+        toast.error('Failed to create quiz', {
+          duration: 3000,
+          style: {
+            background: '#fff',
+            color: '#dc2626',
+            border: '1px solid #e5e7eb',
+          },
+        });
+      });
   };
 
   return (
@@ -634,9 +673,10 @@ export function QuizTable({
                   )}
                 </th>
                 <th className='border-b font-bold text-[#124A69] text-center px-4 py-3 w-[120px]'>
-                  Plus Points                     <div className='text-xs font-normal text-gray-500'>
-                      (Max: 20)
-                    </div>
+                  Plus Points{' '}
+                  <div className='text-xs font-normal text-gray-500'>
+                    (Max: 20)
+                  </div>
                 </th>
                 <th className='border-b font-bold text-[#124A69] text-center px-4 py-3 w-[120px]'>
                   Total Grade
@@ -871,11 +911,14 @@ export function QuizTable({
                             max='20'
                             value={studentScore.plusPoints || ''}
                             onChange={(e) => {
-                              const value = e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value));
+                              const value =
+                                e.target.value === ''
+                                  ? 0
+                                  : Math.max(0, parseInt(e.target.value));
                               handleScoreChange(
                                 student.id,
                                 'plusPoints',
-                                Math.min(value, 20)
+                                Math.min(value, 20),
                               );
                             }}
                             onKeyPress={(e) => {
@@ -1085,7 +1128,7 @@ export function QuizTable({
                 <div className='grid gap-4'>
                   <div className='grid gap-2'>
                     <label className='text-sm font-medium text-gray-700'>
-                      Quiz Name*
+                      Quiz Name <span className='text-red-500'>*</span>
                     </label>
                     <Input
                       value={quizName}
@@ -1100,7 +1143,8 @@ export function QuizTable({
                   </div>
                   <div className='grid gap-2'>
                     <label className='text-sm font-medium text-gray-700'>
-                      Attendance Date Range
+                      Attendance Date Range{' '}
+                      <span className='text-red-500'>*</span>
                     </label>
                     <Popover modal={true}>
                       <PopoverTrigger asChild>
@@ -1138,7 +1182,7 @@ export function QuizTable({
                   <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
                     <div className='grid gap-2'>
                       <label className='text-sm font-medium text-gray-700'>
-                        Max Score
+                        Max Score <span className='text-red-500'>*</span>
                       </label>
                       <Input
                         type='number'
@@ -1150,7 +1194,7 @@ export function QuizTable({
                     </div>
                     <div className='grid gap-2'>
                       <label className='text-sm font-medium text-gray-700'>
-                        Passing Rate
+                        Passing Rate <span className='text-red-500'>*</span>
                       </label>
                       <Select
                         value={modalPassingRate.toString()}
@@ -1188,37 +1232,7 @@ export function QuizTable({
                         !modalDateRange?.from ||
                         !modalDateRange?.to
                       }
-                      onClick={() => {
-                        const newQuiz = {
-                          name: quizName,
-                          maxScore,
-                          passingRate: modalPassingRate,
-                          attendanceRangeStart:
-                            modalDateRange?.from?.toISOString(),
-                          attendanceRangeEnd: modalDateRange?.to?.toISOString(),
-                          quizDate: selectedDate?.toISOString(),
-                        };
-
-                        axios
-                          .post(`/api/courses/${courseId}/quizzes`, newQuiz)
-                          .then((response) => {
-                            setSelectedQuiz(response.data);
-                            setShowSetupModal(false);
-                            setPassingRate(modalPassingRate);
-                            setDateRange(modalDateRange);
-                          })
-                          .catch((error) => {
-                            console.error('Error creating quiz:', error);
-                            toast.error('Failed to create quiz', {
-                              duration: 3000,
-                              style: {
-                                background: '#fff',
-                                color: '#dc2626',
-                                border: '1px solid #e5e7eb',
-                              },
-                            });
-                          });
-                      }}
+                      onClick={handleCreateQuiz}
                     >
                       Save & Continue
                     </Button>
@@ -1238,22 +1252,22 @@ export function QuizTable({
             if (previousScores) {
               // Undo action
               if (!previousScores) return;
-              
+
               // Create a new object to ensure state update triggers re-render
               const restoredScores = { ...previousScores };
-              
+
               // Recalculate total grades for all students
               Object.keys(restoredScores).forEach((studentId) => {
                 const score = restoredScores[studentId];
                 score.totalGrade = calculateTotalGrade(
                   score.quizScore,
                   score.plusPoints,
-                  selectedQuiz?.maxScore || 100
+                  selectedQuiz?.maxScore || 100,
                 );
               });
 
               // Update states in sequence to ensure proper re-render
-              setScores({});  // Clear current scores first
+              setScores({}); // Clear current scores first
               setTimeout(() => {
                 setScores(restoredScores);
                 setPreviousScores(null);
@@ -1271,9 +1285,10 @@ export function QuizTable({
               setShowResetConfirmation(true);
             }
           }}
-          className={previousScores 
-            ? 'h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] border-none' 
-            : 'h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
+          className={
+            previousScores
+              ? 'h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] border-none'
+              : 'h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
           }
           disabled={loading || (!previousScores && hasChanges())}
         >
@@ -1362,14 +1377,18 @@ export function QuizTable({
       />
 
       {/* Reset Confirmation Modal */}
-      <Dialog open={showResetConfirmation} onOpenChange={setShowResetConfirmation}>
+      <Dialog
+        open={showResetConfirmation}
+        onOpenChange={setShowResetConfirmation}
+      >
         <DialogContent className='sm:max-w-[425px]'>
           <DialogHeader>
             <DialogTitle className='text-[#124A69] text-xl font-bold'>
               Reset Grades
             </DialogTitle>
             <DialogDescription className='text-gray-500'>
-              Are you sure you want to reset all grades? This action cannot be undone.
+              Are you sure you want to reset all grades? This action cannot be
+              undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className='gap-2 sm:gap-2 mt-4'>

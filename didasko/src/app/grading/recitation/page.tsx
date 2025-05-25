@@ -5,18 +5,6 @@ import { AppSidebar } from '@/components/shared/layout/app-sidebar';
 import Header from '@/components/shared/layout/header';
 import Rightsidebar from '@/components/shared/layout/right-sidebar';
 import SemesterCourses from '@/components/shared/semester-courses';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 
 export default function RecitationGrading() {
   const [open, setOpen] = React.useState(false);

@@ -87,7 +87,13 @@ interface UserSheetProps {
   ) => Promise<void>;
 }
 
-export function UserSheet({ mode, user, onSuccess, onClose, onSave }: UserSheetProps) {
+export function UserSheet({
+  mode,
+  user,
+  onSuccess,
+  onClose,
+  onSave,
+}: UserSheetProps) {
   const [open, setOpen] = useState(mode === 'edit');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [nameError, setNameError] = useState<{
@@ -155,12 +161,60 @@ export function UserSheet({ mode, user, onSuccess, onClose, onSave }: UserSheetP
     return true;
   };
 
-  // Split the full name into parts for edit mode
-  const nameParts = user?.name.split(' ') || [];
+  // Add parseName function
+  const parseName = (fullName: string) => {
+    // Remove any extra spaces
+    const trimmedName = fullName.trim().replace(/\s+/g, ' ');
+
+    let firstName = '';
+    let middleInitial = '';
+    let lastName = '';
+
+    const commaIndex = trimmedName.indexOf(',');
+
+    if (commaIndex > -1) {
+      // Format: "LastName, FirstName MiddleInitial(s)"
+      lastName = trimmedName.substring(0, commaIndex).trim();
+      const restOfName = trimmedName.substring(commaIndex + 1).trim();
+      const spaceParts = restOfName.split(' ').filter((part) => part !== '');
+
+      firstName = spaceParts[0] || '';
+      middleInitial =
+        spaceParts.length > 1
+          ? spaceParts.slice(1).join(' ').replace(/\./g, '').charAt(0)
+          : '';
+    } else {
+      // Format: "FirstName MiddleInitial(s) LastName"
+      const spaceParts = trimmedName.split(' ').filter((part) => part !== '');
+
+      if (spaceParts.length === 3) {
+        firstName = spaceParts[0];
+        middleInitial = spaceParts[1].replace(/\./g, '').charAt(0);
+        lastName = spaceParts[2];
+      } else if (spaceParts.length === 2) {
+        firstName = spaceParts[0];
+        lastName = spaceParts[1];
+        middleInitial = '';
+      } else if (spaceParts.length === 1) {
+        firstName = spaceParts[0];
+        lastName = '';
+        middleInitial = '';
+      }
+    }
+
+    return { firstName, middleInitial, lastName };
+  };
+
+  // Use parseName instead of simple split
+  const { firstName, middleInitial, lastName } =
+    mode === 'edit' && user
+      ? parseName(user.name)
+      : { firstName: '', middleInitial: '', lastName: '' };
+
   const initialFormData = {
-    firstName: mode === 'edit' ? nameParts[0] || '' : '',
-    lastName: mode === 'edit' ? (nameParts.length > 1 ? nameParts[1] : '') : '',
-    middleInitial: mode === 'edit' ? (nameParts.length > 2 ? nameParts[2].replace('.', '') : '') : '',
+    firstName: mode === 'edit' ? firstName : '',
+    lastName: mode === 'edit' ? lastName : '',
+    middleInitial: mode === 'edit' ? middleInitial : '',
     email: mode === 'edit' ? user?.email || '' : '',
     department: mode === 'edit' ? user?.department || '' : '',
     workType: mode === 'edit' ? user?.workType || 'FULL_TIME' : 'FULL_TIME',
@@ -178,7 +232,9 @@ export function UserSheet({ mode, user, onSuccess, onClose, onSave }: UserSheetP
       setIsSubmitting(true);
 
       // Combine name fields into a single name string (First MiddleInitial Last)
-      const fullName = `${values.firstName}${values.middleInitial ? ` ${values.middleInitial}` : ''} ${values.lastName}`;
+      const fullName = `${values.firstName}${
+        values.middleInitial ? ` ${values.middleInitial}` : ''
+      } ${values.lastName}`;
 
       if (mode === 'add') {
         const result = await addUser({
@@ -233,15 +289,23 @@ export function UserSheet({ mode, user, onSuccess, onClose, onSave }: UserSheetP
         }
       }
     } catch (error) {
-      console.error(`Error ${mode === 'add' ? 'adding' : 'updating'} user:`, error);
-      toast.error(`An error occurred while ${mode === 'add' ? 'adding' : 'updating'} the user`, {
-        duration: 3000,
-        style: {
-          background: '#fff',
-          color: '#dc2626',
-          border: '1px solid #e5e7eb',
+      console.error(
+        `Error ${mode === 'add' ? 'adding' : 'updating'} user:`,
+        error,
+      );
+      toast.error(
+        `An error occurred while ${
+          mode === 'add' ? 'adding' : 'updating'
+        } the user`,
+        {
+          duration: 3000,
+          style: {
+            background: '#fff',
+            color: '#dc2626',
+            border: '1px solid #e5e7eb',
+          },
         },
-      });
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -261,10 +325,17 @@ export function UserSheet({ mode, user, onSuccess, onClose, onSave }: UserSheetP
     form.reset(initialFormData);
     setNameError({});
     setOpen(false);
+    document.body.style.pointerEvents = ''; // Reset pointer events
     if (onClose) {
       onClose();
     }
   };
+
+  useEffect(() => {
+    return () => {
+      document.body.style.pointerEvents = ''; // Cleanup on unmount
+    };
+  }, []);
 
   return (
     <Sheet
@@ -344,7 +415,9 @@ export function UserSheet({ mode, user, onSuccess, onClose, onSave }: UserSheetP
                       {form.watch('firstName').length}/30
                     </div>
                     {nameError.firstName && (
-                      <p className='text-sm text-red-500'>{nameError.firstName}</p>
+                      <p className='text-sm text-red-500'>
+                        {nameError.firstName}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -379,7 +452,9 @@ export function UserSheet({ mode, user, onSuccess, onClose, onSave }: UserSheetP
                   id='email'
                   type='email'
                   {...form.register('email')}
-                  className={form.formState.errors.email ? 'border-red-500' : ''}
+                  className={
+                    form.formState.errors.email ? 'border-red-500' : ''
+                  }
                 />
                 {form.formState.errors.email && (
                   <p className='text-sm text-red-500'>
@@ -392,7 +467,9 @@ export function UserSheet({ mode, user, onSuccess, onClose, onSave }: UserSheetP
                 <div className='space-y-1 flex-1'>
                   <Label htmlFor='department'>Department *</Label>
                   <Select
-                    onValueChange={(value) => form.setValue('department', value)}
+                    onValueChange={(value) =>
+                      form.setValue('department', value)
+                    }
                     defaultValue={form.getValues('department')}
                   >
                     <SelectTrigger>
@@ -425,9 +502,15 @@ export function UserSheet({ mode, user, onSuccess, onClose, onSave }: UserSheetP
                       <SelectValue placeholder='Select work type' />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={WorkType.FULL_TIME}>Full Time</SelectItem>
-                      <SelectItem value={WorkType.PART_TIME}>Part Time</SelectItem>
-                      <SelectItem value={WorkType.CONTRACT}>Contract</SelectItem>
+                      <SelectItem value={WorkType.FULL_TIME}>
+                        Full Time
+                      </SelectItem>
+                      <SelectItem value={WorkType.PART_TIME}>
+                        Part Time
+                      </SelectItem>
+                      <SelectItem value={WorkType.CONTRACT}>
+                        Contract
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                   {form.formState.errors.workType && (
@@ -442,7 +525,9 @@ export function UserSheet({ mode, user, onSuccess, onClose, onSave }: UserSheetP
                 <div className='space-y-1 flex-1'>
                   <Label htmlFor='role'>Role *</Label>
                   <Select
-                    onValueChange={(value) => form.setValue('role', value as Role)}
+                    onValueChange={(value) =>
+                      form.setValue('role', value as Role)
+                    }
                     defaultValue={form.getValues('role')}
                   >
                     <SelectTrigger>
@@ -475,7 +560,9 @@ export function UserSheet({ mode, user, onSuccess, onClose, onSave }: UserSheetP
                       <SelectValue placeholder='Select permission' />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={Permission.GRANTED}>Granted</SelectItem>
+                      <SelectItem value={Permission.GRANTED}>
+                        Granted
+                      </SelectItem>
                       <SelectItem value={Permission.DENIED}>Denied</SelectItem>
                     </SelectContent>
                   </Select>
@@ -517,4 +604,4 @@ export function UserSheet({ mode, user, onSuccess, onClose, onSave }: UserSheetP
       </SheetContent>
     </Sheet>
   );
-} 
+}

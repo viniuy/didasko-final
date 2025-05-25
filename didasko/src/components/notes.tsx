@@ -514,14 +514,14 @@ export default function Notes() {
                 placeholder='Title'
                 value={editData.title}
                 onChange={(e) => {
-                  if (e.target.value.length <= 15) {
+                  if (e.target.value.length <= 20) {
                     setEditData({ ...editData, title: e.target.value });
                   }
                 }}
                 className='rounded-lg'
               />
               <p className='text-xs flex justify-end mt-2 text-gray-500'>
-                {editData.title.length}/15
+                {editData.title.length}/20
               </p>
             </div>
 
@@ -609,14 +609,14 @@ export default function Notes() {
                 placeholder='Title'
                 value={newNote.title}
                 onChange={(e) => {
-                  if (e.target.value.length <= 15) {
+                  if (e.target.value.length <= 20) {
                     setNewNote({ ...newNote, title: e.target.value });
                   }
                 }}
                 className='rounded-lg'
               />
               <p className='text-xs flex justify-end mt-2 text-gray-500'>
-                {newNote.title.length}/15
+                {newNote.title.length}/20
               </p>
             </div>
 

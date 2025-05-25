@@ -51,42 +51,6 @@ export function FilterSheet({
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      <div className='flex items-center gap-2'>
-        <SheetTrigger asChild>
-          <Button
-            variant='outline'
-            className='border border-gray-300 rounded-full px-3 h-8 flex items-center gap-1.5 hover:bg-gray-50 shadow-sm text-sm'
-          >
-            Filter by Status
-            <span className='text-base font-normal'>+</span>
-          </Button>
-        </SheetTrigger>
-
-        {/* Active Filters */}
-        {filters.status.length > 0 && (
-          <div className='flex items-center gap-1.5'>
-            {filters.status.map((status) => (
-              <div
-                key={status}
-                className='inline-flex items-center gap-1 px-3 h-8 bg-[#124A69] text-white rounded-full text-xs font-medium'
-              >
-                {getStatusDisplay(status)}
-                <button
-                  onClick={() => {
-                    onFiltersChange({
-                      ...filters,
-                      status: filters.status.filter((s) => s !== status),
-                    });
-                  }}
-                  className='hover:bg-[#0D3A54] rounded-full'
-                >
-                  <X size={12} className='text-white' />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
       <SheetContent side='right' className='w-[400px] sm:w-[540px] p-0'>
         <div className='p-6 border-b'>
           <SheetHeader>

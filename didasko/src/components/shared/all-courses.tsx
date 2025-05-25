@@ -25,6 +25,7 @@ interface Course {
   description: string | null;
   semester: string;
   section: string;
+  slug: string;
   attendanceStats?: {
     totalAbsents: number;
     lastAttendanceDate: string | null;
@@ -45,7 +46,7 @@ const CourseCard = ({
   const href =
     type === 'attendance'
       ? `/attendance/class?courseId=${course.id}`
-      : `/grading/reporting/${course.code}/${course.section}`;
+      : `/grading/reporting/${course.slug}`;
 
   return (
     <Card className='bg-[#124A69] text-white rounded-lg shadow-md w-full max-w-[440px] flex flex-col justify-between h-45'>

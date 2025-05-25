@@ -70,7 +70,7 @@ export function convertTo24Hour(time: string): string {
 
 export function validateTime(fromTime: string, toTime: string): boolean {
   if (!fromTime || !toTime) return true;
-  return fromTime <= toTime;
+  return fromTime < toTime;
 }
 
 // Check for date and time conflicts between events

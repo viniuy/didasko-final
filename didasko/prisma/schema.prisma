@@ -24,6 +24,12 @@ enum Permission {
   DENIED
 }
 
+enum CourseStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
 enum AttendanceStatus {
   PRESENT
   LATE
@@ -262,10 +268,13 @@ model GradeScore {
 
 model Course {
   id           String               @id @default(uuid())
-  code         String               @unique
+  code         String                  
   title        String
   room         String
   semester     String
+  slug         String               @unique
+  academicYear String
+  status       CourseStatus @default(ACTIVE) 
   section      String
   facultyId    String
   faculty      User                 @relation("FacultyCourses", fields: [facultyId], references: [id])

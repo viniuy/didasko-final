@@ -43,6 +43,7 @@ import {
   PaginationNext,
 } from '@/components/ui/pagination';
 import { ExportReporting } from './export-reporting';
+import { useRouter, usePathname } from 'next/navigation';
 
 interface Student {
   id: string;
@@ -58,6 +59,7 @@ interface GradingTableProps {
   courseId: string;
   courseCode: string;
   courseSection: string;
+  courseSlug: string;
   selectedDate: Date | undefined;
   onDateSelect?: (date: Date | undefined) => void;
   groupId?: string;
@@ -100,6 +102,7 @@ export function GradingTable({
   courseId,
   courseCode,
   courseSection,
+  courseSlug,
   selectedDate,
   onDateSelect,
   groupId,
@@ -162,6 +165,24 @@ export function GradingTable({
   > | null>(null);
   const [showExportWarning, setShowExportWarning] = useState(false);
   const [showResetConfirmation, setShowResetConfirmation] = useState(false);
+  const [showUnsavedChangesDialog, setShowUnsavedChangesDialog] =
+    useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(
+    null,
+  );
+  const router = useRouter();
+  const pathname = usePathname();
+  const [isEditingCriteria, setIsEditingCriteria] = useState(false);
+  const [editingReport, setEditingReport] = useState<GradingReport | null>(
+    null,
+  );
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showRubricChangeWarning, setShowRubricChangeWarning] = useState(false);
+  const [pendingRubricCount, setPendingRubricCount] = useState<string | null>(
+    null,
+  );
+  const [showSaveEditConfirmation, setShowSaveEditConfirmation] =
+    useState(false);
 
   // Function to handle dialog close
   const handleDialogClose = () => {
@@ -185,11 +206,11 @@ export function GradingTable({
         let studentsRes;
         if (isGroupView && groupId) {
           studentsRes = await axiosInstance.get(
-            `/courses/${courseId}/groups/${groupId}/students`,
+            `/courses/${courseSlug}/groups/${groupId}/students`,
           );
         } else {
           studentsRes = await axiosInstance.get(
-            `/courses/${courseId}/students`,
+            `/courses/${courseSlug}/students`,
           );
         }
         const studentsData: Student[] = studentsRes.data.students || [];
@@ -198,7 +219,7 @@ export function GradingTable({
         // 2. Fetch grades for the selected date/criteria
         const formattedDate = selectedDate.toISOString().split('T')[0];
         const gradesRes = await axiosInstance.get(
-          `/courses/${courseId}/grades`,
+          `/courses/${courseSlug}/grades`,
           {
             params: {
               date: formattedDate,
@@ -262,11 +283,11 @@ export function GradingTable({
       setShowCriteriaDialog(true); // Always show dialog to let user select
       try {
         // Fetch all criteria for this course
-        let endpoint = `/courses/${courseId}/criteria`;
+        let endpoint = `/courses/${courseSlug}/criteria`;
         if (isGroupView && groupId) {
-          endpoint = `/courses/${courseId}/groups/${groupId}/criteria`;
+          endpoint = `/courses/${courseSlug}/groups/${groupId}/criteria`;
         } else if (isRecitationCriteria) {
-          endpoint = `/courses/${courseId}/recitation-criteria`;
+          endpoint = `/courses/${courseSlug}/recitation-criteria`;
         }
         const response = await axiosInstance.get(endpoint);
         const allReports = response.data;
@@ -310,9 +331,9 @@ export function GradingTable({
       }
 
       try {
-        let endpoint = `/courses/${courseId}/criteria`;
+        let endpoint = `/courses/${courseSlug}/criteria`;
         if (isRecitationCriteria) {
-          endpoint = `/courses/${courseId}/recitation-criteria`;
+          endpoint = `/courses/${courseSlug}/recitation-criteria`;
         }
         const response = await axiosInstance.get(endpoint);
         setSavedReports(response.data);
@@ -414,7 +435,7 @@ export function GradingTable({
 
         // Save all grades in a single request
         const response = await axiosInstance.post(
-          `/courses/${courseId}/grades`,
+          `/courses/${courseSlug}/grades`,
           {
             date: formattedDate,
             criteriaId: activeReport.id,
@@ -490,7 +511,7 @@ export function GradingTable({
         const formattedDate = selectedDate?.toISOString().split('T')[0];
 
         // Delete grades for this student
-        await axiosInstance.delete(`/courses/${courseId}/grades`, {
+        await axiosInstance.delete(`/courses/${courseSlug}/grades`, {
           data: {
             date: formattedDate,
             criteriaId: activeReport?.id,
@@ -525,6 +546,7 @@ export function GradingTable({
       const newScores = [...studentScores];
       newScores[rubricIndex] = value;
 
+      // Calculate total including all rubrics
       const total = calculateTotal(newScores);
 
       const updatedScore: GradingScore = {
@@ -559,9 +581,19 @@ export function GradingTable({
     });
 
     // Sum up all weighted scores and round to 2 decimal places
-    return Number(
+    const total = Number(
       weightedScores.reduce((sum, score) => sum + score, 0).toFixed(2),
     );
+
+    // Log the calculation for debugging
+    console.log('Score calculation:', {
+      scores: validScores,
+      weights: rubricDetails.map((r) => r.percentage),
+      weightedScores,
+      total,
+    });
+
+    return total;
   };
 
   const validateReportName = (name: string) => {
@@ -574,9 +606,11 @@ export function GradingTable({
     if (!/^[a-zA-Z0-9\s]+$/.test(name)) {
       return 'Report name can only contain letters, numbers, and spaces';
     }
-    // Check for duplicate names
+    // Check for duplicate names, excluding the current report if editing
     const isDuplicate = savedReports.some(
-      (report) => report.name.toLowerCase() === name.toLowerCase(),
+      (report) =>
+        report.name.toLowerCase() === name.toLowerCase() &&
+        (!editingReport || report.id !== editingReport.id),
     );
     if (isDuplicate) {
       return 'A report with this name already exists';
@@ -617,9 +651,18 @@ export function GradingTable({
     }
   };
 
-  const handleRubricCountChange = (value: string) => {
+  const handleRubricCountChange = async (value: string) => {
     const count = parseInt(value);
+    const currentRubrics = [...newReport.rubricDetails];
 
+    // If we're editing and there are unsaved changes, show warning
+    if (editingReport && hasChanges()) {
+      setPendingRubricCount(value);
+      setShowRubricChangeWarning(true);
+      return;
+    }
+
+    // Rest of the existing handleRubricCountChange function...
     if (isGroupView) {
       // For group view: Reserve 20% for Participation
       const baseWeight = Math.floor(80 / (count - 1));
@@ -635,14 +678,14 @@ export function GradingTable({
         ...Array(count - 1)
           .fill(null)
           .map((_, index) => ({
-            name: '',
+            name: currentRubrics[index]?.name || '',
             weight: weights[index],
-            isGroupRubric: true, // Mark as group rubric
+            isGroupRubric: true,
           })),
         {
           name: 'Participation',
-          weight: 20, // Default 20% for Participation
-          isGroupRubric: false, // Mark as individual rubric
+          weight: 20,
+          isGroupRubric: false,
         },
       ];
 
@@ -652,7 +695,7 @@ export function GradingTable({
         rubricDetails: newRubricDetails,
       }));
     } else {
-      // For individual view: Keep original behavior
+      // For individual view: Keep original behavior but preserve names
       const baseWeight = Math.floor(100 / count);
       const remainder = 100 % count;
 
@@ -665,9 +708,9 @@ export function GradingTable({
       const newRubricDetails = Array(count)
         .fill(null)
         .map((_, index) => ({
-          name: '',
+          name: currentRubrics[index]?.name || '',
           weight: weights[index],
-          isGroupRubric: false, // All rubrics are individual in non-group view
+          isGroupRubric: false,
         }));
 
       setNewReport((prev) => ({
@@ -678,6 +721,15 @@ export function GradingTable({
     }
   };
 
+  // Add useEffect to handle initial rubric setup for group view
+  useEffect(() => {
+    if (isGroupView && showCriteriaDialog) {
+      // Initialize with 2 rubrics by default for group view
+      handleRubricCountChange('2');
+    }
+  }, [isGroupView, showCriteriaDialog]);
+
+  // Update the updateRubricDetail function to handle Participation rubric
   const updateRubricDetail = (
     index: number,
     field: 'name' | 'weight',
@@ -829,11 +881,19 @@ export function GradingTable({
         percentage: r.weight,
         isGroupRubric: isGroupView ? idx !== arr.length - 1 : false,
       }));
-      let endpoint = `/courses/${courseId}/criteria`;
+
+      // Ensure Participation rubric is properly set for group view
+      if (isGroupView) {
+        const participationRubric = rubrics[rubrics.length - 1];
+        participationRubric.name = 'Participation';
+        participationRubric.isGroupRubric = false;
+      }
+
+      let endpoint = `/courses/${courseSlug}/criteria`;
       if (isGroupView && groupId) {
-        endpoint = `/courses/${courseId}/groups/${groupId}/criteria`;
+        endpoint = `/courses/${courseSlug}/groups/${groupId}/criteria`;
       } else if (isRecitationCriteria) {
-        endpoint = `/courses/${courseId}/recitation-criteria`;
+        endpoint = `/courses/${courseSlug}/recitation-criteria`;
       }
       const dateToSend = selectedDate ? new Date(selectedDate) : undefined;
       if (dateToSend) {
@@ -898,8 +958,8 @@ export function GradingTable({
         try {
           const endpoint =
             isGroupView && groupId
-              ? `/courses/${courseId}/groups/${groupId}/criteria`
-              : `/courses/${courseId}/criteria`;
+              ? `/courses/${courseSlug}/groups/${groupId}/criteria`
+              : `/courses/${courseSlug}/criteria`;
 
           const response = await axiosInstance.get(endpoint);
           setSavedReports(response.data);
@@ -943,7 +1003,6 @@ export function GradingTable({
       [
         'Student Name',
         ...rubricDetails.map((r) => `${r.name} (${r.percentage}%)`),
-        ...(isRecitationCriteria ? ['Recitation Score'] : ['Reporting Score']),
         'Total Grade',
         'Remarks',
       ],
@@ -955,8 +1014,6 @@ export function GradingTable({
         studentId: student.id,
         scores: new Array(rubricDetails.length).fill(0),
         total: 0,
-        reportingScore: 0,
-        recitationScore: 0,
       };
 
       return [
@@ -966,9 +1023,6 @@ export function GradingTable({
         ...studentScore.scores.map((score) =>
           score ? score.toString() : '---',
         ),
-        ...(isRecitationCriteria
-          ? [`${studentScore.recitationScore?.toFixed(0) || '---'}%`]
-          : [`${studentScore.reportingScore?.toFixed(0) || '---'}%`]),
         studentScore.scores.some((score) => score === 0) ||
         studentScore.total === 0
           ? '---'
@@ -1331,16 +1385,20 @@ export function GradingTable({
     }
 
     return paginatedStudents.map((student, idx) => {
+      // Initialize scores for new students with all rubrics including Participation
       const studentScore = scores[student.id] || {
         studentId: student.id,
         scores: new Array(rubricDetails.length).fill(0),
         total: 0,
       };
+
+      // Ensure the scores array has the correct length
+      if (studentScore.scores.length !== rubricDetails.length) {
+        studentScore.scores = new Array(rubricDetails.length).fill(0);
+      }
+
       return (
-        <tr
-          key={student.id}
-          className={idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F6FA]'}
-        >
+        <tr key={student.id}>
           <td className='sticky left-0 z-10 bg-white px-4 py-2 align-middle w-[300px]'>
             <div className='flex items-center gap-3'>
               <img
@@ -1485,6 +1543,191 @@ export function GradingTable({
         </tr>
       );
     });
+  };
+
+  // Add useEffect for handling unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasChanges()) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasChanges]);
+
+  // Add useEffect for handling navigation
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const link = target.closest('a');
+      if (link && hasChanges()) {
+        e.preventDefault();
+        setPendingNavigation(link.href);
+        setShowUnsavedChangesDialog(true);
+      }
+    };
+
+    // Handle browser back/forward navigation
+    const handlePopState = () => {
+      if (hasChanges()) {
+        setPendingNavigation(pathname);
+        setShowUnsavedChangesDialog(true);
+        // Push the current state back to prevent navigation
+        window.history.pushState(null, '', pathname);
+      }
+    };
+
+    document.addEventListener('click', handleClick);
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      document.removeEventListener('click', handleClick);
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [hasChanges, pathname]);
+
+  // Add function to handle navigation
+  const handleNavigation = () => {
+    setShowUnsavedChangesDialog(false);
+    if (pendingNavigation) {
+      if (pendingNavigation.startsWith('/')) {
+        // Handle internal navigation
+        router.push(pendingNavigation);
+      } else {
+        // Handle external navigation
+        window.location.href = pendingNavigation;
+      }
+      setPendingNavigation(null);
+    }
+  };
+
+  // Add function to handle edit button click
+  const handleEditCriteria = (report: GradingReport) => {
+    setEditingReport(report);
+    setIsEditingCriteria(true);
+    setNewReport({
+      name: report.name,
+      rubrics: report.rubrics.length.toString(),
+      scoringRange: report.scoringRange,
+      passingScore: report.passingScore,
+      rubricDetails: report.rubrics.map((r) => ({
+        name: r.name,
+        weight: r.percentage,
+        isGroupRubric: r.isGroupRubric || false,
+      })),
+    });
+  };
+
+  // Add function to handle save edit
+  const handleSaveEdit = async () => {
+    if (!editingReport) return;
+
+    // Validate report name
+    const nameError = validateReportName(newReport.name);
+    if (nameError) {
+      setValidationErrors((prev) => ({ ...prev, name: nameError }));
+      toast.error(nameError);
+      return;
+    }
+
+    // Validate all rubric names
+    const rubricErrors = newReport.rubricDetails.map((rubric, idx) => {
+      if (isGroupView && idx === newReport.rubricDetails.length - 1) {
+        return '';
+      }
+      return validateRubricName(rubric.name, idx);
+    });
+    const hasRubricErrors = rubricErrors.some((error) => error);
+    if (hasRubricErrors) {
+      setValidationErrors((prev) => ({ ...prev, rubrics: rubricErrors }));
+      toast.error('Please fix the rubric name errors');
+      return;
+    }
+
+    // Check if total weight equals 100%
+    const totalWeight = newReport.rubricDetails.reduce(
+      (sum, rubric) => sum + rubric.weight,
+      0,
+    );
+    if (totalWeight !== 100) {
+      toast.error('Total weight must equal 100%');
+      return;
+    }
+
+    // Show confirmation dialog
+    setShowSaveEditConfirmation(true);
+  };
+
+  const handleConfirmSaveEdit = async () => {
+    if (!editingReport) return; // Add null check for editingReport
+
+    const loadingToast = toast.loading('Updating report...');
+    try {
+      const rubrics = newReport.rubricDetails.map((r, idx) => ({
+        name:
+          isGroupView && idx === newReport.rubricDetails.length - 1
+            ? 'Participation'
+            : r.name,
+        percentage: r.weight,
+        isGroupRubric: isGroupView
+          ? idx !== newReport.rubricDetails.length - 1
+          : false,
+      }));
+
+      // Use the new PUT endpoint
+      const response = await axiosInstance.put(
+        `/courses/${courseSlug}/criteria/${editingReport.id}`,
+        {
+          name: newReport.name,
+          rubrics,
+          scoringRange: newReport.scoringRange,
+          passingScore: newReport.passingScore,
+          isGroupCriteria: isGroupView,
+          isRecitationCriteria: isRecitationCriteria,
+        },
+      );
+
+      const updated = response.data;
+      setSavedReports((prev) =>
+        prev.map((report) => (report.id === updated.id ? updated : report)),
+      );
+      setActiveReport(updated);
+      setRubricDetails(updated.rubrics);
+      setSelectedReport(updated.id);
+      setIsEditingCriteria(false);
+      setEditingReport(null);
+      setShowEditDialog(false);
+      setShowSaveEditConfirmation(false);
+      setNewReport({
+        name: '',
+        rubrics: '2',
+        scoringRange: '5',
+        passingScore: '75',
+        rubricDetails: [
+          { name: '', weight: 50 },
+          { name: '', weight: 50 },
+        ],
+      });
+      setValidationErrors({});
+      toast.dismiss(loadingToast);
+      toast.success('Report updated successfully');
+    } catch (error) {
+      console.error('Error updating report:', error);
+      toast.dismiss(loadingToast);
+      toast.error('Failed to update report');
+    }
+  };
+
+  const handleConfirmRubricChange = async () => {
+    if (pendingRubricCount) {
+      await handleRubricCountChange(pendingRubricCount);
+      setPendingRubricCount(null);
+    }
+    setShowRubricChangeWarning(false);
   };
 
   return (
@@ -1775,13 +2018,6 @@ export function GradingTable({
                             })}
                           </SelectContent>
                         </Select>
-                        {selectedReport && (
-                          <div className='text-sm text-gray-500 mt-2'>
-                            Created by:{' '}
-                            {savedReports.find((c) => c.id === selectedReport)
-                              ?.user?.name || 'Unknown'}
-                          </div>
-                        )}
                       </div>
                     )}
                     <DialogFooter className='gap-2 sm:gap-2'>
@@ -1798,7 +2034,7 @@ export function GradingTable({
                         className='bg-[#124A69] hover:bg-[#0d3a56]'
                       >
                         {isRecitationCriteria
-                          ? 'Apply Selected Recitation Report'
+                          ? 'Apply Selected Recitation'
                           : 'Apply Selected Report'}
                       </Button>
                     </DialogFooter>
@@ -1813,8 +2049,9 @@ export function GradingTable({
                           className='text-sm font-medium text-gray-700'
                         >
                           {isRecitationCriteria
-                            ? 'Recitation Report Name'
+                            ? 'Recitation Name'
                             : 'Report Name'}
+                          <span className='text-red-500'> *</span>
                         </label>
                         <Input
                           id='name'
@@ -1825,7 +2062,7 @@ export function GradingTable({
                               ? 'e.g., Week 1 Recitation'
                               : 'e.g., Mt. Mayon Report'
                           }
-                          maxLength={25}
+                          maxLength={20}
                           className={`bg-gray-50 border-gray-200 ${
                             validationErrors.name ? 'border-red-500' : ''
                           }`}
@@ -1837,7 +2074,7 @@ export function GradingTable({
                             </p>
                           )}
                           <p className='text-xs text-gray-500 -mt-2 ml-auto'>
-                            {newReport.name.length}/25
+                            {newReport.name.length}/20
                           </p>
                         </div>
                       </div>
@@ -1846,7 +2083,8 @@ export function GradingTable({
                           htmlFor='rubrics'
                           className='text-sm font-medium text-gray-700'
                         >
-                          Number of Rubrics
+                          Number of Rubrics{' '}
+                          <span className='text-red-500'> *</span>
                         </label>
                         <Select
                           value={newReport.rubrics}
@@ -1869,7 +2107,8 @@ export function GradingTable({
                             htmlFor='scoringRange'
                             className='text-sm font-medium text-gray-700'
                           >
-                            Scoring Range
+                            Scoring Range{' '}
+                            <span className='text-red-500'> *</span>
                           </label>
                           <Select
                             value={newReport.scoringRange}
@@ -1896,6 +2135,7 @@ export function GradingTable({
                             className='text-sm font-medium text-gray-700'
                           >
                             Passing Score (%)
+                            <span className='text-red-500'> *</span>
                           </label>
                           <Select
                             value={newReport.passingScore}
@@ -1924,7 +2164,8 @@ export function GradingTable({
 
                       <div className='grid gap-4 mt-2'>
                         <label className='text-sm font-medium text-gray-700'>
-                          Rubric Details
+                          Rubric Details{' '}
+                          <span className='text-red-500'> *</span>
                         </label>
                         <div className='space-y-4 max-h-[200px] overflow-y-auto pr-2'>
                           {newReport.rubricDetails.map((rubric, index) => (
@@ -2035,13 +2276,35 @@ export function GradingTable({
                     <DialogFooter className='gap-2 sm:gap-2'>
                       <Button
                         variant='outline'
-                        onClick={handleDialogClose}
+                        onClick={() => {
+                          if (isEditingCriteria) {
+                            setIsEditingCriteria(false);
+                            setEditingReport(null);
+                            setNewReport({
+                              name: '',
+                              rubrics: '2',
+                              scoringRange: '5',
+                              passingScore: '75',
+                              rubricDetails: [
+                                { name: '', weight: 50 },
+                                { name: '', weight: 50 },
+                              ],
+                            });
+                            setValidationErrors({});
+                          } else {
+                            handleDialogClose();
+                          }
+                        }}
                         className='border-gray-200'
                       >
                         Cancel
                       </Button>
                       <Button
-                        onClick={handleCreateReport}
+                        onClick={
+                          isEditingCriteria
+                            ? handleSaveEdit
+                            : handleCreateReport
+                        }
                         disabled={
                           !newReport.name ||
                           !newReport.rubrics ||
@@ -2061,7 +2324,9 @@ export function GradingTable({
                         }
                         className='bg-[#124A69] hover:bg-[#0d3a56]'
                       >
-                        {isRecitationCriteria
+                        {isEditingCriteria
+                          ? 'Save Changes'
+                          : isRecitationCriteria
                           ? 'Create New Recitation Report'
                           : 'Create New Report'}
                       </Button>
@@ -2119,12 +2384,7 @@ export function GradingTable({
                       </tr>
                     ) : isLoading ? (
                       Array.from({ length: 5 }).map((_, idx) => (
-                        <tr
-                          key={idx}
-                          className={
-                            idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F6FA]'
-                          }
-                        >
+                        <tr key={idx}>
                           <td className='sticky left-0 z-10 bg-white px-4 py-2 align-middle w-[300px]'>
                             <div className='flex items-center gap-3'>
                               <div className='w-8 h-8 rounded-full bg-gray-200 animate-pulse' />
@@ -2321,6 +2581,23 @@ export function GradingTable({
             {previousScores ? 'Undo Reset' : 'Reset Grades'}
           </Button>
 
+          {activeReport && (
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={() => {
+                if (activeReport) {
+                  handleEditCriteria(activeReport);
+                  setShowEditDialog(true);
+                }
+              }}
+              className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
+              disabled={isLoading || isLoadingStudents || hasChanges()}
+            >
+              Edit Report
+            </Button>
+          )}
+
           <Button
             variant='outline'
             onClick={handleExport}
@@ -2472,7 +2749,391 @@ export function GradingTable({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Unsaved Changes Dialog */}
+        <Dialog
+          open={showUnsavedChangesDialog}
+          onOpenChange={setShowUnsavedChangesDialog}
+        >
+          <DialogContent className='sm:max-w-[425px]'>
+            <DialogHeader>
+              <DialogTitle className='text-[#124A69] text-xl font-bold'>
+                Unsaved Changes
+              </DialogTitle>
+              <DialogDescription className='text-gray-500'>
+                You have unsaved changes. Are you sure you want to leave? Your
+                changes will be lost.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className='gap-2 sm:gap-2'>
+              <Button
+                variant='outline'
+                onClick={() => {
+                  setShowUnsavedChangesDialog(false);
+                  setPendingNavigation(null);
+                }}
+                className='border-gray-200'
+              >
+                Stay
+              </Button>
+              <Button
+                onClick={handleNavigation}
+                className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+              >
+                Leave
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
+
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className='sm:max-w-[450px]'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-2xl font-bold'>
+              {isRecitationCriteria
+                ? 'Edit Recitation Report'
+                : 'Edit Grading Report'}
+            </DialogTitle>
+            <DialogDescription className='text-gray-500'>
+              {isRecitationCriteria
+                ? 'Modify the recitation report details'
+                : 'Modify the grading report details'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className='space-y-4 py-4'>
+            <div className='grid gap-4'>
+              <div className='grid gap-2'>
+                <label
+                  htmlFor='name'
+                  className='text-sm font-medium text-gray-700'
+                >
+                  {isRecitationCriteria ? 'Recitation Name' : 'Report Name'}
+                  <span className='text-red-500'> *</span>
+                </label>
+                <Input
+                  id='name'
+                  value={newReport.name}
+                  onChange={handleReportNameChange}
+                  placeholder={
+                    isRecitationCriteria
+                      ? 'e.g., Week 1 Recitation'
+                      : 'e.g., Mt. Mayon Report'
+                  }
+                  maxLength={20}
+                  className={`bg-gray-50 border-gray-200 ${
+                    validationErrors.name ? 'border-red-500' : ''
+                  }`}
+                />
+                <div className='flex justify-between mt-1'>
+                  {validationErrors.name && (
+                    <p className='text-sm text-red-500'>
+                      {validationErrors.name}
+                    </p>
+                  )}
+                  <p className='text-xs text-gray-500 -mt-2 ml-auto'>
+                    {newReport.name.length}/20
+                  </p>
+                </div>
+              </div>
+              <div className='grid gap-2'>
+                <label
+                  htmlFor='rubrics'
+                  className='text-sm font-medium text-gray-700'
+                >
+                  Number of Rubrics <span className='text-red-500'> *</span>
+                </label>
+                <Select
+                  value={newReport.rubrics}
+                  onValueChange={handleRubricCountChange}
+                >
+                  <SelectTrigger className='bg-gray-50 border-gray-200'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='2'>2 Rubrics</SelectItem>
+                    <SelectItem value='3'>3 Rubrics</SelectItem>
+                    <SelectItem value='4'>4 Rubrics</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className='grid grid-cols-2 gap-4'>
+                <div className='grid gap-2'>
+                  <label
+                    htmlFor='scoringRange'
+                    className='text-sm font-medium text-gray-700'
+                  >
+                    Scoring Range <span className='text-red-500'> *</span>
+                  </label>
+                  <Select
+                    value={newReport.scoringRange}
+                    onValueChange={(value) =>
+                      setNewReport((prev) => ({
+                        ...prev,
+                        scoringRange: value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger className='bg-gray-50 border-gray-200'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='5'>1-5</SelectItem>
+                      <SelectItem value='10'>1-10</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className='grid gap-2'>
+                  <label
+                    htmlFor='passingScore'
+                    className='text-sm font-medium text-gray-700'
+                  >
+                    Passing Score (%)<span className='text-red-500'> *</span>
+                  </label>
+                  <Select
+                    value={newReport.passingScore}
+                    onValueChange={(value) =>
+                      setNewReport((prev) => ({
+                        ...prev,
+                        passingScore: value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger className='bg-gray-50 border-gray-200'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='60'>60%</SelectItem>
+                      <SelectItem value='65'>65%</SelectItem>
+                      <SelectItem value='70'>70%</SelectItem>
+                      <SelectItem value='75'>75%</SelectItem>
+                      <SelectItem value='80'>80%</SelectItem>
+                      <SelectItem value='85'>85%</SelectItem>
+                      <SelectItem value='90'>90%</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className='grid gap-4 mt-2'>
+                <label className='text-sm font-medium text-gray-700'>
+                  Rubric Details <span className='text-red-500'> *</span>
+                </label>
+                <div className='space-y-4 max-h-[200px] overflow-y-auto pr-2'>
+                  {newReport.rubricDetails.map((rubric, index) => (
+                    <div key={index} className='flex items-center gap-2'>
+                      <div className='relative w-[400px]'>
+                        <Input
+                          value={
+                            isGroupView &&
+                            index === newReport.rubricDetails.length - 1
+                              ? 'Participation'
+                              : rubric.name
+                          }
+                          onChange={(e) =>
+                            updateRubricDetail(index, 'name', e.target.value)
+                          }
+                          placeholder={`Rubric ${index + 1} name`}
+                          className={`bg-gray-50 border-gray-200 ${
+                            validationErrors.rubrics?.[index]
+                              ? 'border-red-500'
+                              : ''
+                          } ${
+                            isGroupView &&
+                            index === newReport.rubricDetails.length - 1
+                              ? 'bg-gray-100 cursor-not-allowed'
+                              : ''
+                          }`}
+                          disabled={
+                            isGroupView &&
+                            index === newReport.rubricDetails.length - 1
+                          }
+                        />
+                        {validationErrors.rubrics?.[index] && (
+                          <p className='text-sm text-red-500'>
+                            {validationErrors.rubrics[index]}
+                          </p>
+                        )}
+                        <p className='flex justify-end text-xs text-gray-500 ml-auto'>
+                          {rubric.name.length}/15
+                        </p>
+                      </div>
+                      <div className='relative w-[200px] -mt-4'>
+                        <div className='flex items-center gap-2'>
+                          <Slider
+                            value={[rubric.weight]}
+                            onValueChange={(value: number[]) =>
+                              updateRubricDetail(index, 'weight', value[0])
+                            }
+                            max={100}
+                            step={1}
+                            className='w-[100px]'
+                          />
+                          <Input
+                            value={rubric.weight}
+                            onChange={(e) =>
+                              updateRubricDetail(
+                                index,
+                                'weight',
+                                parseInt(e.target.value),
+                              )
+                            }
+                            type='number'
+                            min={0}
+                            max={100}
+                            className='w-[60px] bg-gray-50 border-gray-200'
+                          />
+                          <span className='text-sm text-gray-500'>%</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className='flex justify-end mt-2'>
+                  <p className='text-sm font-medium'>
+                    Total Weight:{' '}
+                    <span
+                      className={
+                        newReport.rubricDetails.reduce(
+                          (sum, r) => sum + r.weight,
+                          0,
+                        ) === 100
+                          ? 'text-green-600'
+                          : 'text-red-500'
+                      }
+                    >
+                      {newReport.rubricDetails.reduce(
+                        (sum, r) => sum + r.weight,
+                        0,
+                      )}
+                      %
+                    </span>
+                  </p>
+                </div>
+              </div>
+            </div>
+            <DialogFooter className='gap-2 sm:gap-2'>
+              <Button
+                variant='outline'
+                onClick={() => {
+                  setShowEditDialog(false);
+                  setEditingReport(null);
+                  setNewReport({
+                    name: '',
+                    rubrics: '2',
+                    scoringRange: '5',
+                    passingScore: '75',
+                    rubricDetails: [
+                      { name: '', weight: 50 },
+                      { name: '', weight: 50 },
+                    ],
+                  });
+                  setValidationErrors({});
+                }}
+                className='border-gray-200'
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveEdit}
+                disabled={
+                  !newReport.name ||
+                  !newReport.rubrics ||
+                  newReport.rubricDetails.reduce(
+                    (sum, r) => sum + r.weight,
+                    0,
+                  ) !== 100 ||
+                  newReport.rubricDetails.some((r) => !r.name.trim()) ||
+                  newReport.rubricDetails.some((r, i) =>
+                    newReport.rubricDetails.some(
+                      (other, j) =>
+                        i !== j &&
+                        r.name.toLowerCase() === other.name.toLowerCase(),
+                    ),
+                  )
+                }
+                className='bg-[#124A69] hover:bg-[#0d3a56]'
+              >
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Save Edit Confirmation Dialog */}
+      <Dialog
+        open={showSaveEditConfirmation}
+        onOpenChange={setShowSaveEditConfirmation}
+      >
+        <DialogContent className='sm:max-w-[425px]'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              Confirm Changes
+            </DialogTitle>
+            <DialogDescription className='text-gray-500'>
+              Are you sure you want to save these changes? This will update the
+              grading report and may affect existing grades.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className='gap-2 sm:gap-2'>
+            <Button
+              variant='outline'
+              onClick={() => setShowSaveEditConfirmation(false)}
+              className='border-gray-200'
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmSaveEdit}
+              className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+            >
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rubric Change Warning Dialog */}
+      <Dialog
+        open={showRubricChangeWarning}
+        onOpenChange={setShowRubricChangeWarning}
+      >
+        <DialogContent className='sm:max-w-[425px]'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              Unsaved Changes
+            </DialogTitle>
+            <DialogDescription className='text-gray-500'>
+              You have unsaved grade changes. Please save your grades before
+              changing the rubric count. Would you like to save now?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className='gap-2 sm:gap-2'>
+            <Button
+              variant='outline'
+              onClick={() => {
+                setShowRubricChangeWarning(false);
+                setPendingRubricCount(null);
+              }}
+              className='border-gray-200'
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                await handleSaveGrades();
+                await handleConfirmRubricChange();
+              }}
+              className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+            >
+              Save and Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

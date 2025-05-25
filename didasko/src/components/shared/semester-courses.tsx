@@ -26,6 +26,9 @@ interface Course {
   description: string | null;
   semester: string;
   section: string;
+  slug: string;
+  academicYear: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
   attendanceStats?: {
     totalAbsent: number;
     lastAttendanceDate: string | null;
@@ -57,15 +60,15 @@ const CourseCard = ({
   const router = useRouter();
   const href =
     type === 'attendance'
-      ? `/attendance/class?courseId=${course.id}`
+      ? `/attendance/class/${course.slug}`
       : type === 'recitation'
-      ? `/grading/recitation/${course.code}/${course.section}`
+      ? `/grading/recitation/${course.slug}`
       : type === 'quiz'
-      ? `/grading/quiz/${course.code}/${course.section}`
+      ? `/grading/quiz/${course.slug}`
       : type === 'reporting'
-      ? `/grading/reporting/${course.code}/${course.section}`
+      ? `/grading/reporting/${course.slug}`
       : type === 'gradebook'
-      ? `/grading/gradebook/${course.code}/${course.section}`
+      ? `/grading/gradebook/${course.slug}`
       : `/grading/gradebook`;
 
   const handleClick = (e: React.MouseEvent) => {
@@ -165,7 +168,7 @@ export default function SemesterCourses({
       const courses = response.data.courses || [];
       const coursesWithStats = await Promise.all(
         courses.map(async (course: Course) => {
-          const stats = await fetchAttendanceStats(course.id);
+          const stats = await fetchAttendanceStats(course.slug);
           return {
             ...course,
             attendanceStats: stats,
@@ -181,10 +184,10 @@ export default function SemesterCourses({
     }
   };
 
-  const fetchAttendanceStats = async (courseId: string) => {
+  const fetchAttendanceStats = async (courseSlug: string) => {
     try {
       const response = await axiosInstance.get(
-        `/courses/${courseId}/attendance/stats`,
+        `/courses/${courseSlug}/attendance/stats`,
       );
       if (response.status !== 200 || !response.data)
         throw new Error('Failed to fetch attendance stats');

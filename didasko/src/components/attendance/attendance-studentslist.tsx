@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   CalendarIcon,
   MoreHorizontal,
+  Filter,
 } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
@@ -133,15 +134,28 @@ interface ImportedAttendanceRecord {
   date: string;
 }
 
+interface Course {
+  id: string;
+  title: string;
+  code: string;
+  description: string | null;
+  semester: string;
+  section: string;
+  slug: string;
+  academicYear: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+  attendanceStats?: {
+    totalAbsents: number;
+    lastAttendanceDate: string | null;
+  };
+}
+
 export default function StudentList() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const courseId = searchParams.get('courseId');
   const [studentList, setStudentList] = useState<Student[]>([]);
-  const [courseInfo, setCourseInfo] = useState<{
-    code: string;
-    section: string;
-  } | null>(null);
+  const [courseInfo, setCourseInfo] = useState<Course | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortDate] = useState<'newest' | 'oldest' | ''>('');
@@ -181,7 +195,10 @@ export default function StudentList() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [attendanceDates, setAttendanceDates] = useState<Date[]>([]);
-  const [previousAttendance, setPreviousAttendance] = useState<Record<string, AttendanceStatus> | null>(null);
+  const [previousAttendance, setPreviousAttendance] = useState<Record<
+    string,
+    AttendanceStatus
+  > | null>(null);
   const [showResetConfirmation, setShowResetConfirmation] = useState(false);
 
   const fetchStudents = async () => {
@@ -199,7 +216,17 @@ export default function StudentList() {
         attendanceRecords: [],
       }));
       setStudentList(students);
-      setCourseInfo(response.data.course);
+      setCourseInfo({
+        id: response.data.course.id,
+        code: response.data.course.code,
+        title: response.data.course.title,
+        description: response.data.course.description,
+        semester: response.data.course.semester,
+        section: response.data.course.section,
+        slug: response.data.course.slug,
+        academicYear: response.data.course.academicYear,
+        status: response.data.course.status,
+      });
 
       // Fetch attendance for the selected date after getting students
       if (selectedDate) {
@@ -1138,7 +1165,7 @@ export default function StudentList() {
   if (isLoading) {
     return (
       <div className='flex flex-col h-screen'>
-        <div className='flex items-center gap-4 p-4 border-b bg-white'>
+        <div className='flex items-center gap-4 p-4 border-b bg-white '>
           <Link href='/attendance'>
             <Button variant='ghost' size='icon' className='hover:bg-gray-100'>
               <ChevronLeft className='h-5 w-5' />
@@ -1190,7 +1217,7 @@ export default function StudentList() {
   }
 
   return (
-    <div className='flex flex-col h-screen'>
+    <div className='flex flex-col h-screen '>
       <Toaster
         toastOptions={{
           className: '',
@@ -1246,7 +1273,7 @@ export default function StudentList() {
               {courseInfo?.code || 'Course'}
             </h1>
             <p className='text-gray-500 text-sm'>
-              Section {courseInfo?.section || 'N/A'}
+              {courseInfo?.section || 'N/A'}
             </p>
           </div>
         </div>
@@ -1369,6 +1396,19 @@ export default function StudentList() {
             </DropdownMenuContent>
           </DropdownMenu>
           <div className='flex items-center gap-3 ml-auto'>
+            <Button
+              variant='outline'
+              className='rounded-full relative flex items-center gap-2 px-3'
+              onClick={() => setIsFilterSheetOpen(true)}
+            >
+              <Filter className='h-4 w-4' />
+              <span>Filter</span>
+              {filters.status.length > 0 && (
+                <span className='absolute -top-1 -right-1 bg-[#124A69] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center'>
+                  {filters.status.length}
+                </span>
+              )}
+            </Button>
             <FilterSheet
               isOpen={isFilterSheetOpen}
               onOpenChange={setIsFilterSheetOpen}
@@ -1397,7 +1437,7 @@ export default function StudentList() {
         </div>
       </div>
 
-      <div className='flex-1 overflow-auto p-4'>
+      <div className='flex-1 overflow-auto p-4 bg-white'>
         <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4'>
           {isDateLoading ? (
             // Loading skeleton for student cards
@@ -1673,12 +1713,12 @@ export default function StudentList() {
             if (previousAttendance) {
               // Undo action
               if (!previousAttendance) return;
-              
+
               // Create a new object to ensure state update triggers re-render
               const restoredAttendance = { ...previousAttendance };
-              
+
               // Update states in sequence to ensure proper re-render
-              setUnsavedChanges({});  // Clear current changes first
+              setUnsavedChanges({}); // Clear current changes first
               setTimeout(() => {
                 setUnsavedChanges(restoredAttendance);
                 setPreviousAttendance(null);
@@ -1696,24 +1736,32 @@ export default function StudentList() {
               setShowResetConfirmation(true);
             }
           }}
-          className={previousAttendance 
-            ? 'h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] border-none' 
-            : 'h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
+          className={
+            previousAttendance
+              ? 'h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] border-none'
+              : 'h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
           }
-          disabled={isLoading || (!previousAttendance && Object.keys(unsavedChanges).length === 0)}
+          disabled={
+            isLoading ||
+            (!previousAttendance && Object.keys(unsavedChanges).length === 0)
+          }
         >
           {previousAttendance ? 'Undo Reset' : 'Reset Attendance'}
         </Button>
       </div>
 
-      <Dialog open={showResetConfirmation} onOpenChange={setShowResetConfirmation}>
+      <Dialog
+        open={showResetConfirmation}
+        onOpenChange={setShowResetConfirmation}
+      >
         <DialogContent className='sm:max-w-[425px]'>
           <DialogHeader>
             <DialogTitle className='text-[#124A69] text-xl font-bold'>
               Reset Attendance
             </DialogTitle>
             <DialogDescription className='text-gray-500'>
-              Are you sure you want to reset all attendance records? This action cannot be undone.
+              Are you sure you want to reset all attendance records? This action
+              cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className='gap-2 sm:gap-2 mt-4'>
@@ -1728,11 +1776,11 @@ export default function StudentList() {
               onClick={() => {
                 setPreviousAttendance(unsavedChanges);
                 setUnsavedChanges({});
-                setStudentList(prevStudents => 
-                  prevStudents.map(student => ({
+                setStudentList((prevStudents) =>
+                  prevStudents.map((student) => ({
                     ...student,
-                    status: 'NOT_SET'
-                  }))
+                    status: 'NOT_SET',
+                  })),
                 );
                 setShowResetConfirmation(false);
                 toast.success('Attendance reset successfully', {

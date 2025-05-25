@@ -873,13 +873,13 @@ export default function UpcomingEvents() {
                 placeholder='Title'
                 value={newEvent.title}
                 onChange={(e) => {
-                  if (e.target.value.length <= 15) {
+                  if (e.target.value.length <= 20) {
                     setNewEvent({ ...newEvent, title: e.target.value });
                   }
                 }}
               />
               <p className='text-[10px] flex justify-end mt-1 text-gray-500'>
-                {newEvent.title.length}/15
+                {newEvent.title.length}/20
               </p>
             </div>
             <div>

@@ -52,7 +52,7 @@ export default function AccountsPage() {
 
   return (
     <SidebarProvider open={open} onOpenChange={setOpen}>
-      <div className='flex h-screen w-screen overflow-hidden relative'>
+      <div className='relative h-screen w-screen overflow-hidden'>
         <AppSidebar />
 
         <main className='h-full w-full lg:w-[calc(100%-22.5rem)] pl-[4rem] sm:pl-[5rem] transition-all overflow-y-auto'>

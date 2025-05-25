@@ -36,6 +36,12 @@ export function GroupGrid({
   const itemsPerPage = 10;
   const totalPages = Math.ceil((groups.length + 1) / itemsPerPage);
 
+  const handleGroupDeleted = () => {
+    if (onGroupAdded) {
+      onGroupAdded();
+    }
+  };
+
   if (isLoading) {
     return (
       <div className='flex items-center justify-center min-h-[300px]'>
@@ -71,6 +77,7 @@ export function GroupGrid({
             group={group}
             courseCode={courseCode}
             courseSection={courseSection}
+            onGroupDeleted={handleGroupDeleted}
           />
         ))}
         {currentPage === totalPages && (

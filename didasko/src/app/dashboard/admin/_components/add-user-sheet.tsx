@@ -48,10 +48,10 @@ const userSchema = z.object({
     ),
   middleInitial: z
     .string()
-    .max(1, 'Middle initial must be a single character')
+    .max(4, 'Middle initial/abbreviation must be at most 4 characters')
     .refine(
-      (val) => !val || /^[A-Za-z]$/.test(val),
-      'Middle initial must be a single letter',
+      (val) => !val || /^[A-Za-z]+\.?$/.test(val),
+      'Middle initial/abbreviation must be letters only, optionally followed by a period',
     )
     .optional(),
   email: z.string().email('Invalid email address'),
@@ -79,10 +79,17 @@ export function AddUserSheet({ onSuccess }: AddUserSheetProps) {
     field: 'lastName' | 'firstName' | 'middleInitial',
   ) => {
     if (field === 'middleInitial') {
-      if (value && !/^[A-Za-z]$/.test(value)) {
+      if (value && !/^[A-Za-z]+\.?$/.test(value)) {
         setNameError((prev) => ({
           ...prev,
-          [field]: 'Must be a single letter',
+          [field]: 'Must be letters only, optionally followed by a period',
+        }));
+        return false;
+      }
+      if (value.length > 4) {
+        setNameError((prev) => ({
+          ...prev,
+          [field]: 'Must be at most 4 characters',
         }));
         return false;
       }
@@ -185,10 +192,7 @@ export function AddUserSheet({ onSuccess }: AddUserSheetProps) {
         <SheetHeader>
           <SheetTitle>Add User</SheetTitle>
         </SheetHeader>
-        <form
-          onSubmit={form.handleSubmit(onSubmit)}
-          className='space-y-4 py-4'
-        >
+        <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4 py-4'>
           <div className='space-y-1 w-97'>
             <Label htmlFor='lastName'>Last Name *</Label>
             <Input
@@ -256,7 +260,7 @@ export function AddUserSheet({ onSuccess }: AddUserSheetProps) {
                     ? 'border-red-500 focus-visible:ring-red-500'
                     : ''
                 }
-                maxLength={1}
+                maxLength={4}
               />
               {nameError.middleInitial && (
                 <p className='text-sm text-red-500'>
