@@ -45,7 +45,7 @@ const CourseCard = ({
 }) => {
   const href =
     type === 'attendance'
-      ? `/attendance/class?courseId=${course.id}`
+      ? `/attendance/class/${course.slug}`
       : `/grading/reporting/${course.slug}`;
 
   return (
@@ -126,7 +126,7 @@ export default function AllCourses({ type }: AllCoursesProps) {
       const courses = response.data.courses || [];
       const coursesWithStats = await Promise.all(
         courses.map(async (course: Course) => {
-          const stats = await fetchAttendanceStats(course.id);
+          const stats = await fetchAttendanceStats(course.slug);
           return {
             ...course,
             attendanceStats: stats,
@@ -142,10 +142,10 @@ export default function AllCourses({ type }: AllCoursesProps) {
     }
   };
 
-  const fetchAttendanceStats = async (courseId: string) => {
+  const fetchAttendanceStats = async (courseSlug: string) => {
     try {
       const response = await axiosInstance.get(
-        `/courses/${courseId}/attendance/stats`,
+        `/courses/${courseSlug}/attendance/stats`,
       );
       if (response.status !== 200 || !response.data)
         throw new Error('Failed to fetch attendance stats');

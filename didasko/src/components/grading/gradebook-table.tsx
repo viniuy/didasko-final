@@ -64,7 +64,7 @@ interface Student {
 }
 
 interface GradebookTableProps {
-  courseId: string;
+  courseSlug: string;
   courseCode: string;
   courseSection: string;
 }
@@ -257,19 +257,21 @@ const PaginationFooter = ({
 const GradeConfigDialog = ({
   open,
   onOpenChange,
-  courseId,
+  courseSlug,
   onConfigSaved,
   setGradebookConfigDate,
   setHasSelectedConfig,
   onDateRangeChange,
+  setCurrentConfig,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  courseId: string;
+  courseSlug: string;
   onConfigSaved: () => void;
   setGradebookConfigDate: (date: string | null) => void;
   setHasSelectedConfig: (value: boolean) => void;
   onDateRangeChange: (range: DateRange | undefined) => void;
+  setCurrentConfig: (config: ExistingConfig | null) => void;
 }) => {
   const { data: session } = useSession();
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -303,6 +305,7 @@ const GradeConfigDialog = ({
     setNameTouched(false);
     setDateTouched(false);
     setSelectedConfig(null);
+    setCurrentConfig(null);
   };
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -314,11 +317,11 @@ const GradeConfigDialog = ({
 
   useEffect(() => {
     const fetchExistingConfigs = async () => {
-      if (!courseId) return;
+      if (!courseSlug) return;
       setIsLoadingConfigs(true);
       try {
         const response = await axiosInstance.get(
-          `/courses/${courseId}/grade-components`,
+          `/courses/${courseSlug}/grade-components`,
         );
         setExistingConfigs(response.data.configurations || []);
       } catch (error) {
@@ -332,7 +335,7 @@ const GradeConfigDialog = ({
     if (open) {
       fetchExistingConfigs();
     }
-  }, [courseId, open]);
+  }, [courseSlug, open]);
 
   useEffect(() => {
     if (dateTouched) {
@@ -363,9 +366,11 @@ const GradeConfigDialog = ({
       const sanitizedValue = value.replace(/[^a-zA-Z0-9\s\-_.,]/g, '');
       const truncatedValue = sanitizedValue.slice(0, 50);
 
-      // Check if name already exists
+      // Check if name already exists, excluding the current config if we're editing
       const isDuplicate = existingConfigs.some(
-        (config) => config.name.toLowerCase() === truncatedValue.toLowerCase(),
+        (existingConfig) =>
+          existingConfig.name.toLowerCase() === truncatedValue.toLowerCase() &&
+          (!selectedConfig || existingConfig.id !== selectedConfig),
       );
 
       if (isDuplicate) {
@@ -399,11 +404,14 @@ const GradeConfigDialog = ({
 
     // Check for duplicate name before saving
     const isDuplicate = existingConfigs.some(
-      (config) => config.name.toLowerCase() === config.name.toLowerCase(),
+      (existingConfig) =>
+        existingConfig.name.toLowerCase() === config.name.toLowerCase() &&
+        (!selectedConfig || existingConfig.id !== selectedConfig),
     );
 
     if (isDuplicate) {
       setNameWarning('A configuration with this name already exists');
+      toast.error('A configuration with this name already exists');
       return;
     }
 
@@ -418,7 +426,7 @@ const GradeConfigDialog = ({
     setIsLoading(true);
     try {
       const response = await axiosInstance.post(
-        `/courses/${courseId}/grade-components`,
+        `/courses/${courseSlug}/grade-components`,
         {
           components: {
             name: config.name,
@@ -430,7 +438,6 @@ const GradeConfigDialog = ({
               ? dateRange.from.toISOString()
               : undefined,
             endDate: dateRange?.to ? dateRange.to.toISOString() : undefined,
-            courseId,
           },
         },
       );
@@ -441,6 +448,7 @@ const GradeConfigDialog = ({
       resetForm();
     } catch (error) {
       console.error('Error saving grade configuration:', error);
+      toast.error('Failed to save grade configuration');
     } finally {
       setIsLoading(false);
     }
@@ -467,40 +475,33 @@ const GradeConfigDialog = ({
     }
   };
 
-  const handleApplySelectedConfig = async () => {
-    setIsLoading(true);
-    try {
-      // Find the selected configuration
-      const config = existingConfigs.find((c) => c.id === selectedConfig);
+  const handleApplySelectedConfig = () => {
+    // Find the selected configuration
+    const config = existingConfigs.find((c) => c.id === selectedConfig);
 
-      if (!config) {
-        throw new Error('Configuration not found');
-      }
-
-      // Set this configuration as current
-      const response = await axiosInstance.put(
-        `/courses/${courseId}/grade-components/${config.id}/current`,
-      );
-
-      console.log('Successfully applied configuration:', config);
-      toast.success('Using existing grade configuration');
-      setHasSelectedConfig(true);
-      if (config.startDate && config.endDate) {
-        onDateRangeChange({
-          from: new Date(config.startDate),
-          to: new Date(config.endDate),
-        });
-      } else {
-        onDateRangeChange(undefined);
-      }
-      onConfigSaved();
-      onOpenChange(false);
-    } catch (error) {
-      console.error('Error applying configuration:', error);
-      toast.error('Failed to apply configuration');
-    } finally {
-      setIsLoading(false);
+    if (!config) {
+      toast.error('Configuration not found');
+      return;
     }
+
+    console.log('Applying selected config locally:', config);
+
+    // Save locally using the prop
+    setCurrentConfig(config);
+    setGradebookConfigDate(config.createdAt);
+    setHasSelectedConfig(true);
+
+    if (config.startDate && config.endDate) {
+      onDateRangeChange({
+        from: new Date(config.startDate),
+        to: new Date(config.endDate),
+      });
+    }
+
+    console.log('Successfully applied configuration locally:', config);
+    toast.success('Using selected configuration');
+    onConfigSaved();
+    onOpenChange(false);
   };
 
   return (
@@ -521,6 +522,17 @@ const GradeConfigDialog = ({
               <TabsTrigger
                 value='new'
                 className='data-[state=active]:bg-white data-[state=active]:shadow-sm'
+                onClick={() => {
+                  setSelectedConfig(null);
+                  resetForm();
+                  setConfig({
+                    name: '',
+                    reportingWeight: 50,
+                    recitationWeight: 30,
+                    quizWeight: 20,
+                    passingThreshold: 75,
+                  });
+                }}
               >
                 Create New Gradebook
               </TabsTrigger>
@@ -627,37 +639,23 @@ const GradeConfigDialog = ({
                         <Input
                           id='name'
                           type='text'
-                          value={
-                            selectedConfig
-                              ? existingConfigs.find(
-                                  (c) => c.id === selectedConfig,
-                                )?.name || ''
-                              : config.name
-                          }
+                          value={config.name}
                           onChange={(e) => {
-                            if (!selectedConfig) {
-                              setNameTouched(true);
-                              handleConfigChange('name', e.target.value);
-                            }
+                            setNameTouched(true);
+                            handleConfigChange('name', e.target.value);
                           }}
                           placeholder='Enter gradebook name'
                           className='border-gray-300 focus:border-[#124A69] focus:ring-[#124A69]'
                           maxLength={20}
-                          disabled={!!selectedConfig}
                         />
                         <div className='flex justify-between items-center mt-1 text-xs'>
-                          {nameWarning && nameTouched && !selectedConfig ? (
+                          {nameWarning && nameTouched ? (
                             <span className='text-red-500'>{nameWarning}</span>
                           ) : (
                             <span></span>
                           )}
                           <span className='text-gray-500'>
-                            {selectedConfig
-                              ? existingConfigs.find(
-                                  (c) => c.id === selectedConfig,
-                                )?.name.length || 0
-                              : config.name.length}
-                            /20
+                            {config.name.length}/20
                           </span>
                         </div>
                       </div>
@@ -841,6 +839,7 @@ const GradeConfigDialog = ({
                           }}
                           numberOfMonths={2}
                           className='rounded-md border-0 scale-90'
+                          disabled={{ after: new Date() }}
                           classNames={{
                             day_selected:
                               'bg-[#124A69] text-white hover:bg-[#124A69] hover:text-white focus:bg-[#124A69] focus:text-white',
@@ -903,8 +902,561 @@ const GradeConfigDialog = ({
   );
 };
 
+const EditGradeConfigDialog = ({
+  open,
+  onOpenChange,
+  courseSlug,
+  onConfigSaved,
+  setGradebookConfigDate,
+  setHasSelectedConfig,
+  onDateRangeChange,
+  currentConfig,
+  setCurrentConfig,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  courseSlug: string;
+  onConfigSaved: () => void;
+  setGradebookConfigDate: (date: string | null) => void;
+  setHasSelectedConfig: (value: boolean) => void;
+  onDateRangeChange: (range: DateRange | undefined) => void;
+  currentConfig: ExistingConfig | null;
+  setCurrentConfig: (config: ExistingConfig | null) => void;
+}) => {
+  const { data: session } = useSession();
+  const [config, setConfig] = useState<GradeConfiguration>(() => {
+    console.log('Initializing config state with:', currentConfig);
+    return {
+      name: currentConfig?.name || '',
+      reportingWeight: currentConfig?.reportingWeight || 50,
+      recitationWeight: currentConfig?.recitationWeight || 30,
+      quizWeight: currentConfig?.quizWeight || 20,
+      passingThreshold: currentConfig?.passingThreshold || 75,
+    };
+  });
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
+    console.log(
+      'Initializing dateRange with:',
+      currentConfig?.startDate,
+      currentConfig?.endDate,
+    );
+    if (currentConfig?.startDate && currentConfig?.endDate) {
+      return {
+        from: new Date(currentConfig.startDate),
+        to: new Date(currentConfig.endDate),
+      };
+    }
+    return undefined;
+  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [dateWarning, setDateWarning] = useState('');
+  const [nameWarning, setNameWarning] = useState('');
+  const [nameTouched, setNameTouched] = useState(false);
+  const [dateTouched, setDateTouched] = useState(false);
+  const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  // Update form when dialog opens or currentConfig changes
+  useEffect(() => {
+    if (open && currentConfig) {
+      console.log('Dialog opened, updating form with config:', currentConfig);
+      setConfig({
+        name: currentConfig.name,
+        reportingWeight: currentConfig.reportingWeight,
+        recitationWeight: currentConfig.recitationWeight,
+        quizWeight: currentConfig.quizWeight,
+        passingThreshold: currentConfig.passingThreshold,
+      });
+      if (currentConfig.startDate && currentConfig.endDate) {
+        setDateRange({
+          from: new Date(currentConfig.startDate),
+          to: new Date(currentConfig.endDate),
+        });
+      } else {
+        setDateRange(undefined);
+      }
+      // Reset hasChanges when dialog opens with a new config
+      setHasChanges(false);
+    }
+  }, [open, currentConfig]);
+
+  // Validation effects
+  useEffect(() => {
+    // Check for date range validity
+    if (dateTouched) {
+      if (!dateRange?.from || !dateRange?.to) {
+        setDateWarning('Please select a start and end date.');
+      } else {
+        setDateWarning('');
+      }
+    }
+
+    // Check for changes compared to initial config
+    const initialConfig = currentConfig;
+
+    const initialDateRange =
+      initialConfig?.startDate && initialConfig?.endDate
+        ? {
+            from: new Date(initialConfig.startDate).toISOString().split('T')[0],
+            to: new Date(initialConfig.endDate).toISOString().split('T')[0],
+          }
+        : undefined;
+
+    const currentDateRangeFormatted =
+      dateRange?.from && dateRange?.to
+        ? {
+            from: dateRange.from.toISOString().split('T')[0],
+            to: dateRange.to.toISOString().split('T')[0],
+          }
+        : undefined;
+
+    const configChanged =
+      initialConfig?.name !== config.name ||
+      initialConfig?.reportingWeight !== config.reportingWeight ||
+      initialConfig?.recitationWeight !== config.recitationWeight ||
+      initialConfig?.quizWeight !== config.quizWeight ||
+      initialConfig?.passingThreshold !== config.passingThreshold;
+
+    const dateRangeChanged =
+      JSON.stringify(initialDateRange) !==
+      JSON.stringify(currentDateRangeFormatted);
+
+    const changesDetected = configChanged || dateRangeChanged;
+    setHasChanges(changesDetected);
+  }, [dateRange, config, dateTouched, currentConfig]); // Added currentConfig to dependencies
+
+  // Name validation effect
+  useEffect(() => {
+    if (nameTouched) {
+      if (!config.name.trim()) {
+        setNameWarning('Gradebook name is required.');
+      } else {
+        setNameWarning('');
+      }
+    }
+  }, [config.name, nameTouched]);
+
+  const handleConfigChange = (
+    field: keyof GradeConfiguration,
+    value: string,
+  ) => {
+    if (field === 'name') {
+      const sanitizedValue = value.replace(/[^a-zA-Z0-9\s\-_.,]/g, '');
+      const truncatedValue = sanitizedValue.slice(0, 50);
+
+      if (!truncatedValue.trim()) {
+        setNameWarning('Gradebook name is required');
+      } else {
+        setNameWarning('');
+      }
+
+      setConfig((prev) => ({
+        ...prev,
+        [field]: truncatedValue,
+      }));
+    } else {
+      const numValue = parseFloat(value);
+      if (!isNaN(numValue)) {
+        setConfig((prev) => ({
+          ...prev,
+          [field]: numValue,
+        }));
+      }
+    }
+    // setHasChanges(true); // Set hasChanges when config changes
+  };
+
+  const handleSaveConfig = async () => {
+    if (!session || !currentConfig) {
+      console.log(
+        'No session or current config found, cannot save configuration',
+      );
+      return;
+    }
+
+    if (!config.name.trim()) {
+      console.log('Gradebook name is empty');
+      setNameWarning('Gradebook name is required');
+      return;
+    }
+
+    const totalWeight =
+      config.reportingWeight + config.recitationWeight + config.quizWeight;
+    if (Math.abs(totalWeight - 100) > 0.01) {
+      console.log('Total weights do not equal 100%:', totalWeight);
+      toast.error('Total weights must equal 100%');
+      return;
+    }
+
+    // Show confirmation dialog
+    setShowSaveConfirmation(true);
+  };
+
+  const handleConfirmSave = async () => {
+    if (!session || !currentConfig) return;
+
+    const loadingToast = toast.loading('Updating gradebook configuration...');
+    setIsLoading(true);
+    try {
+      const response = await axiosInstance.put(
+        `/courses/${courseSlug}/grade-components/${currentConfig.id}`,
+        {
+          components: {
+            name: config.name,
+            reportingWeight: config.reportingWeight,
+            recitationWeight: config.recitationWeight,
+            quizWeight: config.quizWeight,
+            passingThreshold: config.passingThreshold,
+            startDate: dateRange?.from
+              ? dateRange.from.toISOString()
+              : undefined,
+            endDate: dateRange?.to ? dateRange.to.toISOString() : undefined,
+          },
+        },
+      );
+
+      const updatedConfig = response.data;
+      setGradebookConfigDate(updatedConfig.createdAt);
+      setCurrentConfig(updatedConfig); // Update parent state
+      setHasSelectedConfig(true); // Ensure this is true after saving
+      if (updatedConfig.startDate && updatedConfig.endDate) {
+        onDateRangeChange({
+          from: new Date(updatedConfig.startDate),
+          to: new Date(updatedConfig.endDate),
+        });
+      } else {
+        onDateRangeChange(undefined);
+      }
+      onConfigSaved(); // This might trigger data refresh in parent
+      onOpenChange(false);
+      // Keep isLoading true until dialog is fully closed or data reloaded in parent
+      setShowSaveConfirmation(false);
+      toast.dismiss(loadingToast);
+      toast.success('Gradebook configuration updated successfully');
+    } catch (error) {
+      console.error('Error updating gradebook configuration:', error);
+      toast.dismiss(loadingToast);
+      toast.error('Failed to update gradebook configuration');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCancel = () => {
+    // Reset form to initial values if cancelled while editing
+    if (currentConfig) {
+      setConfig({
+        name: currentConfig?.name || '',
+        reportingWeight: currentConfig?.reportingWeight || 50,
+        recitationWeight: currentConfig?.recitationWeight || 30,
+        quizWeight: currentConfig?.quizWeight || 20,
+        passingThreshold: currentConfig?.passingThreshold || 75,
+      });
+      if (currentConfig?.startDate && currentConfig?.endDate) {
+        setDateRange({
+          from: new Date(currentConfig.startDate),
+          to: new Date(currentConfig.endDate),
+        });
+      } else {
+        setDateRange(undefined);
+      }
+      setNameTouched(false);
+      setDateTouched(false);
+      setNameWarning('');
+      setDateWarning('');
+      setHasChanges(false); // Reset changes on cancel
+    }
+    onOpenChange(false);
+  };
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={handleCancel}>
+        <DialogContent className='max-w-[550px] min-x-[550px] bg-white rounded-lg shadow-md p-0'>
+          <DialogTitle className='text-lg font-bold text-[#124A69] leading-tight px-3 pt-6'>
+            Edit Gradebook Configuration
+          </DialogTitle>
+          <div className='px-3'>
+            <Card className='border-none shadow-none'>
+              <CardContent className='px-0 space-y-4'>
+                <div className=' -mt-3'>
+                  <Label
+                    htmlFor='name'
+                    className='text-sm font-medium text-gray-700'
+                  >
+                    Gradebook Name *
+                  </Label>
+                  <div className='relative'>
+                    <Input
+                      id='name'
+                      type='text'
+                      value={config.name}
+                      onChange={(e) => {
+                        setNameTouched(true);
+                        handleConfigChange('name', e.target.value);
+                      }}
+                      placeholder='Enter gradebook name'
+                      className='border-gray-300 focus:border-[#124A69] focus:ring-[#124A69]'
+                      maxLength={20}
+                    />
+                    <div className='flex justify-between items-center mt-1 text-xs'>
+                      {nameWarning && nameTouched ? (
+                        <span className='text-red-500'>{nameWarning}</span>
+                      ) : (
+                        <span></span>
+                      )}
+                      <span className='text-gray-500'>
+                        {config.name.length}/20
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className='grid grid-cols-2 gap-4 -mt-2'>
+                  <div className='space-y-2'>
+                    <Label
+                      htmlFor='reporting'
+                      className='text-sm font-medium text-gray-700'
+                    >
+                      Reporting Weight (%)
+                    </Label>
+                    <div className='flex items-center gap-2'>
+                      <Slider
+                        value={[config.reportingWeight]}
+                        onValueChange={(value: number[]) =>
+                          handleConfigChange(
+                            'reportingWeight',
+                            value[0].toString(),
+                          )
+                        }
+                        max={100}
+                        step={1}
+                        className='w-[100px]'
+                      />
+                      <Input
+                        id='reporting'
+                        type='number'
+                        value={config.reportingWeight}
+                        onChange={(e) =>
+                          handleConfigChange('reportingWeight', e.target.value)
+                        }
+                        min='0'
+                        max='100'
+                        className='w-[60px] bg-gray-50 border-gray-200 h-9'
+                      />
+                      <span className='text-sm text-gray-500'>%</span>
+                    </div>
+                  </div>
+
+                  <div className='space-y-2'>
+                    <Label
+                      htmlFor='recitation'
+                      className='text-sm font-medium text-gray-700'
+                    >
+                      Recitation Weight (%)
+                    </Label>
+                    <div className='flex items-center gap-2'>
+                      <Slider
+                        value={[config.recitationWeight]}
+                        onValueChange={(value: number[]) =>
+                          handleConfigChange(
+                            'recitationWeight',
+                            value[0].toString(),
+                          )
+                        }
+                        max={100}
+                        step={1}
+                        className='w-[100px]'
+                      />
+                      <Input
+                        id='recitation'
+                        type='number'
+                        value={config.recitationWeight}
+                        onChange={(e) =>
+                          handleConfigChange('recitationWeight', e.target.value)
+                        }
+                        min='0'
+                        max='100'
+                        className='w-[60px] bg-gray-50 border-gray-200 h-9'
+                      />
+                      <span className='text-sm text-gray-500'>%</span>
+                    </div>
+                  </div>
+
+                  <div className='space-y-2'>
+                    <Label
+                      htmlFor='quiz'
+                      className='text-sm font-medium text-gray-700'
+                    >
+                      Quiz Weight (%)
+                    </Label>
+                    <div className='flex items-center gap-2'>
+                      <Slider
+                        value={[config.quizWeight]}
+                        onValueChange={(value: number[]) =>
+                          handleConfigChange('quizWeight', value[0].toString())
+                        }
+                        max={100}
+                        step={1}
+                        className='w-[100px]'
+                      />
+                      <Input
+                        id='quiz'
+                        type='number'
+                        value={config.quizWeight}
+                        onChange={(e) =>
+                          handleConfigChange('quizWeight', e.target.value)
+                        }
+                        min='0'
+                        max='100'
+                        className='w-[60px] bg-gray-50 border-gray-200 h-9'
+                      />
+                      <span className='text-sm text-gray-500'>%</span>
+                    </div>
+                  </div>
+
+                  <div className='space-y-2'>
+                    <Label
+                      htmlFor='threshold'
+                      className='text-sm font-medium text-gray-700'
+                    >
+                      Passing Threshold (%)
+                    </Label>
+                    <Select
+                      value={config.passingThreshold.toString()}
+                      onValueChange={(value) =>
+                        handleConfigChange('passingThreshold', value)
+                      }
+                    >
+                      <SelectTrigger className='w-[100px] bg-gray-50 border-gray-200 h-9'>
+                        <SelectValue placeholder='Select passing threshold' />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value='60'>60%</SelectItem>
+                        <SelectItem value='65'>65%</SelectItem>
+                        <SelectItem value='70'>70%</SelectItem>
+                        <SelectItem value='75'>75%</SelectItem>
+                        <SelectItem value='80'>80%</SelectItem>
+                        <SelectItem value='85'>85%</SelectItem>
+                        <SelectItem value='90'>90%</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className='flex justify-between items-center px-2 py-2 bg-gray-50 rounded-lg mt-2'>
+                  <span className='text-sm font-medium text-gray-700'>
+                    Total Weight:
+                  </span>
+                  <span
+                    className={cn(
+                      'text-sm font-medium',
+                      Math.abs(
+                        config.reportingWeight +
+                          config.recitationWeight +
+                          config.quizWeight -
+                          100,
+                      ) <= 0.01
+                        ? 'text-green-600'
+                        : 'text-red-600',
+                    )}
+                  >
+                    {(
+                      config.reportingWeight +
+                      config.recitationWeight +
+                      config.quizWeight
+                    ).toFixed(1)}
+                    %
+                  </span>
+                </div>
+                <div className='space-y-2'>
+                  <Label className='text-sm font-medium text-gray-700'>
+                    Date Range*
+                  </Label>
+                  <div className='flex w-full max-w-[440px] justify-center mx-auto bg-white  rounded-lg border border-gray-200'>
+                    <Calendar
+                      mode='range'
+                      selected={dateRange}
+                      onSelect={(range) => {
+                        setDateTouched(true);
+                        setDateRange(range);
+                      }}
+                      numberOfMonths={2}
+                      className='rounded-md border-0 scale-90'
+                      disabled={{ after: new Date() }}
+                      classNames={{
+                        day_selected:
+                          'bg-[#124A69] text-white hover:bg-[#124A69] hover:text-white focus:bg-[#124A69] focus:text-white',
+                        day_range_start: 'bg-[#124A69] text-white rounded-l-md',
+                        day_range_end: 'bg-[#124A69] text-white rounded-r-md',
+                        day_range_middle: 'bg-[#e3eef5] text-[#124A69]',
+                        day_today:
+                          'border border-[#124A69] text-[#124A69] bg-white',
+                      }}
+                    />
+                  </div>
+                  {dateWarning && dateTouched && (
+                    <div className='text-xs text-red-500 mt-1'>
+                      {dateWarning}
+                    </div>
+                  )}
+                </div>
+                <div className='flex justify-end gap-3 pt-4 border-t'>
+                  <Button
+                    variant='outline'
+                    onClick={() => setDateRange(undefined)}
+                    className='border-gray-300 hover:bg-gray-50'
+                  >
+                    Clear Date Range
+                  </Button>
+                  <Button
+                    onClick={handleSaveConfig}
+                    disabled={isLoading || !hasChanges}
+                    className='bg-[#124A69] hover:bg-[#0D3A56] text-white'
+                  >
+                    {isLoading ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Save Confirmation Dialog */}
+      <Dialog
+        open={showSaveConfirmation}
+        onOpenChange={setShowSaveConfirmation}
+      >
+        <DialogContent className='sm:max-w-[425px]'>
+          <DialogHeader>
+            <DialogTitle>Confirm Changes</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to save these changes to the gradebook
+              configuration?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant='outline'
+              onClick={() => setShowSaveConfirmation(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmSave}
+              className='bg-[#124A69] hover:bg-[#0D3A56]'
+              disabled={isLoading} // Disable save button while saving
+            >
+              {isLoading ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+};
+
 export function GradebookTable({
-  courseId,
+  courseSlug,
   courseCode,
   courseSection,
 }: GradebookTableProps) {
@@ -932,22 +1484,24 @@ export function GradebookTable({
   const [currentConfig, setCurrentConfig] = useState<ExistingConfig | null>(
     null,
   );
+  const [showEditConfigDialog, setShowEditConfigDialog] = useState(false);
   const itemsPerPage = 10;
 
   const fetchData = useCallback(async () => {
-    if (!courseId) {
-      console.error('No courseId provided to GradebookTable');
+    if (!courseSlug) {
+      console.error('No courseSlug provided to GradebookTable');
       return;
     }
-    console.log('Starting to fetch data for courseId:', courseId);
+    console.log('Starting to fetch data for courseSlug:', courseSlug);
     console.log('Current date range:', dateRange);
+    console.log('Current config before fetch:', currentConfig);
     setLoadingStudents(true);
 
     try {
       // Fetch all students in the course with their scores
-      console.log('Fetching students from:', `/courses/${courseId}/students`);
+      console.log('Fetching students from:', `/courses/${courseSlug}/students`);
       const studentsRes = await axiosInstance.get(
-        `/courses/${courseId}/students`,
+        `/courses/${courseSlug}/students`,
       );
       console.log('Students API Response:', studentsRes.data);
 
@@ -989,11 +1543,11 @@ export function GradebookTable({
 
             console.log('Grade fetch params:', params);
 
-            // Only fetch grades if we have a date range
-            if (dateRange?.from && dateRange?.to) {
+            // Only fetch grades if we have a date range and a current config
+            if (dateRange?.from && dateRange?.to && currentConfig) {
               console.log('Fetching grades with params:', params);
               const gradesRes = await axiosInstance.get(
-                `/courses/${courseId}/students/${student.id}/grades`,
+                `/courses/${courseSlug}/students/${student.id}/grades`,
                 { params },
               );
               console.log(
@@ -1004,6 +1558,7 @@ export function GradebookTable({
               );
 
               if (gradesRes.data) {
+                // Ensure we're using the raw quiz score, not the total grade
                 return {
                   ...student,
                   reportingScore: gradesRes.data.reportingScore,
@@ -1013,10 +1568,8 @@ export function GradebookTable({
                   remarks: gradesRes.data.remarks,
                 };
               }
-            } else {
-              console.log('No date range set, skipping grade fetch');
             }
-            // If no date range or no grades found, return student without grades
+            // If no date range, no current config, or no grades found, return student without grades
             return {
               ...student,
               reportingScore: undefined,
@@ -1069,7 +1622,7 @@ export function GradebookTable({
     } finally {
       setLoadingStudents(false);
     }
-  }, [courseId, dateRange]);
+  }, [courseSlug, dateRange, currentConfig]);
 
   const handleFilterChange = (filter: keyof typeof gradeFilter) => {
     setGradeFilter((prev) => ({
@@ -1078,58 +1631,27 @@ export function GradebookTable({
     }));
   };
 
-  // Add useEffect to check for existing current configuration on mount
+  // useEffect to load data when dependencies change
   useEffect(() => {
-    const fetchGradebookConfig = async () => {
-      try {
-        console.log('Fetching gradebook config for course:', courseId);
-        const response = await axiosInstance.get(
-          `/courses/${courseId}/grade-components`,
-        );
-
-        // Find the current configuration
-        const currentConfig = response.data.configurations?.find(
-          (config: ExistingConfig) => config.isCurrent,
-        );
-
-        if (currentConfig) {
-          setGradebookConfigDate(currentConfig.createdAt);
-          setCurrentConfig(currentConfig);
-          if (currentConfig.startDate && currentConfig.endDate) {
-            setDateRange({
-              from: new Date(currentConfig.startDate),
-              to: new Date(currentConfig.endDate),
-            });
-          } else {
-            setDateRange(undefined);
-          }
-          setHasSelectedConfig(true);
-        } else {
-          setHasSelectedConfig(false);
-          setShowConfigDialog(true);
-          setDateRange(undefined);
-        }
-      } catch (error) {
-        setHasSelectedConfig(false);
-        setShowConfigDialog(true);
-        setDateRange(undefined);
-      }
-    };
-
-    if (courseId) {
-      fetchGradebookConfig();
-    }
-  }, [courseId]);
-
-  useEffect(() => {
-    if (courseId && dateRange?.from && dateRange?.to && hasSelectedConfig) {
+    if (courseSlug && dateRange?.from && dateRange?.to && currentConfig) {
+      console.log(
+        'useEffect dependency check: courseSlug, dateRange, and currentConfig are all set. Fetching data.',
+      );
       fetchData();
     } else if (hasSelectedConfig) {
-      setStudents([]); // Clear students if date range is not selected after config
+      console.log(
+        'useEffect dependency check: hasSelectedConfig is true, but dateRange or currentConfig is missing.',
+      );
+      console.log('Current config:', currentConfig);
     } else {
-      setStudents([]); // Clear students if no config is selected
+      console.log(
+        'useEffect dependency check: No config selected. Clearing everything.',
+      );
+      setStudents([]); // Only clear students if no config is selected
+      setCurrentConfig(null); // Ensure currentConfig is null if no config is selected
+      setHasSelectedConfig(false); // Ensure hasSelectedConfig is false if no config is selected
     }
-  }, [courseId, dateRange, hasSelectedConfig, fetchData]);
+  }, [courseSlug, dateRange, hasSelectedConfig, fetchData, currentConfig]);
 
   // Modify handleConfigSaved to handle both new and existing configurations
   const handleConfigSaved = () => {
@@ -1167,10 +1689,8 @@ export function GradebookTable({
   const handleExport = async () => {
     try {
       // Get the latest grade configuration
-      const configResponse = await axiosInstance.get(
-        `/courses/${courseId}/grade-components/current`,
-      );
-      const gradeConfig = configResponse.data;
+      // We can use the currentConfig state directly now
+      const gradeConfig = currentConfig;
 
       if (!gradeConfig) {
         toast.error(
@@ -1215,6 +1735,19 @@ export function GradebookTable({
       console.error('Error preparing export data:', error);
       toast.error('Failed to prepare export data');
     }
+  };
+
+  // Update handleEditConfigClick to include more logging
+  const handleEditConfigClick = () => {
+    console.log('Edit Config clicked');
+    console.log('Current config state:', currentConfig);
+    console.log('Has selected config:', hasSelectedConfig);
+    if (!hasSelectedConfig) {
+      toast.error('No configuration selected');
+      return;
+    }
+    console.log('Opening edit dialog with config:', currentConfig);
+    setShowEditConfigDialog(true);
   };
 
   return (
@@ -1558,11 +2091,12 @@ export function GradebookTable({
         <GradeConfigDialog
           open={showConfigDialog}
           onOpenChange={setShowConfigDialog}
-          courseId={courseId}
+          courseSlug={courseSlug}
           onConfigSaved={handleConfigSaved}
           setGradebookConfigDate={setGradebookConfigDate}
           setHasSelectedConfig={setHasSelectedConfig}
           onDateRangeChange={setDateRange}
+          setCurrentConfig={setCurrentConfig}
         />
 
         {/* Export Preview Dialog */}
@@ -1588,13 +2122,22 @@ export function GradebookTable({
           Export to Excel
         </Button>
         <Button
+          variant='outline'
+          onClick={handleEditConfigClick}
+          disabled={!hasSelectedConfig}
+          className={cn(
+            'h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50',
+            !hasSelectedConfig && 'opacity-50 cursor-not-allowed',
+          )}
+        >
+          Edit Configuration
+        </Button>
+        <Button
           onClick={async () => {
             try {
               // Get the latest grade configuration
-              const configResponse = await axiosInstance.get(
-                `/courses/${courseId}/grade-components/current`,
-              );
-              const gradeConfig = configResponse.data;
+              // We can use the currentConfig state directly now
+              const gradeConfig = currentConfig;
 
               if (!gradeConfig) {
                 toast.error(
@@ -1615,7 +2158,7 @@ export function GradebookTable({
               await Promise.all(
                 gradesToSave.map((grade) =>
                   axiosInstance.post(
-                    `/courses/${courseId}/students/${grade.studentId}/grades`,
+                    `/courses/${courseSlug}/students/${grade.studentId}/grades`,
                     {
                       reportingScore: grade.reportingScore,
                       recitationScore: grade.recitationScore,
@@ -1644,6 +2187,19 @@ export function GradebookTable({
           Save Grades
         </Button>
       </div>
+
+      {/* Edit Grade Configuration Dialog */}
+      <EditGradeConfigDialog
+        open={showEditConfigDialog}
+        onOpenChange={setShowEditConfigDialog}
+        courseSlug={courseSlug}
+        onConfigSaved={handleConfigSaved}
+        setGradebookConfigDate={setGradebookConfigDate}
+        setHasSelectedConfig={setHasSelectedConfig}
+        onDateRangeChange={setDateRange}
+        currentConfig={currentConfig}
+        setCurrentConfig={setCurrentConfig}
+      />
     </div>
   );
 }

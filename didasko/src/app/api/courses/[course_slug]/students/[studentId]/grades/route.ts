@@ -5,7 +5,7 @@ import { authOptions } from '@/lib/auth-options';
 
 export async function GET(
   request: Request,
-  context: { params: { courseId: string; studentId: string } },
+  context: { params: { course_slug: string; studentId: string } },
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -14,17 +14,27 @@ export async function GET(
     }
 
     const params = await Promise.resolve(context.params);
-    const { courseId, studentId } = params;
+    const { course_slug, studentId } = params;
     const { searchParams } = new URL(request.url);
     const from = searchParams.get('from');
     const to = searchParams.get('to');
 
     console.log('Backend received from:', from, 'to:', to);
 
+    // Get the course using the slug
+    const course = await prisma.course.findUnique({
+      where: { slug: course_slug },
+      select: { id: true },
+    });
+
+    if (!course) {
+      return NextResponse.json({ error: 'Course not found' }, { status: 404 });
+    }
+
     // Get all grades for the student
     const grades = await prisma.grade.findMany({
       where: {
-        courseId,
+        courseId: course.id,
         studentId,
         ...(from && to
           ? { date: { gte: new Date(from), lte: new Date(to) } }
@@ -45,7 +55,7 @@ export async function GET(
 
     // Get the latest grade configuration
     const gradeConfig = await prisma.gradeConfiguration.findFirst({
-      where: { courseId },
+      where: { courseId: course.id },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -77,28 +87,33 @@ export async function GET(
     const quizScores = await prisma.quizScore.findMany({
       where: {
         student: { id: studentId },
-        quiz: { courseId },
+        quiz: { courseId: course.id },
         ...(from && to
-          ? { createdAt: { gte: new Date(from), lte: new Date(to) } }
+          ? {
+              createdAt: {
+                gte: new Date(from),
+                lte: new Date(`${to}T23:59:59.999Z`),
+              },
+            }
           : from
           ? { createdAt: { gte: new Date(from) } }
           : to
-          ? { createdAt: { lte: new Date(to) } }
+          ? { createdAt: { lte: new Date(`${to}T23:59:59.999Z`) } }
           : {}),
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    console.log(
-      'Quiz scores query date range:',
-      from ? new Date(`${from}T00:00:00.000Z`) : 'no from',
-      to ? new Date(`${to}T23:59:59.999Z`) : 'no to',
-    );
+    console.log('Found quiz scores:', quizScores);
+    console.log('Date range:', {
+      from: from ? new Date(from) : 'no from',
+      to: to ? new Date(`${to}T23:59:59.999Z`) : 'no to',
+    });
 
-    // Calculate quiz score average
+    // Calculate quiz score average using totalGrade
     const quizScore =
       quizScores.length > 0
-        ? quizScores.reduce((sum, score) => sum + score.totalGrade, 0) /
+        ? quizScores.reduce((sum, score) => sum + (score.totalGrade || 0), 0) /
           quizScores.length
         : 0;
 

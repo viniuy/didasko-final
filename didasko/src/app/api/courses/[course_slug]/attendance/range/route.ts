@@ -14,6 +14,7 @@ interface AttendanceStats {
     present: number;
     late: number;
     absent: number;
+    excused: number;
     attendanceRate: number;
   }[];
   uniqueDates: string[];
@@ -114,6 +115,9 @@ export async function GET(
         const absent = attendanceRecords.filter(
           (record) => record.status === 'ABSENT',
         ).length;
+        const excused = attendanceRecords.filter(
+          (record) => record.status === 'EXCUSED',
+        ).length;
 
         const attendanceRate =
           totalClasses > 0 ? ((present + late) / totalClasses) * 100 : 0;
@@ -126,6 +130,7 @@ export async function GET(
           present,
           late,
           absent,
+          excused,
           attendanceRate,
         };
       }),

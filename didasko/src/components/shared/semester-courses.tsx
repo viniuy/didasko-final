@@ -30,8 +30,12 @@ interface Course {
   academicYear: string;
   status: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
   attendanceStats?: {
-    totalAbsent: number;
+    attendanceRate: number;
     lastAttendanceDate: string | null;
+    totalAbsents: number;
+    totalLate: number;
+    totalPresent: number;
+    totalStudents: number;
   };
 }
 
@@ -58,6 +62,8 @@ const CourseCard = ({
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  console.log('Course data in CourseCard:', course);
+  console.log('Attendance stats in CourseCard:', course.attendanceStats);
   const href =
     type === 'attendance'
       ? `/attendance/class/${course.slug}`
@@ -70,6 +76,18 @@ const CourseCard = ({
       : type === 'gradebook'
       ? `/grading/gradebook/${course.slug}`
       : `/grading/gradebook`;
+
+  useEffect(() => {
+    console.log('CourseCard - course prop updated:', course);
+    console.log(
+      'CourseCard - attendanceStats updated:',
+      course.attendanceStats,
+    );
+    console.log(
+      'CourseCard - totalAbsents value:',
+      course.attendanceStats?.totalAbsents,
+    );
+  }, [course]);
 
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -87,7 +105,8 @@ const CourseCard = ({
         <CardContent>
           <p className='text-sm'>Section {course.section}</p>
           <p className='text-sm font-semibold'>
-            Total Number of Absents: {course.attendanceStats?.totalAbsent || 0}
+            Total Number of Absents:{' '}
+            {course.attendanceStats ? course.attendanceStats.totalAbsents : 0}
           </p>
           <p className='text-xs text-gray-400'>
             {course.attendanceStats?.lastAttendanceDate
@@ -189,6 +208,7 @@ export default function SemesterCourses({
       const response = await axiosInstance.get(
         `/courses/${courseSlug}/attendance/stats`,
       );
+      console.log('Attendance stats response:', response.data);
       if (response.status !== 200 || !response.data)
         throw new Error('Failed to fetch attendance stats');
       return response.data;

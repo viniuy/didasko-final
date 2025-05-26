@@ -65,6 +65,9 @@ export default function UpcomingEvents() {
 
   const [eventList, setEventList] = useState<GroupedEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [hasAttemptedSave, setHasAttemptedSave] = useState(false);
   const [alert, setAlert] = useState<{
     show: boolean;
     title: string;
@@ -280,52 +283,104 @@ export default function UpcomingEvents() {
     }));
   }
 
+  // Add this function to check for event conflicts
+  function checkEventConflict(
+    date: Date,
+    fromTime: string,
+    toTime: string,
+    excludeEventId?: string,
+  ): boolean {
+    const sameDayEvents =
+      eventList.find((event) => isSameDay(event.date, date))?.items || [];
+
+    return sameDayEvents.some((event) => {
+      // Skip the event being edited
+      if (excludeEventId && event.id === excludeEventId) return false;
+
+      // If either event is all-day, there's a conflict
+      if ((!fromTime && !toTime) || (!event.fromTime && !event.toTime))
+        return true;
+
+      // If one event has time and the other doesn't, there's a conflict
+      if ((!fromTime || !toTime) !== (!event.fromTime || !event.toTime))
+        return true;
+
+      // If both events have times, check for overlap
+      if (fromTime && toTime && event.fromTime && event.toTime) {
+        const newStart = fromTime;
+        const newEnd = toTime;
+        const existingStart = event.fromTime;
+        const existingEnd = event.toTime;
+
+        return !(newEnd <= existingStart || newStart >= existingEnd);
+      }
+
+      return false;
+    });
+  }
+
   async function saveNewEvent() {
+    if (isSaving) return;
+
     if (!validateDateTime(newEvent.date, newEvent.fromTime, newEvent.toTime)) {
       return;
     }
 
-    const result = await handleSaveNewEvent({
-      newEvent,
-      userRole,
-      onSuccess: (message) =>
-        toast.success(message, {
-          style: {
-            background: '#fff',
-            color: '#124A69',
-            border: '1px solid #e5e7eb',
-            boxShadow:
-              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-            borderRadius: '0.5rem',
-            padding: '1rem',
-          },
-          iconTheme: {
-            primary: '#124A69',
-            secondary: '#fff',
-          },
-        }),
-      onError: (error) =>
-        toast.error(error, {
-          style: {
-            background: '#fff',
-            color: '#dc2626',
-            border: '1px solid #e5e7eb',
-            boxShadow:
-              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-            borderRadius: '0.5rem',
-            padding: '1rem',
-          },
-          iconTheme: {
-            primary: '#dc2626',
-            secondary: '#fff',
-          },
-        }),
-    });
-
-    if (result?.success) {
-      await refreshEvents();
-      setOpenAdd(false);
+    // Check for conflicts
+    if (
+      newEvent.date &&
+      checkEventConflict(newEvent.date, newEvent.fromTime, newEvent.toTime)
+    ) {
+      setAlert({
+        show: true,
+        title: 'Error',
+        description:
+          'There is already an event scheduled for this date and time.',
+        variant: 'error',
+      });
+      return;
     }
+
+    setIsSaving(true);
+    setHasAttemptedSave(true);
+    setAlert({ show: false, title: '', description: '', variant: 'success' });
+
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+    }
+
+    const timeout = setTimeout(async () => {
+      try {
+        const result = await handleSaveNewEvent({
+          newEvent,
+          userRole,
+          onSuccess: (message) => {
+            refreshEvents();
+            setIsSaving(false);
+            setOpenAdd(false);
+          },
+          onError: (error) => {
+            setAlert({
+              show: true,
+              title: 'Error',
+              description: error,
+              variant: 'error',
+            });
+            setIsSaving(false);
+          },
+        });
+      } catch (error) {
+        setAlert({
+          show: true,
+          title: 'Error',
+          description: 'Failed to save event. Please try again.',
+          variant: 'error',
+        });
+        setIsSaving(false);
+      }
+    }, 500);
+
+    setSaveTimeout(timeout);
   }
 
   function handleDeleteClick(eventId: string) {
@@ -432,51 +487,73 @@ export default function UpcomingEvents() {
   }
 
   async function saveEdit() {
+    if (isSaving) return;
+
     if (!validateDateTime(editData.date, editData.fromTime, editData.toTime)) {
       return;
     }
 
-    const result = await handleUpdateEvent({
-      editData,
-      userRole,
-      onSuccess: (message) =>
-        toast.success(message, {
-          style: {
-            background: '#fff',
-            color: '#124A69',
-            border: '1px solid #e5e7eb',
-            boxShadow:
-              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-            borderRadius: '0.5rem',
-            padding: '1rem',
-          },
-          iconTheme: {
-            primary: '#124A69',
-            secondary: '#fff',
-          },
-        }),
-      onError: (error) =>
-        toast.error(error, {
-          style: {
-            background: '#fff',
-            color: '#dc2626',
-            border: '1px solid #e5e7eb',
-            boxShadow:
-              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-            borderRadius: '0.5rem',
-            padding: '1rem',
-          },
-          iconTheme: {
-            primary: '#dc2626',
-            secondary: '#fff',
-          },
-        }),
-    });
-
-    if (result?.success) {
-      await refreshEvents();
-      setOpenEdit(false);
+    // Check for conflicts, excluding the current event being edited
+    if (
+      editData.date &&
+      editData.id &&
+      checkEventConflict(
+        editData.date,
+        editData.fromTime,
+        editData.toTime,
+        editData.id,
+      )
+    ) {
+      setAlert({
+        show: true,
+        title: 'Error',
+        description:
+          'There is already an event scheduled for this date and time.',
+        variant: 'error',
+      });
+      return;
     }
+
+    setIsSaving(true);
+    setHasAttemptedSave(true);
+    setAlert({ show: false, title: '', description: '', variant: 'success' });
+
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+    }
+
+    const timeout = setTimeout(async () => {
+      try {
+        const result = await handleUpdateEvent({
+          editData,
+          userRole,
+          onSuccess: (message) => {
+            refreshEvents();
+            setIsSaving(false);
+            setOpenEdit(false);
+          },
+          onError: (error) => {
+            setAlert({
+              show: true,
+              title: 'Error',
+              description: error,
+              variant: 'error',
+            });
+            setIsSaving(false);
+          },
+        });
+      } catch (error) {
+        setAlert({
+          show: true,
+          title: 'Error',
+          description: 'Failed to update event. Please try again.',
+          variant: 'error',
+        });
+        setIsSaving(false);
+      }
+    }, 500);
+
+    setSaveTimeout(timeout);
   }
 
   // Add new date to the event
@@ -526,6 +603,57 @@ export default function UpcomingEvents() {
       }
       return { ...prev, dates: newDates };
     });
+  }
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeout) {
+        clearTimeout(saveTimeout);
+      }
+    };
+  }, [saveTimeout]);
+
+  // Add this function to handle opening the add modal
+  function handleOpenAdd() {
+    setOpenAdd(true);
+    setAlert({ show: false, title: '', description: '', variant: 'success' });
+    setHasAttemptedSave(false); // Reset only when explicitly opening
+  }
+
+  // Add this function to handle opening the edit modal
+  function handleOpenEdit(event: EventItem) {
+    if (!canManageEvents) {
+      toast.error('Only Admin and Academic Head can edit events', {
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+          boxShadow:
+            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+          borderRadius: '0.5rem',
+          padding: '1rem',
+        },
+        iconTheme: {
+          primary: '#dc2626',
+          secondary: '#fff',
+        },
+      });
+      return;
+    }
+
+    setEditData({
+      id: event.id,
+      title: event.title,
+      description: event.description || '',
+      date: event.date,
+      fromTime: event.fromTime || '',
+      toTime: event.toTime || '',
+      dates: [],
+    });
+    setOpenEdit(true);
+    setAlert({ show: false, title: '', description: '', variant: 'success' });
+    setHasAttemptedSave(false); // Reset only when explicitly opening
   }
 
   return (
@@ -584,7 +712,7 @@ export default function UpcomingEvents() {
             size='icon'
             className='w-6 h-6 rounded-full bg-[#124A69] text-white flex items-center justify-center hover:bg-[#0a2f42]'
             onClick={() => {
-              setOpenAdd(true);
+              handleOpenAdd();
               setTimeError('');
               setNewEvent({
                 title: '',
@@ -661,48 +789,81 @@ export default function UpcomingEvents() {
                     {format(event.date, 'EEEE')})
                   </p>
                 </div>
-                {event.items.map((item) => (
-                  <Card
-                    key={item.id}
-                    className='border-l-[8px] border-[#124A69] mb-1 hover:shadow-md transition-shadow'
-                  >
-                    <CardContent className='p-2 relative'>
-                      {canManageEvents && (
-                        <div className='absolute right-1 -top-5 flex gap-0.5'>
-                          <Button
-                            variant='ghost'
-                            className='h-5 w-5 p-0 hover:bg-transparent'
-                            onClick={() => handleEditClick(item)}
-                          >
-                            <Edit className='h-3 w-3' color='#124a69' />
-                          </Button>
-                          <Button
-                            variant='ghost'
-                            className='h-5 w-5 p-0 hover:bg-transparent'
-                            onClick={() => handleDeleteClick(item.id)}
-                          >
-                            <Trash className='h-3 w-3' color='#124a69' />
-                          </Button>
-                        </div>
+                {event.items.map((item) => {
+                  const isPastEvent = isBefore(
+                    event.date,
+                    new Date(new Date().setHours(0, 0, 0, 0)),
+                  );
+                  return (
+                    <Card
+                      key={item.id}
+                      className={cn(
+                        'border-l-[8px] mb-1 hover:shadow-md transition-shadow',
+                        isPastEvent
+                          ? 'border-gray-400 bg-gray-50'
+                          : 'border-[#124A69]',
                       )}
-                      <div className='-mt-4 -mb-4'>
-                        <div className='text-[#124A69] font-medium text-xs mb-0.5'>
-                          {item.title}
-                        </div>
-                        <div className='text-gray-600 text-[11px]'>
-                          {item.description}
-                        </div>
-                        {item.fromTime && item.toTime && (
-                          <div className='flex items-center text-gray-500 text-[11px]'>
-                            <Clock className='w-3 h-3 mr-0.5' />
-                            {formatTimeTo12Hour(item.fromTime)} -{' '}
-                            {formatTimeTo12Hour(item.toTime)}
+                    >
+                      <CardContent className='p-2 relative'>
+                        {canManageEvents && (
+                          <div className='absolute right-1 -top-5 flex gap-0.5'>
+                            <Button
+                              variant='ghost'
+                              className='h-5 w-5 p-0 hover:bg-transparent'
+                              onClick={() => handleOpenEdit(item)}
+                            >
+                              <Edit
+                                className='h-3 w-3'
+                                color={isPastEvent ? '#6b7280' : '#124a69'}
+                              />
+                            </Button>
+                            <Button
+                              variant='ghost'
+                              className='h-5 w-5 p-0 hover:bg-transparent'
+                              onClick={() => handleDeleteClick(item.id)}
+                            >
+                              <Trash
+                                className='h-3 w-3'
+                                color={isPastEvent ? '#6b7280' : '#124a69'}
+                              />
+                            </Button>
                           </div>
                         )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                        <div className='-mt-4 -mb-4'>
+                          <div
+                            className={cn(
+                              'font-medium text-xs mb-0.5',
+                              isPastEvent ? 'text-gray-500' : 'text-[#124A69]',
+                            )}
+                          >
+                            {item.title}
+                          </div>
+                          <div
+                            className={cn(
+                              'text-[11px]',
+                              isPastEvent ? 'text-gray-400' : 'text-gray-600',
+                            )}
+                          >
+                            {item.description}
+                          </div>
+                          <div
+                            className={cn(
+                              'flex items-center text-[11px]',
+                              isPastEvent ? 'text-gray-400' : 'text-gray-500',
+                            )}
+                          >
+                            <Clock className='w-3 h-3 mr-0.5' />
+                            {item.fromTime && item.toTime
+                              ? `${formatTimeTo12Hour(
+                                  item.fromTime,
+                                )} - ${formatTimeTo12Hour(item.toTime)}`
+                              : 'All day'}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             ))
           ) : (
@@ -741,13 +902,38 @@ export default function UpcomingEvents() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={openEdit} onOpenChange={setOpenEdit}>
+      <AlertDialog
+        open={openEdit}
+        onOpenChange={(open) => {
+          if (!open && (isSaving || alert.show || !hasAttemptedSave)) {
+            return;
+          }
+          setOpenEdit(open);
+          if (open) {
+            setAlert({
+              show: false,
+              title: '',
+              description: '',
+              variant: 'success',
+            });
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Edit Event</AlertDialogTitle>
           </AlertDialogHeader>
           <div className='space-y-2'>
-            <Label className='text-medium'>Title *</Label>
+            {alert.show && alert.variant === 'error' && (
+              <Alert variant='destructive' className='py-2'>
+                <AlertDescription className='text-xs'>
+                  {alert.description}
+                </AlertDescription>
+              </Alert>
+            )}
+            <Label className='text-medium'>
+              Title<span className='text-red-500'>*</span>
+            </Label>
             <Input
               placeholder='Title'
               value={editData.title}
@@ -761,7 +947,9 @@ export default function UpcomingEvents() {
               {editData.title.length}/20
             </p>
 
-            <Label className='text-medium'>Description</Label>
+            <Label className='text-medium'>
+              Description <span className='text-gray-400'>(optional)</span>
+            </Label>
             <Textarea
               placeholder='Add a description'
               className='resize-none'
@@ -778,7 +966,9 @@ export default function UpcomingEvents() {
 
             <div className='grid grid-cols-2 gap-4'>
               <div>
-                <Label className='text-medium'>Date *</Label>
+                <Label className='text-medium mb-2'>
+                  Date<span className='text-red-500'> *</span>
+                </Label>
                 <Popover
                   modal
                   open={openEditDatePicker}
@@ -817,7 +1007,7 @@ export default function UpcomingEvents() {
                 </Popover>
               </div>
               <div>
-                <Label className='text-medium'>Time</Label>
+                <Label className='text-medium mb-2'>Time</Label>
                 <div className='grid grid-cols-2 gap-2'>
                   <div>
                     <Input
@@ -853,22 +1043,49 @@ export default function UpcomingEvents() {
             <AlertDialogAction
               onClick={saveEdit}
               className='bg-[#124A69] text-white hover:bg-[#0a2f42] h-8 text-xs'
-              disabled={!editData.title || !editData.date || !!timeError}
+              disabled={
+                !editData.title || !editData.date || !!timeError || isSaving
+              }
             >
-              Save
+              {isSaving ? 'Saving...' : 'Save'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={openAdd} onOpenChange={setOpenAdd}>
+      <AlertDialog
+        open={openAdd}
+        onOpenChange={(open) => {
+          if (!open && (isSaving || alert.show || !hasAttemptedSave)) {
+            return;
+          }
+          setOpenAdd(open);
+          if (open) {
+            setAlert({
+              show: false,
+              title: '',
+              description: '',
+              variant: 'success',
+            });
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Add New Event</AlertDialogTitle>
           </AlertDialogHeader>
           <div className='space-y-3'>
+            {alert.show && alert.variant === 'error' && (
+              <Alert variant='destructive' className='py-2'>
+                <AlertDescription className='text-xs'>
+                  {alert.description}
+                </AlertDescription>
+              </Alert>
+            )}
             <div>
-              <Label className='text-medium'>Title *</Label>
+              <Label className='text-medium'>
+                Title<span className='text-red-500'>*</span>
+              </Label>
               <Input
                 placeholder='Title'
                 value={newEvent.title}
@@ -883,7 +1100,9 @@ export default function UpcomingEvents() {
               </p>
             </div>
             <div>
-              <Label className='text-medium'>Description</Label>
+              <Label className='text-medium'>
+                Description<span className='text-gray-400'>(optional)</span>
+              </Label>
               <Textarea
                 placeholder='Add a description'
                 className='resize-none h-16'
@@ -900,7 +1119,9 @@ export default function UpcomingEvents() {
             </div>
 
             <div className='space-y-2'>
-              <Label className='text-medium'>Date and Time *</Label>
+              <Label className='text-medium'>
+                Date and Time <span className='text-red-500'>*</span>
+              </Label>
               <div className='space-y-1'>
                 <div className='grid grid-cols-2 gap-2'>
                   <div>
@@ -1118,9 +1339,11 @@ export default function UpcomingEvents() {
             <AlertDialogAction
               onClick={saveNewEvent}
               className='bg-[#124A69] text-white hover:bg-[#0a2f42] h-8 text-xs'
-              disabled={!newEvent.title || !newEvent.date || !!timeError}
+              disabled={
+                !newEvent.title || !newEvent.date || !!timeError || isSaving
+              }
             >
-              Save
+              {isSaving ? 'Saving...' : 'Save'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

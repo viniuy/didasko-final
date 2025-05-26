@@ -24,10 +24,10 @@ export async function PUT(
       include: {
         scores: {
           include: {
-            student: true
-          }
-        }
-      }
+            student: true,
+          },
+        },
+      },
     });
 
     if (!config) {
@@ -46,4 +46,4 @@ export async function PUT(
       { status: 500 },
     );
   }
-} 
+}

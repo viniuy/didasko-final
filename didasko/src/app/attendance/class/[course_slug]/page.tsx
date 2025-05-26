@@ -6,14 +6,17 @@ import Rightsidebar from '@/components/shared/layout/right-sidebar';
 import React from 'react';
 import Schedule from '@/components/attendance/attendance-schedule';
 import Studentlist from '@/components/attendance/attendance-studentslist';
-import { useSearchParams } from 'next/navigation';
 
-export default function ClassAttendancePage() {
+export default function ClassAttendancePage({
+  params,
+}: {
+  params: Promise<{ course_slug: string }>;
+}) {
   const [open, setOpen] = React.useState(false);
-  const searchParams = useSearchParams();
-  const courseId = searchParams.get('courseId');
+  const resolvedParams = React.use(params);
+  const { course_slug } = resolvedParams;
 
-  if (!courseId) {
+  if (!course_slug) {
     return (
       <div className='flex items-center justify-center h-screen'>
         <p className='text-xl text-gray-500'>No course selected</p>
@@ -34,10 +37,10 @@ export default function ClassAttendancePage() {
               <h2 className='pl-2 pb-1 text-2xl font-bold text-muted-foreground'>
                 Your Schedule
               </h2>
-              <Schedule />
+              <Schedule courseSlug={course_slug} />
 
               <div className='mt-6'>
-                <Studentlist />
+                <Studentlist courseSlug={course_slug} />
               </div>
             </div>
           </div>

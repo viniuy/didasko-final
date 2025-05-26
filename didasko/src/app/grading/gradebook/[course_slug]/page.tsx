@@ -20,7 +20,11 @@ interface GradeComponents {
 export default function GradebookCoursePage({
   params,
 }: {
-  params: Promise<{ course_code: string; course_section: string }>;
+  params: Promise<{
+    course_code: string;
+    course_section: string;
+    course_slug: string;
+  }>;
 }) {
   const resolvedParams = React.use(params);
   const { data: session } = useSession();
@@ -32,7 +36,7 @@ export default function GradebookCoursePage({
       try {
         console.log('Fetching course ID for:', {
           code: resolvedParams.course_code,
-          section: resolvedParams.course_section
+          section: resolvedParams.course_section,
         });
         const response = await axiosInstance.get(`/courses`, {
           params: {
@@ -72,7 +76,7 @@ export default function GradebookCoursePage({
 
               {courseId && (
                 <GradebookTable
-                  courseId={courseId}
+                  courseSlug={resolvedParams.course_slug}
                   courseCode={resolvedParams.course_code}
                   courseSection={resolvedParams.course_section}
                 />

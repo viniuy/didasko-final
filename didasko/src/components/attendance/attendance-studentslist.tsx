@@ -150,10 +150,8 @@ interface Course {
   };
 }
 
-export default function StudentList() {
+export default function StudentList({ courseSlug }: { courseSlug: string }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const courseId = searchParams.get('courseId');
   const [studentList, setStudentList] = useState<Student[]>([]);
   const [courseInfo, setCourseInfo] = useState<Course | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -202,11 +200,13 @@ export default function StudentList() {
   const [showResetConfirmation, setShowResetConfirmation] = useState(false);
 
   const fetchStudents = async () => {
-    if (!courseId) return;
+    if (!courseSlug) return;
 
     try {
       setIsLoading(true);
-      const response = await axiosInstance.get(`/courses/${courseId}/students`);
+      const response = await axiosInstance.get(
+        `/courses/${courseSlug}/students`,
+      );
       const students = response.data.students.map((student: any) => ({
         ...student,
         name: `${student.lastName}, ${student.firstName}${
@@ -242,14 +242,14 @@ export default function StudentList() {
   };
 
   const fetchAttendance = async (date: Date) => {
-    if (!courseId) return;
+    if (!courseSlug) return;
 
     try {
       setIsDateLoading(true);
       const dateStr = format(date, 'yyyy-MM-dd');
       const attendanceResponse = await axiosInstance.get<{
         attendance: AttendanceRecord[];
-      }>(`/courses/${courseId}/attendance`, {
+      }>(`/courses/${courseSlug}/attendance`, {
         params: {
           date: dateStr,
           limit: 1000, // Increase limit to get all records
@@ -273,7 +273,7 @@ export default function StudentList() {
                   {
                     id: record.id,
                     studentId: student.id,
-                    courseId: courseId,
+                    courseId: courseInfo?.id || '',
                     status: record.status,
                     date: dateStr,
                     reason: record.reason,
@@ -295,11 +295,11 @@ export default function StudentList() {
   };
 
   const fetchAttendanceStats = async () => {
-    if (!courseId) return;
+    if (!courseSlug) return;
 
     try {
       const response = await axiosInstance.get(
-        `/courses/${courseId}/attendance/stats`,
+        `/courses/${courseSlug}/attendance/stats`,
       );
       setAttendanceStats(response.data);
     } catch (error) {
@@ -308,7 +308,7 @@ export default function StudentList() {
   };
 
   const fetchAttendanceDates = async () => {
-    if (!courseId) return;
+    if (!courseSlug) return;
 
     try {
       // Get the start date (January 2025) and end date (today)
@@ -324,7 +324,7 @@ export default function StudentList() {
 
       // Get all attendance records for the date range
       const response = await axiosInstance.get(
-        `/courses/${courseId}/attendance/range`,
+        `/courses/${courseSlug}/attendance/range`,
         {
           params: {
             startDate: startDate.toISOString(),
@@ -348,12 +348,12 @@ export default function StudentList() {
   };
 
   useEffect(() => {
-    if (courseId) {
+    if (courseSlug) {
       fetchStudents();
       fetchAttendanceStats();
       fetchAttendanceDates();
     }
-  }, [courseId]);
+  }, [courseSlug]);
 
   // Get attendance records for the selected date
   const getAttendanceForDate = (student: Student, date: Date | undefined) => {
@@ -422,7 +422,7 @@ export default function StudentList() {
     const student = filteredStudents[actualIndex];
     if (!student) return;
 
-    const promise = axiosInstance.post(`/courses/${courseId}/attendance`, {
+    const promise = axiosInstance.post(`/courses/${courseSlug}/attendance`, {
       date: selectedDate.toISOString(),
       attendance: [
         {
@@ -495,7 +495,7 @@ export default function StudentList() {
       const record: AttendanceRecord = {
         id: crypto.randomUUID(),
         studentId: student.id,
-        courseId: courseId!,
+        courseId: courseSlug!,
         status: newStatus,
         date: format(selectedDate, 'yyyy-MM-dd'),
         reason: null,
@@ -560,7 +560,7 @@ export default function StudentList() {
       formData.append('image', file);
 
       const response = await axiosInstance.post(
-        `/courses/${courseId}/students/${studentId}/image`,
+        `/courses/${courseSlug}/students/${studentId}/image`,
         formData,
         {
           headers: {
@@ -692,7 +692,7 @@ export default function StudentList() {
   };
 
   const markAllAsPresent = async () => {
-    if (!selectedDate || !courseId) {
+    if (!selectedDate || !courseSlug) {
       toast.error('Please select a date first', {
         style: {
           background: '#fff',
@@ -712,7 +712,7 @@ export default function StudentList() {
       status: 'PRESENT' as AttendanceStatus,
     }));
 
-    const promise = axiosInstance.post(`/courses/${courseId}/attendance`, {
+    const promise = axiosInstance.post(`/courses/${courseSlug}/attendance`, {
       date: selectedDate.toISOString(),
       attendance: attendanceData,
     });
@@ -776,7 +776,7 @@ export default function StudentList() {
             {
               id: crypto.randomUUID(),
               studentId: student.id,
-              courseId: courseId,
+              courseId: courseSlug,
               status: 'PRESENT',
               date: format(selectedDate, 'yyyy-MM-dd'),
               reason: null,
@@ -909,7 +909,7 @@ export default function StudentList() {
                 {
                   id: crypto.randomUUID(),
                   studentId: row.Students,
-                  courseId: courseId || '',
+                  courseId: courseSlug || '',
                   status: row.Status as AttendanceStatus,
                   date: row.Date,
                   reason: null,
@@ -937,7 +937,7 @@ export default function StudentList() {
     try {
       const response = await axiosInstance.post('/students', {
         ...student,
-        courseId,
+        courseId: courseSlug,
       });
       const newStudent = response.data;
 
@@ -973,11 +973,11 @@ export default function StudentList() {
     try {
       console.log('Adding student to course:', {
         studentId: student.id,
-        courseId: courseId,
+        courseId: courseSlug,
       });
 
       const response = await axiosInstance.post(
-        `/courses/${courseId}/students`,
+        `/courses/${courseSlug}/students`,
         {
           studentId: student.id,
         },
@@ -1019,7 +1019,7 @@ export default function StudentList() {
   }, [hasUnsavedChanges]);
 
   const clearAllAttendance = async () => {
-    if (!selectedDate || !courseId) {
+    if (!selectedDate || !courseSlug) {
       toast.error('Please select a date before clearing attendance', {
         style: {
           background: '#fff',
@@ -1063,7 +1063,7 @@ export default function StudentList() {
     }
 
     const promise = axiosInstance.post(
-      `/courses/${courseId}/attendance/clear`,
+      `/courses/${courseSlug}/attendance/clear`,
       {
         date: dateStr,
         recordsToDelete,
@@ -1152,10 +1152,10 @@ export default function StudentList() {
 
   // Add useEffect to fetch attendance when date changes
   useEffect(() => {
-    if (courseId && selectedDate) {
+    if (courseSlug && selectedDate) {
       fetchAttendance(selectedDate);
     }
-  }, [selectedDate, courseId]);
+  }, [selectedDate, courseSlug]);
 
   // Add useEffect to reset to first page when filters change
   useEffect(() => {
@@ -1205,7 +1205,7 @@ export default function StudentList() {
             <AddStudentSheet
               onSelectExistingStudent={handleSelectExistingStudent}
               onStudentsRemoved={() => {
-                if (courseId) {
+                if (courseSlug) {
                   fetchStudents();
                 }
               }}
@@ -1428,7 +1428,7 @@ export default function StudentList() {
             <AddStudentSheet
               onSelectExistingStudent={handleSelectExistingStudent}
               onStudentsRemoved={() => {
-                if (courseId) {
+                if (courseSlug) {
                   fetchStudents();
                 }
               }}

@@ -75,7 +75,11 @@ const LoadingSkeleton = ({ index }: { index: number }) => (
 );
 
 // Courses Component with Pagination
-export default function AttendanceSchedule() {
+export default function AttendanceSchedule({
+  courseSlug,
+}: {
+  courseSlug?: string;
+}) {
   const router = useRouter();
   const { data: session, status } = useSession();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -95,6 +99,7 @@ export default function AttendanceSchedule() {
           facultyId: session.user.id,
           semester: '1st Semester',
           limit: 100,
+          courseSlug,
         },
       });
       setSchedules(response.data.schedules || []);

@@ -509,7 +509,9 @@ export default function Notes() {
           </AlertDialogHeader>
           <div className='space-y-4'>
             <div>
-              <Label className='text-sm font-medium mb-2 block'>Title *</Label>
+              <Label className='text-sm font-medium mb-2 block'>
+                Title <span className='text-red-500'> *</span>
+              </Label>
               <Input
                 placeholder='Title'
                 value={editData.title}
@@ -526,7 +528,9 @@ export default function Notes() {
             </div>
 
             <div>
-              <Label className='text-sm font-medium mb-2 block'>Date *</Label>
+              <Label className='text-sm font-medium mb-2 block'>
+                Date<span className='text-red-500'> *</span>
+              </Label>
               <Popover
                 modal
                 open={openEditDatePicker}
@@ -561,7 +565,9 @@ export default function Notes() {
             </div>
 
             <div>
-              <Label className='text-sm font-medium mb-2 block'>Content</Label>
+              <Label className='text-sm font-medium mb-2 block'>
+                Content <span className='text-gray-400'>(optional)</span>
+              </Label>
               <Textarea
                 placeholder='Add your note content'
                 className='resize-none min-h-[100px] max-h-[100px] overflow-y-auto w-full break-words rounded-lg'
@@ -604,7 +610,9 @@ export default function Notes() {
           </AlertDialogHeader>
           <div className='space-y-4'>
             <div>
-              <Label className='text-sm font-medium mb-2 block'>Title *</Label>
+              <Label className='text-sm font-medium mb-2 block'>
+                Title <span className='text-red-500'> *</span>
+              </Label>
               <Input
                 placeholder='Title'
                 value={newNote.title}
@@ -621,7 +629,9 @@ export default function Notes() {
             </div>
 
             <div>
-              <Label className='text-sm font-medium mb-2 block'>Date *</Label>
+              <Label className='text-sm font-medium mb-2 block'>
+                Date <span className='text-red-500'> *</span>
+              </Label>
               <Popover
                 modal
                 open={openAddDatePicker}
@@ -654,7 +664,9 @@ export default function Notes() {
             </div>
 
             <div>
-              <Label className='text-sm font-medium mb-2 block'>Content</Label>
+              <Label className='text-sm font-medium mb-2 block'>
+                Content <span className='text-gray-400'>(optional)</span>
+              </Label>
               <Textarea
                 placeholder='Add your note content'
                 className='resize-none min-h-[100px] max-h-[200px] overflow-y-auto w-full break-words whitespace-pre-wrap rounded-lg'

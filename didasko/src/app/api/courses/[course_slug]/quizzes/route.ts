@@ -5,13 +5,13 @@ import { authOptions } from '@/lib/auth-options';
 
 export async function GET(
   req: Request,
-  { params }: { params: { course_slug: string } },
+  context: { params: { course_slug: string } },
 ) {
   const session = await getServerSession(authOptions);
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const { course_slug } = params;
+  const { course_slug } = context.params;
   try {
     // First find the course using the slug
     const course = await prisma.course.findUnique({
@@ -38,7 +38,7 @@ export async function GET(
 
 export async function POST(
   req: Request,
-  { params }: { params: { course_slug: string } },
+  context: { params: { course_slug: string } },
 ) {
   const session = await getServerSession(authOptions);
   if (!session) {
@@ -46,7 +46,7 @@ export async function POST(
   }
 
   try {
-    const { course_slug } = params;
+    const { course_slug } = context.params;
     const body = await req.json();
     const {
       name,

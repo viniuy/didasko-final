@@ -75,8 +75,9 @@ interface AttendanceStats {
     late: number;
     absent: number;
     attendanceRate: number;
-    excused?: number;
+    excused: number;
   }[];
+  uniqueDates: string[];
 }
 
 export function QuizTable({
@@ -848,9 +849,11 @@ export function QuizTable({
                               (studentStat.late || 0) +
                               (studentStat.absent || 0) +
                               (studentStat.excused || 0);
+                            // Only count as missing if there are no attendance records at all
                             const missingRecords =
-                              (attendanceStats?.totalClasses || 0) -
-                              totalRecords;
+                              totalRecords === 0
+                                ? attendanceStats?.totalClasses || 0
+                                : 0;
 
                             return (
                               <div className='flex items-center justify-center gap-2 text-sm'>
@@ -872,16 +875,15 @@ export function QuizTable({
                                     </span>
                                   </span>
                                 )}
-                                {studentStat.excused &&
-                                  studentStat.excused > 0 && (
-                                    <span className='text-blue-700 font-medium flex items-center gap-1 group relative'>
-                                      <span className='w-2 h-2 rounded-full bg-blue-700'></span>
-                                      {studentStat.excused}
-                                      <span className='absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap'>
-                                        Excused
-                                      </span>
+                                {studentStat.excused > 0 && (
+                                  <span className='text-blue-700 font-medium flex items-center gap-1 group relative'>
+                                    <span className='w-2 h-2 rounded-full bg-blue-700'></span>
+                                    {studentStat.excused}
+                                    <span className='absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap'>
+                                      Excused
                                     </span>
-                                  )}
+                                  </span>
+                                )}
                                 {studentStat.absent > 0 && (
                                   <span className='text-red-700 font-medium flex items-center gap-1 group relative'>
                                     <span className='w-2 h-2 rounded-full bg-red-700'></span>

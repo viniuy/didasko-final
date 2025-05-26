@@ -37,7 +37,7 @@ async function getStudentGradePercentages(courseId: string, studentId: string) {
 
 export async function GET(
   request: Request,
-  context: { params: { courseId: string } },
+  context: { params: { course_slug: string } },
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -46,11 +46,20 @@ export async function GET(
     }
 
     const params = await Promise.resolve(context.params);
-    const { courseId } = params;
+    const { course_slug } = params;
+
+    // Get the course first
+    const course = await prisma.course.findUnique({
+      where: { slug: course_slug },
+    });
+
+    if (!course) {
+      return NextResponse.json({ error: 'Course not found' }, { status: 404 });
+    }
 
     // Get all grade configurations for the course
     const configs = await prisma.gradeConfiguration.findMany({
-      where: { courseId },
+      where: { courseId: course.id },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -66,7 +75,7 @@ export async function GET(
 
 export async function POST(
   request: Request,
-  context: { params: { courseId: string } },
+  context: { params: { course_slug: string } },
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -75,15 +84,23 @@ export async function POST(
     }
 
     const params = await Promise.resolve(context.params);
-    const { courseId } = params;
+    const { course_slug } = params;
     const body = await request.json();
     const { components } = body;
+
+    // Get the course first
+    const course = await prisma.course.findUnique({
+      where: { slug: course_slug },
+    });
+
+    if (!course) {
+      return NextResponse.json({ error: 'Course not found' }, { status: 404 });
+    }
 
     // Create new grade configuration
     const config = await prisma.gradeConfiguration.create({
       data: {
-        id: `${courseId}_${Date.now()}`,
-        courseId,
+        id: `${course.id}_${Date.now()}`,
         name: components.name,
         reportingWeight: components.reportingWeight,
         recitationWeight: components.recitationWeight,
@@ -91,6 +108,11 @@ export async function POST(
         passingThreshold: components.passingThreshold,
         startDate: new Date(components.startDate),
         endDate: new Date(components.endDate),
+        course: {
+          connect: {
+            id: course.id,
+          },
+        },
       },
     });
 
