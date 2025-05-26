@@ -1,5 +1,6 @@
-import { prisma } from '@/lib/db';
-import { Permission, Role, WorkType } from '@/lib/types';
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();
+import { Permission, Role, WorkType } from '@prisma/client';
 
 export async function getDashboardData() {
   const users = await prisma.user.findMany({

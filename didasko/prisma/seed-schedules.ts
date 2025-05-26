@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 const mockSchedules = [
   // First Semester Courses
   {
-    day: 'Mon',
+    day: 'Monday',
     course: 'IT CAPSTONE',
     section: 'BSIT-111',
     time: '8:00 AM - 10:30 AM',
@@ -13,7 +13,7 @@ const mockSchedules = [
     semester: '1st Semester',
   },
   {
-    day: 'Mon',
+    day: 'Monday',
     course: 'OOP',
     section: 'BSIT-112',
     time: '11:00 AM - 2:00 PM',
@@ -21,7 +21,7 @@ const mockSchedules = [
     semester: '1st Semester',
   },
   {
-    day: 'Tue',
+    day: 'Tuesday',
     course: 'IAS',
     section: 'BSIT-113',
     time: '8:00 AM - 10:30 AM',
@@ -29,7 +29,7 @@ const mockSchedules = [
     semester: '1st Semester',
   },
   {
-    day: 'Wed',
+    day: 'Wednesday',
     course: 'MOBSTECH',
     section: 'BSIT-114',
     time: '10:30 AM - 1:30 PM',
@@ -37,7 +37,7 @@ const mockSchedules = [
     semester: '1st Semester',
   },
   {
-    day: 'Thu',
+    day: 'Thursday',
     course: 'ETHICS',
     section: 'BSIT-115',
     time: '8:00 AM - 10:30 AM',
@@ -45,7 +45,7 @@ const mockSchedules = [
     semester: '1st Semester',
   },
   {
-    day: 'Fri',
+    day: 'Friday',
     course: 'COMPRO 2',
     section: 'BSIT-116',
     time: '9:30 AM - 12:00 PM',
@@ -54,7 +54,7 @@ const mockSchedules = [
   },
   // Second Semester Courses
   {
-    day: 'Mon',
+    day: 'Monday',
     course: 'PIIST',
     section: 'BSIT-211',
     time: '3:00 PM - 5:30 PM',
@@ -62,7 +62,7 @@ const mockSchedules = [
     semester: '2nd Semester',
   },
   {
-    day: 'Tue',
+    day: 'Tuesday',
     course: 'EUTHENICS',
     section: 'BSIT-212',
     time: '11:00 AM - 2:00 PM',
@@ -70,7 +70,7 @@ const mockSchedules = [
     semester: '2nd Semester',
   },
   {
-    day: 'Wed',
+    day: 'Wednesday',
     course: 'MIS',
     section: 'BSIT-213',
     time: '2:00 PM - 4:30 PM',
@@ -78,7 +78,7 @@ const mockSchedules = [
     semester: '2nd Semester',
   },
   {
-    day: 'Thu',
+    day: 'Thursday',
     course: 'GREAT BOOKS',
     section: 'BSIT-214',
     time: '11:30 AM - 2:30 PM',
@@ -86,7 +86,7 @@ const mockSchedules = [
     semester: '2nd Semester',
   },
   {
-    day: 'Thu',
+    day: 'Thursday',
     course: 'WEBSTECH',
     section: 'BSIT-215',
     time: '11:00 AM - 2:00 PM',
@@ -94,7 +94,7 @@ const mockSchedules = [
     semester: '2nd Semester',
   },
   {
-    day: 'Fri',
+    day: 'Friday',
     course: 'PROLANS',
     section: 'BSIT-216',
     time: '5:30 PM - 7:30 PM',
@@ -165,13 +165,13 @@ async function main() {
       // Get the next occurrence of the day
       const today = new Date();
       const dayOfWeek = [
-        'Sun',
-        'Mon',
-        'Tue',
-        'Wed',
-        'Thu',
-        'Fri',
-        'Sat',
+        'Sunday',
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
       ].indexOf(schedule.day);
       const daysUntilNext = (dayOfWeek - today.getDay() + 7) % 7;
       const nextDay = new Date(today);
@@ -180,7 +180,7 @@ async function main() {
       return prisma.courseSchedule.create({
         data: {
           courseId: courses[index].id,
-          day: nextDay,
+          day: schedule.day,
           fromTime,
           toTime,
         },

@@ -28,7 +28,7 @@ interface Course {
 interface Schedule {
   id: string;
   courseId: string;
-  day: Date;
+  day: string;
   fromTime: string;
   toTime: string;
   course: Course;
@@ -37,9 +37,7 @@ interface Schedule {
 // Course Card Component
 const CourseCard = ({ schedule }: { schedule: Schedule }) => {
   const router = useRouter();
-  const dayStr = new Date(schedule.day).toLocaleDateString('en-US', {
-    weekday: 'short',
-  });
+  const dayStr = schedule.day;
   const timeStr = `${schedule.fromTime} - ${schedule.toTime}`;
 
   const handleClick = () => {

@@ -12,6 +12,7 @@ import {
   BookCheck,
   CalendarClock,
   BookUser,
+  BookOpen,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -51,6 +52,7 @@ import { useEffect, useState } from 'react';
 
 const adminItems = [
   { title: 'Home', url: '/dashboard/admin', icon: Home },
+  { title: 'Courses', url: '/courses', icon: BookOpen },
   { title: 'Accounts', url: '/accounts', icon: Settings },
 ];
 
@@ -58,6 +60,11 @@ const academicHeadItems = [
   { title: 'Dashboard', url: '/dashboard/academic-head', icon: Home },
   { title: 'Attendance', url: '/attendance', icon: CalendarCheck },
   { title: 'Faculty Load', url: '/faculty-load', icon: CalendarClock },
+];
+
+const facultyItems = [
+  { title: 'Dashboard', url: '/dashboard/faculty', icon: Home },
+  { title: 'Attendance', url: '/attendance', icon: CalendarCheck },
 ];
 
 const gradingSubItems = [
@@ -116,7 +123,15 @@ export function AppSidebar() {
   const pathname = usePathname();
 
   const isAdmin = session?.user?.role === 'ADMIN';
-  const items = isAdmin ? adminItems : academicHeadItems;
+  const isAcademicHead = session?.user?.role === 'ACADEMIC_HEAD';
+  const isFaculty = session?.user?.role === 'FACULTY';
+
+  let items = adminItems;
+  if (isAcademicHead) {
+    items = academicHeadItems;
+  } else if (isFaculty) {
+    items = facultyItems;
+  }
 
   const handleLogout = async () => {
     try {
@@ -151,7 +166,14 @@ export function AppSidebar() {
 
   const displayName = session?.user?.name || 'Loading...';
   const displayDepartment =
-    session?.user?.department || (isAdmin ? 'Administrator' : 'Academic Head');
+    session?.user?.department ||
+    (isAdmin
+      ? 'Administrator'
+      : isAcademicHead
+      ? 'Academic Head'
+      : isFaculty
+      ? 'Faculty'
+      : '');
   const avatarInitial = displayName.charAt(0);
   const userImage = session?.user?.image || undefined;
 

@@ -11,6 +11,12 @@ export interface DashboardData {
     description: string;
     timestamp: string;
   }[];
+  grantedCount: number;
+  deniedCount: number;
+  totalUsers: number;
+  fullTimeCount: number;
+  partTimeCount: number;
+  users: any[];
 }
 
 const fetchDashboardData = async () => {
@@ -20,12 +26,24 @@ const fetchDashboardData = async () => {
     coursesCount,
     attendanceCount,
     recentActivity,
+    users,
+    fullTimeCount,
+    partTimeCount,
+    grantedCount,
+    deniedCount,
+    totalUsers,
   ] = await Promise.all([
     axiosInstance.get('/api/students/count').then((res) => res.data),
     axiosInstance.get('/api/teachers/count').then((res) => res.data),
     axiosInstance.get('/api/courses/count').then((res) => res.data),
     axiosInstance.get('/api/attendance/count').then((res) => res.data),
     axiosInstance.get('/api/activity/recent').then((res) => res.data),
+    axiosInstance.get('/users').then((res) => res.data.users || []),
+    axiosInstance.get('/users/count/full-time').then((res) => res.data),
+    axiosInstance.get('/users/count/part-time').then((res) => res.data),
+    axiosInstance.get('/users/count/granted').then((res) => res.data),
+    axiosInstance.get('/users/count/denied').then((res) => res.data),
+    axiosInstance.get('/users/count').then((res) => res.data),
   ]);
 
   return {
@@ -34,6 +52,12 @@ const fetchDashboardData = async () => {
     totalCourses: coursesCount,
     totalAttendance: attendanceCount,
     recentActivity,
+    users,
+    fullTimeCount,
+    partTimeCount,
+    grantedCount,
+    deniedCount,
+    totalUsers,
   };
 };
 

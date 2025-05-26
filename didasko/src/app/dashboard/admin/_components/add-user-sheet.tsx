@@ -145,19 +145,15 @@ export function AddUserSheet({ onSuccess }: AddUserSheetProps) {
       });
 
       if (result.success) {
-        toast.success('User added successfully');
         form.reset();
         setOpen(false);
         // Call onSuccess callback if provided
         if (onSuccess) {
           await onSuccess();
         }
-      } else {
-        toast.error(result.error || 'Failed to add user');
       }
     } catch (error) {
       console.error('Error adding user:', error);
-      toast.error('An error occurred while adding the user');
     } finally {
       setIsSubmitting(false);
     }

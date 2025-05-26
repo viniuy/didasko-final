@@ -32,15 +32,15 @@ const DEPARTMENTS = ['IT Department', 'BA Department', 'HM Department'];
 const userSchema = z.object({
   lastName: z
     .string()
-    .min(1, 'Last name is required')
+    .min(2, 'Last name must be at least 2 characters')
     .max(30, 'Last name must be at most 30 characters')
     .refine(
-      (val) => /^[A-Za-z\s-]+$/.test(val),
+      (val) => /^[A-Za-z\s.-]+$/.test(val),
       'Last name cannot contain special characters or numbers',
     ),
   firstName: z
     .string()
-    .min(1, 'First name is required')
+    .min(2, 'First name must be at least 2 characters')
     .max(30, 'First name must be at most 30 characters')
     .refine(
       (val) => /^[A-Za-z\s.-]+$/.test(val),
@@ -107,19 +107,11 @@ export function UserSheet({
     field: 'lastName' | 'firstName' | 'middleInitial',
   ) => {
     if (field === 'middleInitial') {
-      if (value && !/^[A-Za-z]$/.test(value)) {
+      if (value && !/^[A-Za-z.]+$/.test(value)) {
         setNameError((prev) => ({
           ...prev,
-          [field]: 'Must be a single letter',
+          [field]: 'Must be letters only',
         }));
-        toast.error('Middle initial must be a single letter', {
-          duration: 3000,
-          style: {
-            background: '#fff',
-            color: '#dc2626',
-            border: '1px solid #e5e7eb',
-          },
-        });
         return false;
       }
       setNameError((prev) => ({ ...prev, [field]: undefined }));
@@ -131,30 +123,22 @@ export function UserSheet({
         ...prev,
         [field]: 'Cannot start with a space',
       }));
-      toast.error('Name cannot start with a space', {
-        duration: 3000,
-        style: {
-          background: '#fff',
-          color: '#dc2626',
-          border: '1px solid #e5e7eb',
-        },
-      });
       return false;
     }
 
-    if (!/^[A-Za-z\s-]+$/.test(value)) {
+    if (value.length < 2) {
+      setNameError((prev) => ({
+        ...prev,
+        [field]: 'Must be at least 2 characters',
+      }));
+      return false;
+    }
+
+    if (!/^[A-Za-z\s.-]+$/.test(value)) {
       setNameError((prev) => ({
         ...prev,
         [field]: 'Cannot contain special characters or numbers',
       }));
-      toast.error('Name cannot contain special characters or numbers', {
-        duration: 3000,
-        style: {
-          background: '#fff',
-          color: '#dc2626',
-          border: '1px solid #e5e7eb',
-        },
-      });
       return false;
     }
     setNameError((prev) => ({ ...prev, [field]: undefined }));
@@ -243,28 +227,11 @@ export function UserSheet({
         });
 
         if (result.success) {
-          toast.success('User added successfully!', {
-            duration: 3000,
-            style: {
-              background: '#fff',
-              color: '#124A69',
-              border: '1px solid #e5e7eb',
-            },
-          });
           form.reset();
           setOpen(false);
           if (onSuccess) {
             await onSuccess();
           }
-        } else {
-          toast.error(result.error || 'Failed to add user', {
-            duration: 3000,
-            style: {
-              background: '#fff',
-              color: '#dc2626',
-              border: '1px solid #e5e7eb',
-            },
-          });
         }
       } else if (mode === 'edit' && user && onSave) {
         await onSave(user.id, {
@@ -274,14 +241,6 @@ export function UserSheet({
           workType: values.workType,
           role: values.role,
           permission: values.permission,
-        });
-        toast.success('User updated successfully!', {
-          duration: 3000,
-          style: {
-            background: '#fff',
-            color: '#124A69',
-            border: '1px solid #e5e7eb',
-          },
         });
         setOpen(false);
         if (onSuccess) {
@@ -293,35 +252,12 @@ export function UserSheet({
         `Error ${mode === 'add' ? 'adding' : 'updating'} user:`,
         error,
       );
-      toast.error(
-        `An error occurred while ${
-          mode === 'add' ? 'adding' : 'updating'
-        } the user`,
-        {
-          duration: 3000,
-          style: {
-            background: '#fff',
-            color: '#dc2626',
-            border: '1px solid #e5e7eb',
-          },
-        },
-      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleClose = () => {
-    if (form.formState.isDirty) {
-      toast.error('Changes not saved', {
-        duration: 3000,
-        style: {
-          background: '#fff',
-          color: '#dc2626',
-          border: '1px solid #e5e7eb',
-        },
-      });
-    }
     form.reset(initialFormData);
     setNameError({});
     setOpen(false);

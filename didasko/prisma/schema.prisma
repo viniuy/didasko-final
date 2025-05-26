@@ -297,7 +297,7 @@ model CourseSchedule {
   id        String   @id @default(uuid())
   courseId  String
   course    Course   @relation(fields: [courseId], references: [id])
-  day       DateTime
+  day       String
   fromTime  String
   toTime    String
   createdAt DateTime @default(now()) @map("created_at")

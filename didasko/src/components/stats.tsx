@@ -1,6 +1,6 @@
 'use client';
 
-import { User, BookOpen } from 'lucide-react';
+import { User, BookOpen, GraduationCap } from 'lucide-react';
 import { Card, CardContent, CardDescription } from '@/components/ui/card';
 import { useEffect, useState } from 'react';
 import axiosInstance from '@/lib/axios';
@@ -32,47 +32,54 @@ const StatCard = ({ icon, count, label, isLoading = false }: StatCardProps) => {
   );
 };
 
-async function getFacultyCount() {
+async function getFacultyStats() {
   try {
-    const response = await axiosInstance.get('/users/faculty-count');
+    const response = await axiosInstance.get('/users/faculty-stats');
     return response.data;
   } catch (error) {
-    console.error('Error fetching faculty count:', error);
-    return { fullTime: 0, partTime: 0 };
+    console.error('Error fetching faculty stats:', error);
+    return { totalStudents: 0, totalCourses: 0, totalClasses: 0 };
   }
 }
 
 export default function Dashboard() {
-  const [facultyCount, setFacultyCount] = useState({
-    fullTime: 0,
-    partTime: 0,
+  const [stats, setStats] = useState({
+    totalStudents: 0,
+    totalCourses: 0,
+    totalClasses: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const fetchFacultyCount = async () => {
+    const fetchStats = async () => {
       setIsLoading(true);
-      const counts = await getFacultyCount();
-      setFacultyCount(counts);
+      const data = await getFacultyStats();
+      setStats(data);
       setIsLoading(false);
     };
 
-    fetchFacultyCount();
+    fetchStats();
   }, []);
 
   return (
     <div className='pt-2 px-5'>
-      <div className='grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4'>
+      <div className='grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4'>
         <StatCard
           icon={<User size={24} />}
-          count={facultyCount.fullTime}
-          label='FACULTY FULL-TIME'
+          count={stats.totalStudents}
+          label='STUDENTS COUNT'
           isLoading={isLoading}
         />
         <StatCard
           icon={<BookOpen size={24} />}
-          count={facultyCount.partTime}
-          label='FACULTY PART-TIME'
+          count={stats.totalCourses}
+          label='TOTAL COURSES'
+          isLoading={isLoading}
+        />
+        <StatCard
+          icon={<GraduationCap size={24} />}
+          count={stats.totalClasses}
+          label='TOTAL CLASSES'
           isLoading={isLoading}
         />
       </div>

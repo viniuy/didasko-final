@@ -3,7 +3,7 @@ import { CourseSchedule } from '@prisma/client';
 export interface Schedule {
   id: string;
   courseId: string;
-  day: Date;
+  day: string;
   fromTime: string;
   toTime: string;
   course?: {
@@ -18,7 +18,7 @@ export interface Schedule {
 
 export interface ScheduleCreateInput {
   courseId: string;
-  day: Date;
+  day: string;
   fromTime: string;
   toTime: string;
   room: string;

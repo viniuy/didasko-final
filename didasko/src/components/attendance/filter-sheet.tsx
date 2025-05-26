@@ -35,7 +35,7 @@ export function FilterSheet({
       case 'EXCUSED':
         return 'Excused';
       case 'NOT_SET':
-        return 'Not Set';
+        return 'No Attendance';
       default:
         return 'Status';
     }

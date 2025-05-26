@@ -8,41 +8,12 @@ import {
   ScheduleResponse,
 } from '@/types/schedule';
 
-// Helper function to check for schedule overlaps
-async function hasScheduleOverlap(
-  courseId: string,
-  day: Date,
-  fromTime: string,
-  toTime: string,
-  excludeScheduleId?: string,
-) {
-  const existingSchedules = await prisma.courseSchedule.findMany({
-    where: {
-      courseId,
-      day,
-      id: excludeScheduleId ? { not: excludeScheduleId } : undefined,
-    },
-  });
-
-  const newFromTime = new Date(`1970-01-01T${fromTime}`);
-  const newToTime = new Date(`1970-01-01T${toTime}`);
-
-  return existingSchedules.some((schedule) => {
-    const existingFromTime = new Date(`1970-01-01T${schedule.fromTime}`);
-    const existingToTime = new Date(`1970-01-01T${schedule.toTime}`);
-
-    return (
-      (newFromTime >= existingFromTime && newFromTime < existingToTime) ||
-      (newToTime > existingFromTime && newToTime <= existingToTime) ||
-      (newFromTime <= existingFromTime && newToTime >= existingToTime)
-    );
-  });
-}
-
 export async function GET(request: Request) {
   try {
+    console.log('GET /courses/schedules - Starting request');
     const session = await getServerSession(authOptions);
     if (!session) {
+      console.log('No session found');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -53,7 +24,10 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get('limit') || '10');
     const skip = (page - 1) * limit;
 
+    console.log('Request params:', { facultyId, semester, page, limit, skip });
+
     if (!facultyId) {
+      console.log('No facultyId provided');
       return NextResponse.json(
         { error: 'Faculty ID is required' },
         { status: 400 },
@@ -66,7 +40,10 @@ export async function GET(request: Request) {
       select: { id: true, email: true, role: true },
     });
 
+    console.log('Found user:', user);
+
     if (!user) {
+      console.log('User not found');
       return NextResponse.json({ error: 'Faculty not found' }, { status: 404 });
     }
 
@@ -79,6 +56,8 @@ export async function GET(request: Request) {
         },
       },
     });
+
+    console.log('Total schedules found:', total);
 
     // Get schedules with pagination
     const schedules = await prisma.courseSchedule.findMany({
@@ -105,6 +84,8 @@ export async function GET(request: Request) {
       orderBy: { day: 'asc' },
     });
 
+    console.log('Schedules retrieved:', schedules.length);
+
     const response: ScheduleResponse = {
       schedules,
       pagination: {
@@ -117,7 +98,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error('Error fetching schedules:', error);
+    console.error('Error in GET /courses/schedules:', error);
     return NextResponse.json(
       { error: 'Failed to fetch schedules' },
       { status: 500 },
@@ -143,16 +124,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check for schedule overlap
-    const hasOverlap = await hasScheduleOverlap(
-      courseId,
-      new Date(day),
-      fromTime,
-      toTime,
-    );
-    if (hasOverlap) {
+    // Validate day format
+    const validDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    if (!validDays.includes(day)) {
       return NextResponse.json(
-        { error: 'Schedule overlaps with existing schedule' },
+        {
+          error:
+            'Invalid day format. Must be one of: Sun, Mon, Tue, Wed, Thu, Fri, Sat',
+        },
         { status: 400 },
       );
     }
@@ -160,7 +139,7 @@ export async function POST(request: Request) {
     const schedule = await prisma.courseSchedule.create({
       data: {
         courseId,
-        day: new Date(day),
+        day,
         fromTime,
         toTime,
       },

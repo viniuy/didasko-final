@@ -60,6 +60,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import axiosInstance from '@/lib/axios';
+import axios from 'axios';
 
 // Add interface for Excel data
 interface ExcelRow {
@@ -247,6 +248,13 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
     try {
       setIsDateLoading(true);
       const dateStr = format(date, 'yyyy-MM-dd');
+      console.log(
+        'Fetching attendance for date:',
+        dateStr,
+        'Original date:',
+        date.toISOString(),
+      );
+
       const attendanceResponse = await axiosInstance.get<{
         attendance: AttendanceRecord[];
       }>(`/courses/${courseSlug}/attendance`, {
@@ -255,6 +263,8 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
           limit: 1000, // Increase limit to get all records
         },
       });
+
+      console.log('Attendance response:', attendanceResponse.data);
 
       const attendanceData = attendanceResponse.data.attendance;
       const attendanceMap = new Map<string, AttendanceRecord>(
@@ -288,7 +298,18 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
       setUnsavedChanges({});
     } catch (error) {
       console.error('Error fetching attendance:', error);
-      toast.error('Failed to fetch attendance records');
+      if (axios.isAxiosError(error)) {
+        console.error('Error details:', {
+          status: error.response?.status,
+          data: error.response?.data,
+          message: error.message,
+        });
+        toast.error(
+          error.response?.data?.error || 'Failed to fetch attendance records',
+        );
+      } else {
+        toast.error('Failed to fetch attendance records');
+      }
     } finally {
       setIsDateLoading(false);
     }
@@ -311,39 +332,43 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
     if (!courseSlug) return;
 
     try {
-      // Get the start date (January 2025) and end date (today)
-      const startDate = new Date(2025, 0, 1);
-      const endDate = new Date();
-
-      console.log(
-        'Fetching attendance dates from:',
-        startDate.toISOString(),
-        'to:',
-        endDate.toISOString(),
-      );
-
-      // Get all attendance records for the date range
+      // Get all attendance dates for this course
       const response = await axiosInstance.get(
-        `/courses/${courseSlug}/attendance/range`,
-        {
-          params: {
-            startDate: startDate.toISOString(),
-            endDate: endDate.toISOString(),
-          },
-        },
+        `/courses/${courseSlug}/attendance/dates`,
       );
 
-      console.log('Attendance API response:', response.data);
+      console.log('Attendance dates API response:', response.data);
 
-      // Extract unique dates from the response
-      const uniqueDates = response.data.uniqueDates.map(
-        (dateStr: string) => new Date(dateStr),
-      );
+      // Check if the response has the expected structure
+      if (!response.data || !Array.isArray(response.data.dates)) {
+        console.error('Invalid response structure:', response.data);
+        toast.error(
+          'Failed to fetch attendance dates: Invalid response format',
+        );
+        return;
+      }
+
+      // Convert dates and sort them
+      const uniqueDates = response.data.dates
+        .map((dateStr: string) => {
+          const date = new Date(dateStr);
+          return isNaN(date.getTime()) ? null : date;
+        })
+        .filter((date: Date | null): date is Date => date !== null)
+        .sort((a: Date, b: Date) => a.getTime() - b.getTime());
+
       console.log('Unique attendance dates:', uniqueDates);
 
       setAttendanceDates(uniqueDates);
     } catch (error) {
       console.error('Error fetching attendance dates:', error);
+      if (axios.isAxiosError(error)) {
+        toast.error(
+          error.response?.data?.error || 'Failed to fetch attendance dates',
+        );
+      } else {
+        toast.error('Failed to fetch attendance dates');
+      }
     }
   };
 
@@ -422,8 +447,12 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
     const student = filteredStudents[actualIndex];
     if (!student) return;
 
+    // Add one day to the selected date
+    const nextDay = new Date(selectedDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+
     const promise = axiosInstance.post(`/courses/${courseSlug}/attendance`, {
-      date: selectedDate.toISOString(),
+      date: nextDay.toISOString(),
       attendance: [
         {
           studentId: student.id,
@@ -712,8 +741,12 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
       status: 'PRESENT' as AttendanceStatus,
     }));
 
+    // Add one day to the selected date
+    const nextDay = new Date(selectedDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+
     const promise = axiosInstance.post(`/courses/${courseSlug}/attendance`, {
-      date: selectedDate.toISOString(),
+      date: nextDay.toISOString(),
       attendance: attendanceData,
     });
 

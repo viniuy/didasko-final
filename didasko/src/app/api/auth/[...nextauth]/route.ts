@@ -16,6 +16,31 @@ const handler = NextAuth({
     }),
   ],
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      // Get the session to check user role
+      const session = await getServerSession(authOptions);
+      console.log('Redirect Callback - Session:', session);
+
+      if (session?.user?.role) {
+        // Role-based routing
+        switch (session.user.role) {
+          case 'ADMIN':
+            return `${baseUrl}/dashboard/admin`;
+          case 'ACADEMIC_HEAD':
+            return `${baseUrl}/dashboard/academic-head`;
+          case 'FACULTY':
+            return `${baseUrl}/dashboard/faculty`;
+          default:
+            return `${baseUrl}/dashboard`;
+        }
+      }
+
+      // If no role-based redirect or invalid URL, handle default cases
+      if (url.startsWith(baseUrl) || url.startsWith('/')) {
+        return url;
+      }
+      return baseUrl;
+    },
     async signIn({ user, account }) {
       if (!user.email) return false;
 
@@ -99,6 +124,7 @@ const handler = NextAuth({
     },
     async session({ session, token }) {
       console.log('Session Callback - Incoming Token:', token);
+      console.log('Session Callback - Initial Session:', session);
 
       if (session.user && session.user.email) {
         try {
@@ -108,12 +134,14 @@ const handler = NextAuth({
             select: { name: true, id: true, role: true, image: true },
           });
 
+          console.log('Session Callback - DB User:', dbUser);
+
           if (dbUser) {
             session.user.name = dbUser.name;
             session.user.id = dbUser.id;
             session.user.role = dbUser.role;
             session.user.image = dbUser.image || undefined;
-            console.log('Found user in database:', dbUser);
+            console.log('Session Callback - Updated Session:', session);
           } else {
             console.log('User not found in database');
           }
@@ -124,46 +152,6 @@ const handler = NextAuth({
 
       console.log('Session Callback - Final Session:', session);
       return session;
-    },
-    async redirect({ url, baseUrl }) {
-      console.log('Redirect Callback - URL:', url);
-      console.log('Redirect Callback - Base URL:', baseUrl);
-
-      // Always check the session for role-based redirects
-      const session = await getServerSession(authOptions);
-      console.log('Redirect Callback - Session:', session);
-
-      if (session?.user?.role) {
-        console.log('User role for redirect:', session.user.role);
-
-        // Use switch case for role-based routing
-        switch (session.user.role) {
-          case 'ADMIN':
-            console.log('Redirecting to admin dashboard');
-            return `${baseUrl}/dashboard/admin`;
-
-          case 'ACADEMIC_HEAD':
-            console.log('Redirecting to academic head dashboard');
-            return `${baseUrl}/dashboard/academic-head`;
-
-          case 'FACULTY':
-            console.log('Redirecting to faculty dashboard');
-            return `${baseUrl}/dashboard/faculty`;
-
-          default:
-            console.log(
-              'No specific role found, redirecting to default dashboard',
-            );
-            return `${baseUrl}/dashboard`;
-        }
-      }
-
-      // If no role-based redirect or invalid URL, handle default cases
-      if (url.startsWith(baseUrl) || url.startsWith('/')) {
-        return url;
-      }
-
-      return baseUrl;
     },
   },
   pages: {

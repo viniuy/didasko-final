@@ -12,11 +12,13 @@ export async function GET(
   try {
     const session = await getServerSession(authOptions);
     if (!session) {
+      console.error('No session found');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const params = await Promise.resolve(context.params);
     const { course_slug } = params;
+    console.log('Fetching attendance for course:', course_slug);
 
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
@@ -25,17 +27,24 @@ export async function GET(
     const skip = (page - 1) * limit;
 
     if (!date) {
+      console.error('Date parameter is missing');
       return NextResponse.json(
         { error: 'Date parameter is required' },
         { status: 400 },
       );
     }
 
+    console.log('Fetching attendance for date:', date);
+
     // Create start and end of day dates to ensure we catch all records for the day
-    const startDate = new Date(date);
-    startDate.setUTCHours(0, 0, 0, 0);
-    const endDate = new Date(date);
-    endDate.setUTCHours(23, 59, 59, 999);
+    const startDate = new Date(date + 'T00:00:00.000Z');
+    const endDate = new Date(date + 'T23:59:59.999Z');
+
+    console.log('Date range:', {
+      start: startDate.toISOString(),
+      end: endDate.toISOString(),
+      inputDate: date,
+    });
 
     // Get the course first using the slug
     const course = await prisma.course.findUnique({
@@ -43,8 +52,11 @@ export async function GET(
     });
 
     if (!course) {
+      console.error('Course not found:', course_slug);
       return NextResponse.json({ error: 'Course not found' }, { status: 404 });
     }
+
+    console.log('Found course:', course.id);
 
     // Get total count for pagination
     const total = await prisma.attendance.count({
@@ -56,6 +68,8 @@ export async function GET(
         },
       },
     });
+
+    console.log('Total attendance records:', total);
 
     const attendanceRecords = await prisma.attendance.findMany({
       where: {
@@ -90,6 +104,8 @@ export async function GET(
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     });
 
+    console.log('Found attendance records:', attendanceRecords.length);
+
     const response: AttendanceResponse = {
       attendance: attendanceRecords,
       pagination: {
@@ -103,8 +119,18 @@ export async function GET(
     return NextResponse.json(response);
   } catch (error) {
     console.error('Error fetching attendance records:', error);
+    if (error instanceof Error) {
+      console.error('Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      });
+    }
     return NextResponse.json(
-      { error: 'Failed to fetch attendance records' },
+      {
+        error: 'Failed to fetch attendance records',
+        details: error instanceof Error ? error.message : 'Unknown error',
+      },
       { status: 500 },
     );
   }

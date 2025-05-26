@@ -1,29 +1,46 @@
 import { prisma } from '@/lib/db';
 
+const formatTime12Hour = (time: string) => {
+  const [hours, minutes] = time.split(':');
+  const hour = parseInt(hours);
+  const period = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${minutes} ${period}`;
+};
+
 export async function getCoursesData() {
-  const courses = await prisma.course.findMany({
-    orderBy: { createdAt: 'desc' },
-    include: {
-      faculty: {
-        select: {
-          id: true,
-          name: true,
+  const [courses, facultyUsers] = await Promise.all([
+    prisma.course.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        faculty: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        schedules: {
+          select: {
+            day: true,
+            fromTime: true,
+            toTime: true,
+          },
+        },
+        students: {
+          select: {
+            id: true,
+          },
         },
       },
-      schedules: {
-        select: {
-          day: true,
-          fromTime: true,
-          toTime: true,
-        },
+    }),
+    prisma.user.findMany({
+      where: { role: 'FACULTY' },
+      select: {
+        id: true,
+        name: true,
       },
-      students: {
-        select: {
-          id: true,
-        },
-      },
-    },
-  });
+    }),
+  ]);
 
   const totalCourses = await prisma.course.count();
   const activeCourses = await prisma.course.count({
@@ -41,9 +58,12 @@ export async function getCoursesData() {
       courseTitle: course.title,
       semester: course.semester,
       room: course.room,
-      date: course.schedules[0]?.day.toISOString().split('T')[0] || '',
+      date: course.schedules[0]?.day || '',
+      day: course.schedules[0]?.day || '',
       time: course.schedules[0]
-        ? `${course.schedules[0].fromTime} - ${course.schedules[0].toTime}`
+        ? `${formatTime12Hour(
+            course.schedules[0].fromTime,
+          )} - ${formatTime12Hour(course.schedules[0].toTime)}`
         : '',
       numberOfStudents: course.students.length,
       facultyId: course.faculty?.id || '',
@@ -53,6 +73,7 @@ export async function getCoursesData() {
       section: course.section,
       slug: course.slug,
     })),
+    facultyUsers,
     totalCourses,
     activeCourses,
     totalStudents,

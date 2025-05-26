@@ -39,6 +39,8 @@ export default function WeeklySchedule({ teacherInfo }: WeeklyScheduleProps) {
   });
 
   const fetchSchedules = async () => {
+    console.log('Fetching schedules for teacher:', teacherInfo?.id);
+
     if (!teacherInfo?.id) {
       console.log('No teacher ID provided');
       setLoading(false);
@@ -46,16 +48,19 @@ export default function WeeklySchedule({ teacherInfo }: WeeklyScheduleProps) {
     }
 
     if (status === 'loading') {
+      console.log('Session is still loading');
       return;
     }
 
     if (status === 'unauthenticated') {
+      console.log('User is not authenticated');
       setError('Please sign in to view schedules');
       setLoading(false);
       return;
     }
 
     try {
+      console.log('Making API request to fetch schedules');
       const response = await axiosInstance.get<ScheduleResponse>(
         '/courses/schedules',
         {
@@ -66,8 +71,13 @@ export default function WeeklySchedule({ teacherInfo }: WeeklyScheduleProps) {
         },
       );
 
+      console.log('API Response:', response.data);
+
       if (response.data && Array.isArray(response.data.schedules)) {
-        setSchedules(response.data.schedules as ScheduleWithCourse[]);
+        console.log('Schedules found:', response.data.schedules.length);
+        setSchedules(
+          response.data.schedules as unknown as ScheduleWithCourse[],
+        );
         setError(null);
       } else {
         console.error('Error fetching schedules: Invalid response format');
@@ -84,21 +94,36 @@ export default function WeeklySchedule({ teacherInfo }: WeeklyScheduleProps) {
   };
 
   useEffect(() => {
+    console.log('WeeklySchedule mounted/updated');
+    console.log('Teacher Info:', teacherInfo);
+    console.log('Session Status:', status);
     setLoading(true);
     fetchSchedules();
   }, [teacherInfo?.id, status]);
 
   const getSchedulesForDay = (dayName: string) => {
-    return schedules
-      .filter((schedule) => {
-        const scheduleDay = new Date(schedule.day).toLocaleDateString('en-US', {
-          weekday: 'short',
-        });
-        return scheduleDay === dayName;
-      })
+    // Map abbreviated day names to full day names for comparison
+    const dayMap: { [key: string]: string } = {
+      Sun: 'Sunday',
+      Mon: 'Monday',
+      Tue: 'Tuesday',
+      Wed: 'Wednesday',
+      Thu: 'Thursday',
+      Fri: 'Friday',
+      Sat: 'Saturday',
+    };
+
+    const fullDayName = dayMap[dayName];
+
+    const daySchedules = schedules
+      .filter(
+        (schedule) => schedule.day.toLowerCase() === fullDayName.toLowerCase(),
+      )
       .sort((a, b) => {
         return a.fromTime.localeCompare(b.fromTime);
       });
+    console.log(`Schedules for ${dayName}:`, daySchedules);
+    return daySchedules;
   };
 
   const formatTime = (time: string) => {
@@ -171,9 +196,9 @@ export default function WeeklySchedule({ teacherInfo }: WeeklyScheduleProps) {
                           <div className='font-semibold'>
                             {schedule.course.code}
                           </div>
-                          <div>Section {schedule.course.section}</div>
-                          <div>Room {schedule.course.room}</div>
-                          <div>Semester {schedule.course.semester}</div>
+                          <div>Section: {schedule.course.section}</div>
+                          <div>{schedule.course.room}</div>
+                          <div>{schedule.course.semester}</div>
                         </div>
                       </div>
                     </div>
