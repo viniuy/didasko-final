@@ -7,10 +7,12 @@ interface RubricDetail {
 
 interface GradingTableHeaderProps {
   rubricDetails: RubricDetail[];
+  activeReport?: { passingScore: number };
 }
 
 const GradingTableHeader: React.FC<GradingTableHeaderProps> = ({
   rubricDetails,
+  activeReport,
 }) => (
   <thead className='bg-white'>
     <tr>
@@ -30,7 +32,9 @@ const GradingTableHeader: React.FC<GradingTableHeaderProps> = ({
       ))}
       <th className='border-b font-bold text-[#124A69] text-center px-4 py-3 w-[100px]'>
         Total Grade
-        <div className='text-xs text-gray-500 font-normal'>(100%)</div>
+        <div className='text-xs text-gray-500 font-normal'>
+          (Passing: {activeReport?.passingScore}%)
+        </div>
       </th>
       <th className='border-b font-bold text-[#124A69] text-center px-4 py-3 w-[100px]'>
         Remarks

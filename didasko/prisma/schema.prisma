@@ -219,7 +219,6 @@ model Note {
   id          String   @id @default(uuid())
   title       String
   description String?
-  date        DateTime // Date for the note
   userId      String   @map("user_id")
   user        User     @relation(fields: [userId], references: [id])
   createdAt   DateTime @default(now()) @map("created_at")

@@ -26,7 +26,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Textarea } from './ui/textarea';
 import { format } from 'date-fns';
-import { useToast } from '@/components/ui/use-toast';
 import { Calendar } from '@/components/ui/calendar';
 import {
   Popover,
@@ -43,16 +42,15 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
 import axiosInstance from '@/lib/axios';
 import { Skeleton } from '@/components/ui/skeleton';
+import toast from 'react-hot-toast';
 
 interface Note {
   id: string;
   title: string;
   description: string | null;
-  date: Date;
 }
 
 export default function Notes() {
-  const { toast } = useToast();
   const { data: session, status } = useSession();
   const [noteList, setNoteList] = useState<Note[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -65,54 +63,17 @@ export default function Notes() {
     id: '',
     title: '',
     description: '',
-    date: new Date(),
   });
   const [openAdd, setOpenAdd] = useState(false);
   const [newNote, setNewNote] = useState<Note>({
     id: '',
     title: '',
     description: '',
-    date: new Date(),
   });
-  const [openEditDatePicker, setOpenEditDatePicker] = useState(false);
-  const [openAddDatePicker, setOpenAddDatePicker] = useState(false);
 
   const previousStatus = useRef(status);
 
-  const [alert, setAlert] = useState<{
-    show: boolean;
-    title: string;
-    description: string;
-    variant: 'success' | 'error';
-  }>({
-    show: false,
-    title: '',
-    description: '',
-    variant: 'success',
-  });
-
-  const showAlert = (
-    title: string,
-    description: string,
-    variant: 'success' | 'error' = 'success',
-  ) => {
-    setAlert({
-      show: true,
-      title,
-      description,
-      variant,
-    });
-
-    setTimeout(() => {
-      setAlert((prev) => ({ ...prev, show: false }));
-    }, 3000);
-  };
-
   useEffect(() => {
-    // Only fetch notes when:
-    // 1. Component mounts and there are no notes
-    // 2. User logs in (status changes from unauthenticated to authenticated)
-    // 3. User explicitly refreshes the notes
     if (
       (!noteList.length && status === 'authenticated') ||
       (status === 'authenticated' &&
@@ -121,14 +82,11 @@ export default function Notes() {
       fetchNotes();
     }
 
-    // Keep track of previous status to detect meaningful changes
     previousStatus.current = status;
   }, [status, session]);
 
-  // Add a visibility change handler to prevent unnecessary fetches
   useEffect(() => {
     const handleVisibilityChange = () => {
-      // Only fetch if the document becomes visible AND we have no notes
       if (document.visibilityState === 'visible' && !noteList.length) {
         fetchNotes();
       }
@@ -147,23 +105,18 @@ export default function Notes() {
       const data = response.data;
 
       if (Array.isArray(data.notes)) {
-        const processedNotes = data.notes.map((note: any) => ({
-          ...note,
-          date: new Date(note.date),
-        }));
-        setNoteList(processedNotes);
+        setNoteList(data.notes);
       } else {
         setNoteList([]);
       }
     } catch (error) {
-      showAlert('Error', 'Failed to fetch notes', 'error');
+      toast.error('Failed to fetch notes');
       setNoteList([]);
     } finally {
       setIsLoading(false);
     }
   }
 
-  // Create a manual refresh function that can be called when needed
   const refreshNotes = async () => {
     setIsLoading(true);
     await fetchNotes();
@@ -242,12 +195,12 @@ export default function Notes() {
 
   const saveNewNote = async () => {
     if (!newNote.title.trim()) {
-      showAlert('Error', 'Title is required', 'error');
+      toast.error('Title is required');
       return;
     }
 
     if (!session?.user?.id) {
-      showAlert('Error', 'User ID not found. Please sign in again.', 'error');
+      toast.error('User ID not found. Please sign in again.');
       return;
     }
 
@@ -255,7 +208,6 @@ export default function Notes() {
       {
         title: newNote.title,
         description: newNote.description || '',
-        date: newNote.date,
       },
       session.user.id,
       () => {
@@ -264,16 +216,15 @@ export default function Notes() {
           id: '',
           title: '',
           description: '',
-          date: new Date(),
         });
         refreshNotes();
       },
     );
 
     if (result.success) {
-      showAlert('Success', 'Note added successfully', 'success');
+      toast.success('Note added successfully');
     } else {
-      showAlert('Error', result.error || 'Failed to add note', 'error');
+      toast.error(result.error || 'Failed to add note');
     }
   };
 
@@ -284,33 +235,28 @@ export default function Notes() {
 
   async function confirmDelete() {
     try {
-      console.log('Confirm delete called for note ID:', noteToDelete);
-
       if (!noteToDelete) {
-        console.log('No note ID to delete');
         return;
       }
 
+      const loadingToast = toast.loading('Deleting note...');
+
       const response = await axiosInstance.delete(`/notes/${noteToDelete}`);
 
-      console.log('Delete response status:', response.status);
-
-      const responseText = await response.data;
-      console.log('Delete response text:', responseText);
-
       if (response.status === 200) {
-        console.log('Note deleted successfully');
         setOpenDelete(false);
         setNoteToDelete(null);
         refreshNotes();
-        showAlert('Success', 'Note deleted successfully', 'success');
+        toast.success('Note deleted successfully', {
+          id: loadingToast,
+        });
       } else {
-        console.log('Failed to delete note');
-        showAlert('Error', 'Failed to delete note', 'error');
+        toast.error('Failed to delete note', {
+          id: loadingToast,
+        });
       }
     } catch (error) {
-      console.error('Error in confirmDelete:', error);
-      showAlert('Error', 'An error occurred while deleting the note', 'error');
+      toast.error('An error occurred while deleting the note');
     }
   }
 
@@ -321,12 +267,12 @@ export default function Notes() {
 
   const saveEdit = async () => {
     if (!editData.title.trim()) {
-      showAlert('Error', 'Title is required', 'error');
+      toast.error('Title is required');
       return;
     }
 
     if (!session?.user?.id) {
-      showAlert('Error', 'User ID not found. Please sign in again.', 'error');
+      toast.error('User ID not found. Please sign in again.');
       return;
     }
 
@@ -335,7 +281,6 @@ export default function Notes() {
         id: editData.id,
         title: editData.title,
         description: editData.description || '',
-        date: editData.date,
       },
       session.user.id,
       () => {
@@ -345,53 +290,14 @@ export default function Notes() {
     );
 
     if (result.success) {
-      showAlert('Success', 'Note updated successfully', 'success');
+      toast.success('Note updated successfully');
     } else {
-      showAlert('Error', result.error || 'Failed to update note', 'error');
+      toast.error(result.error || 'Failed to update note');
     }
   };
 
   return (
     <div className='mb-2'>
-      {alert.show && (
-        <div className='fixed top-4 right-4 z-50 w-80 animate-in fade-in slide-in-from-top-2'>
-          <Alert
-            variant={alert.variant === 'success' ? 'default' : 'destructive'}
-            className={cn(
-              'relative border-l-4',
-              alert.variant === 'success'
-                ? 'border-l-[#124A69] bg-[#F0F7FA] text-[#124A69]'
-                : 'border-l-red-500 bg-red-50 text-red-800',
-            )}
-          >
-            <div className='flex items-start gap-3'>
-              {alert.variant === 'success' ? (
-                <CheckCircle2 className='h-4 w-4 text-[#124A69] mt-0.5' />
-              ) : (
-                <AlertCircle className='h-4 w-4 text-red-500 mt-0.5' />
-              )}
-              <div className='flex-1'>
-                <AlertDescription className='text-sm font-medium'>
-                  {alert.description}
-                </AlertDescription>
-              </div>
-              <Button
-                variant='ghost'
-                size='icon'
-                className={cn(
-                  'absolute right-1 top-1 h-6 w-6 p-0 hover:bg-transparent',
-                  alert.variant === 'success'
-                    ? 'text-[#124A69] hover:text-[#0a2f42]'
-                    : 'text-red-500 hover:text-red-700',
-                )}
-                onClick={() => setAlert((prev) => ({ ...prev, show: false }))}
-              >
-                <X className='h-3 w-3' />
-              </Button>
-            </div>
-          </Alert>
-        </div>
-      )}
       <div className='flex justify-between items-center mb-1'>
         <h2 className='text-lg font-semibold text-[#FAEDCB] mb-1'>Notes</h2>
         <Button
@@ -405,66 +311,39 @@ export default function Notes() {
       </div>
       <div className='bg-white rounded-lg p-2 shadow-md h-[280px] overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#124A69] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#0a2f42]'>
         {noteList.length > 0 ? (
-          (() => {
-            // Group notes by date while preserving order
-            const groupedNotes: { [key: string]: Note[] } = {};
-            noteList.forEach((note) => {
-              const dateKey = format(note.date, 'yyyy-MM-dd');
-              if (!groupedNotes[dateKey]) {
-                groupedNotes[dateKey] = [];
-              }
-              groupedNotes[dateKey].push(note);
-            });
-
-            // Sort dates (newest first)
-            const sortedDates = Object.keys(groupedNotes).sort(
-              (a, b) => new Date(b).getTime() - new Date(a).getTime(),
-            );
-
-            return sortedDates.map((dateKey) => (
-              <div key={dateKey}>
-                <div className='flex items-center gap-2 text-[#124A69] mb-1'>
-                  <p className='text-xs'>
-                    {format(new Date(dateKey), 'MMMM d, yyyy')} (
-                    {format(new Date(dateKey), 'EEEE')})
-                  </p>
-                </div>
-                {groupedNotes[dateKey].map((note) => (
-                  <Card
-                    key={note.id}
-                    className='border-l-[8px] border-[#FAEDCB] mb-1 hover:shadow-md transition-shadow'
+          noteList.map((note) => (
+            <Card
+              key={note.id}
+              className='border-l-[8px] border-[#FAEDCB] mb-1 hover:shadow-md transition-shadow'
+            >
+              <CardContent className='p-2 relative'>
+                <div className='absolute right-1 -top-5 flex gap-0.5'>
+                  <Button
+                    variant='ghost'
+                    className='h-5 w-5 p-0 hover:bg-transparent'
+                    onClick={() => handleEditClick(note)}
                   >
-                    <CardContent className='p-2 relative'>
-                      <div className='absolute right-1 -top-5 flex gap-0.5'>
-                        <Button
-                          variant='ghost'
-                          className='h-5 w-5 p-0 hover:bg-transparent'
-                          onClick={() => handleEditClick(note)}
-                        >
-                          <Edit className='h-3 w-3' color='#124a69' />
-                        </Button>
-                        <Button
-                          variant='ghost'
-                          className='h-5 w-5 p-0 hover:bg-transparent'
-                          onClick={() => handleDeleteClick(note.id)}
-                        >
-                          <Trash className='h-3 w-3' color='#124a69' />
-                        </Button>
-                      </div>
-                      <div className='-mt-4 -mb-4'>
-                        <div className='text-[#124A69] font-medium text-xs mb-0.5'>
-                          {note.title}
-                        </div>
-                        <div className='text-gray-600 text-[11px] whitespace-pre-wrap'>
-                          {note.description}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            ));
-          })()
+                    <Edit className='h-3 w-3' color='#124a69' />
+                  </Button>
+                  <Button
+                    variant='ghost'
+                    className='h-5 w-5 p-0 hover:bg-transparent'
+                    onClick={() => handleDeleteClick(note.id)}
+                  >
+                    <Trash className='h-3 w-3' color='#124a69' />
+                  </Button>
+                </div>
+                <div className='-mt-4 -mb-4'>
+                  <div className='text-[#124A69] font-medium text-xs mb-0.5'>
+                    {note.title}
+                  </div>
+                  <div className='text-gray-600 text-[11px] whitespace-pre-wrap'>
+                    {note.description}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))
         ) : (
           <div className='flex items-center justify-center h-full min-h-[200px]'>
             <p className='text-gray-500 text-xs text-center'>No notes yet.</p>
@@ -501,7 +380,7 @@ export default function Notes() {
       </AlertDialog>
 
       <AlertDialog open={openEdit} onOpenChange={setOpenEdit}>
-        <AlertDialogContent className='max-w-[425px] w-full h-[500px]'>
+        <AlertDialogContent className='max-w-[425px] w-full h-[400px]'>
           <AlertDialogHeader className='space-y-3'>
             <AlertDialogTitle className='text-xl font-semibold'>
               Edit Note
@@ -529,44 +408,7 @@ export default function Notes() {
 
             <div>
               <Label className='text-sm font-medium mb-2 block'>
-                Date<span className='text-red-500'> *</span>
-              </Label>
-              <Popover
-                modal
-                open={openEditDatePicker}
-                onOpenChange={setOpenEditDatePicker}
-              >
-                <PopoverTrigger asChild>
-                  <Button
-                    variant='outline'
-                    className='w-full flex justify-between rounded-lg'
-                  >
-                    {editData.date
-                      ? format(editData.date, 'PPP')
-                      : 'Pick a date'}
-                    <CalendarIcon className='ml-2 h-4 w-4' />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent
-                  align='start'
-                  className='w-auto p-0'
-                  onOpenAutoFocus={(e) => e.preventDefault()}
-                >
-                  <Calendar
-                    mode='single'
-                    selected={editData.date}
-                    onSelect={(date) =>
-                      setEditData({ ...editData, date: date || new Date() })
-                    }
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div>
-              <Label className='text-sm font-medium mb-2 block'>
-                Content <span className='text-gray-400'>(optional)</span>
+                Description <span className='text-gray-400'>(optional)</span>
               </Label>
               <Textarea
                 placeholder='Add your note content'
@@ -602,7 +444,7 @@ export default function Notes() {
       </AlertDialog>
 
       <AlertDialog open={openAdd} onOpenChange={setOpenAdd}>
-        <AlertDialogContent className='max-w-[425px] w-full h-[500px]'>
+        <AlertDialogContent className='max-w-[425px] w-full h-[400px]'>
           <AlertDialogHeader className='space-y-3'>
             <AlertDialogTitle className='text-xl font-semibold'>
               Add New Note
@@ -630,42 +472,7 @@ export default function Notes() {
 
             <div>
               <Label className='text-sm font-medium mb-2 block'>
-                Date <span className='text-red-500'> *</span>
-              </Label>
-              <Popover
-                modal
-                open={openAddDatePicker}
-                onOpenChange={setOpenAddDatePicker}
-              >
-                <PopoverTrigger asChild>
-                  <Button
-                    variant='outline'
-                    className='w-full flex justify-between rounded-lg'
-                  >
-                    {newNote.date ? format(newNote.date, 'PPP') : 'Pick a date'}
-                    <CalendarIcon className='ml-2 h-4 w-4' />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent
-                  align='start'
-                  className='w-auto p-0'
-                  onOpenAutoFocus={(e) => e.preventDefault()}
-                >
-                  <Calendar
-                    mode='single'
-                    selected={newNote.date}
-                    onSelect={(date) =>
-                      setNewNote({ ...newNote, date: date || new Date() })
-                    }
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div>
-              <Label className='text-sm font-medium mb-2 block'>
-                Content <span className='text-gray-400'>(optional)</span>
+                Description <span className='text-gray-400'>(optional)</span>
               </Label>
               <Textarea
                 placeholder='Add your note content'

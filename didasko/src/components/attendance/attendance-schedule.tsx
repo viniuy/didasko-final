@@ -23,6 +23,7 @@ interface Course {
   description: string | null;
   semester: string;
   section: string;
+  slug: string;
 }
 
 interface Schedule {
@@ -38,10 +39,21 @@ interface Schedule {
 const CourseCard = ({ schedule }: { schedule: Schedule }) => {
   const router = useRouter();
   const dayStr = schedule.day;
-  const timeStr = `${schedule.fromTime} - ${schedule.toTime}`;
+
+  // Format times to 12-hour format
+  const formatTime = (timeStr: string) => {
+    const [hours, minutes] = timeStr.split(':');
+    const date = new Date();
+    date.setHours(parseInt(hours), parseInt(minutes));
+    return format(date, 'h:mm a');
+  };
+
+  const timeStr = `${formatTime(schedule.fromTime)} - ${formatTime(
+    schedule.toTime,
+  )}`;
 
   const handleClick = () => {
-    router.push(`/attendance/class?courseId=${schedule.courseId}`);
+    router.push(`/attendance/class/${schedule.course.slug}`);
   };
 
   return (
@@ -75,8 +87,10 @@ const LoadingSkeleton = ({ index }: { index: number }) => (
 // Courses Component with Pagination
 export default function AttendanceSchedule({
   courseSlug,
+  semester,
 }: {
   courseSlug?: string;
+  semester?: string;
 }) {
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -95,7 +109,7 @@ export default function AttendanceSchedule({
       const response = await axiosInstance.get('/courses/schedules', {
         params: {
           facultyId: session.user.id,
-          semester: '1st Semester',
+          ...(semester ? { semester } : {}),
           limit: 100,
           courseSlug,
         },

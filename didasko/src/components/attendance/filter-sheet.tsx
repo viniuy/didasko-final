@@ -58,9 +58,6 @@ export function FilterSheet({
               Filter Options
             </SheetTitle>
           </SheetHeader>
-          <div className='mt-4'>
-            <h3 className='text-sm font-medium mb-2'>Status</h3>
-          </div>
         </div>
 
         <div className='p-6 space-y-6'>

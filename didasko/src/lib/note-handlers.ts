@@ -5,7 +5,6 @@ interface NoteData {
   id?: string;
   title: string;
   description: string;
-  date: Date;
 }
 
 interface HandlerResult {
@@ -15,7 +14,7 @@ interface HandlerResult {
 
 export async function handleSaveNewNote(
   noteData: NoteData,
-  _userId: string,
+  userId: string,
   onSuccess: () => void,
 ): Promise<HandlerResult> {
   try {
@@ -23,16 +22,14 @@ export async function handleSaveNewNote(
       return { success: false, error: 'Title is required' };
     }
 
-    if (!noteData.date) {
-      return { success: false, error: 'Date is required' };
+    if (!userId) {
+      return { success: false, error: 'User ID is required' };
     }
-
-    const normalizedDate = normalizeDate(noteData.date);
 
     await axiosInstance.post('/notes', {
       title: noteData.title,
       description: noteData.description,
-      date: normalizedDate,
+      userId,
     });
 
     onSuccess();
@@ -57,17 +54,10 @@ export async function handleUpdateNote(
       return { success: false, error: 'Title is required' };
     }
 
-    if (!noteData.date) {
-      return { success: false, error: 'Date is required' };
-    }
-
-    const normalizedDate = normalizeDate(noteData.date);
-
     const response = await axiosInstance.put('/notes', {
       id: noteData.id,
       title: noteData.title,
       description: noteData.description,
-      date: normalizedDate,
     });
 
     onSuccess();

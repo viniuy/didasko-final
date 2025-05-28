@@ -76,6 +76,7 @@ export async function GET(request: Request) {
             room: true,
             semester: true,
             section: true,
+            slug: true,
           },
         },
       },

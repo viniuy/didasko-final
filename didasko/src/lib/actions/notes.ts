@@ -2,7 +2,6 @@
 
 import { prisma } from '@/lib/db';
 import { revalidatePath } from 'next/cache';
-import { startOfDay } from 'date-fns';
 
 export async function getNotes(userId: string) {
   try {
@@ -10,9 +9,6 @@ export async function getNotes(userId: string) {
     // @ts-ignore - access the model based on schema mapping
     const notes = await prisma.Note.findMany({
       where: { userId },
-      orderBy: {
-        date: 'asc',
-      },
     });
 
     return { notes, error: null };
@@ -25,12 +21,10 @@ export async function getNotes(userId: string) {
 export async function addNote({
   title,
   description,
-  date,
   userId,
 }: {
   title: string;
   description?: string | null;
-  date: Date;
   userId: string;
 }) {
   try {
@@ -38,16 +32,12 @@ export async function addNote({
       return { success: false, error: 'User ID is required' };
     }
 
-    // Normalize date to remove time component
-    const normalizedDate = startOfDay(new Date(date));
-
     // Create note
     // @ts-ignore - access the model based on schema mapping
     const note = await prisma.Note.create({
       data: {
         title,
         description,
-        date: normalizedDate,
         userId,
       },
     });
@@ -65,13 +55,11 @@ export async function updateNote({
   id,
   title,
   description,
-  date,
   userId,
 }: {
   id: string;
   title: string;
   description?: string | null;
-  date: Date;
   userId: string;
 }) {
   try {
@@ -92,9 +80,6 @@ export async function updateNote({
       return { success: false, error: 'Note not found or access denied' };
     }
 
-    // Normalize date to remove time component
-    const normalizedDate = startOfDay(new Date(date));
-
     // Update note
     // @ts-ignore - access the model based on schema mapping
     const note = await prisma.Note.update({
@@ -102,7 +87,6 @@ export async function updateNote({
       data: {
         title,
         description,
-        date: normalizedDate,
       },
     });
 

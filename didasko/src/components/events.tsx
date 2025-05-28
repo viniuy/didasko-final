@@ -528,6 +528,21 @@ export default function UpcomingEvents() {
           editData,
           userRole,
           onSuccess: (message) => {
+            toast.success('Event updated successfully', {
+              style: {
+                background: '#fff',
+                color: '#124A69',
+                border: '1px solid #e5e7eb',
+                boxShadow:
+                  '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+                borderRadius: '0.5rem',
+                padding: '1rem',
+              },
+              iconTheme: {
+                primary: '#124A69',
+                secondary: '#fff',
+              },
+            });
             refreshEvents();
             setIsSaving(false);
             setOpenEdit(false);
@@ -703,9 +718,7 @@ export default function UpcomingEvents() {
       />
 
       <div className='flex justify-between items-center mb-1'>
-        <h2 className='text-lg font-semibold text-[#FAEDCB]'>
-          Upcoming Events
-        </h2>
+        <h2 className='text-lg font-semibold text-[#FAEDCB]'>Events</h2>
         {canManageEvents && (
           <Button
             variant='ghost'
@@ -1123,7 +1136,7 @@ export default function UpcomingEvents() {
                 Date and Time <span className='text-red-500'>*</span>
               </Label>
               <div className='space-y-1'>
-                <div className='grid grid-cols-2 gap-2'>
+                <div className='flex gap-2'>
                   <div>
                     <Popover
                       modal
@@ -1133,7 +1146,7 @@ export default function UpcomingEvents() {
                       <PopoverTrigger asChild>
                         <Button
                           variant='outline'
-                          className='w-full h-7 text-[11px] flex justify-between'
+                          className='w-[195px] h-7 text-[11px] flex justify-between'
                         >
                           {newEvent.date
                             ? format(newEvent.date, 'MMM d, yyyy')
@@ -1208,108 +1221,106 @@ export default function UpcomingEvents() {
                     }`}
                   >
                     {newEvent.dates.map((dateItem, index) => (
-                      <div key={index} className='border p-2 rounded-md'>
-                        <div className='grid grid-cols-2 gap-2'>
-                          <div>
-                            <Popover
-                              modal
-                              open={openAdditionalDatePickers[index]}
-                              onOpenChange={(open) => {
-                                setOpenAdditionalDatePickers((prev) => {
-                                  const next = [...prev];
-                                  next[index] = open;
-                                  return next;
-                                });
-                              }}
-                            >
-                              <PopoverTrigger asChild>
-                                <Button
-                                  variant='outline'
-                                  className='w-full h-7 text-[11px] flex justify-between'
-                                >
-                                  {dateItem.date
-                                    ? format(dateItem.date, 'MMM d, yyyy')
-                                    : 'Pick a date'}
-                                  <CalendarIcon className='ml-1 h-3 w-3' />
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent
-                                align='start'
-                                className='w-auto p-0'
-                                onOpenAutoFocus={(e) => e.preventDefault()}
+                      <div key={index} className='flex gap-2'>
+                        <div>
+                          <Popover
+                            modal
+                            open={openAdditionalDatePickers[index]}
+                            onOpenChange={(open) => {
+                              setOpenAdditionalDatePickers((prev) => {
+                                const next = [...prev];
+                                next[index] = open;
+                                return next;
+                              });
+                            }}
+                          >
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant='outline'
+                                className='w-[195px] h-7 text-[11px] flex justify-between'
                               >
-                                <Calendar
-                                  mode='single'
-                                  selected={dateItem.date || undefined}
-                                  onSelect={(date) => {
-                                    handleAdditionalDateChange(
-                                      index,
-                                      date || null,
-                                    );
-                                  }}
-                                  disabled={(date) =>
-                                    date <
-                                    new Date(new Date().setHours(0, 0, 0, 0))
-                                  }
-                                  initialFocus
-                                />
-                              </PopoverContent>
-                            </Popover>
-                          </div>
-                          <div className='flex items-center gap-1'>
-                            <div className='grid grid-cols-2 gap-1'>
-                              <div className='relative'>
-                                <Input
-                                  type='time'
-                                  value={dateItem.fromTime}
-                                  onChange={(e) =>
-                                    handleAdditionalTimeChange(
-                                      index,
-                                      e.target.value,
-                                      true,
-                                    )
-                                  }
-                                  className='h-7 text-[11px] cursor-pointer'
-                                  onClick={(e) => {
-                                    const input = e.target as HTMLInputElement;
-                                    input.showPicker();
-                                  }}
-                                />
-                                {!dateItem.fromTime && (
-                                  <div className='absolute inset-0 flex items-center px-3 pointer-events-none text-[11px] text-muted-foreground'></div>
-                                )}
-                              </div>
-                              <div className='relative'>
-                                <Input
-                                  type='time'
-                                  value={dateItem.toTime}
-                                  onChange={(e) =>
-                                    handleAdditionalTimeChange(
-                                      index,
-                                      e.target.value,
-                                      false,
-                                    )
-                                  }
-                                  className='h-7 text-[11px] cursor-pointer'
-                                  onClick={(e) => {
-                                    const input = e.target as HTMLInputElement;
-                                    input.showPicker();
-                                  }}
-                                />
-                                {!dateItem.toTime && (
-                                  <div className='absolute inset-0 flex items-center px-3 pointer-events-none text-[11px] text-muted-foreground'></div>
-                                )}
-                              </div>
-                            </div>
-                            <Button
-                              onClick={() => removeDate(index)}
-                              variant='ghost'
-                              className='h-7 w-7 p-0 hover:bg-red-50'
-                              type='button'
+                                {dateItem.date
+                                  ? format(dateItem.date, 'MMM d, yyyy')
+                                  : 'Pick a date'}
+                                <CalendarIcon className='ml-1 h-3 w-3' />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                              align='start'
+                              className='w-auto p-0'
+                              onOpenAutoFocus={(e) => e.preventDefault()}
                             >
-                              <Trash className='h-3 w-3 text-red-500' />
-                            </Button>
+                              <Calendar
+                                mode='single'
+                                selected={dateItem.date || undefined}
+                                onSelect={(date) => {
+                                  handleAdditionalDateChange(
+                                    index,
+                                    date || null,
+                                  );
+                                }}
+                                disabled={(date) =>
+                                  date <
+                                  new Date(new Date().setHours(0, 0, 0, 0))
+                                }
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                        <div className='flex items-center gap-1'>
+                          <div className='grid grid-cols-2 gap-1'>
+                            <div className='relative'>
+                              <Input
+                                type='time'
+                                value={dateItem.fromTime}
+                                onChange={(e) =>
+                                  handleAdditionalTimeChange(
+                                    index,
+                                    e.target.value,
+                                    true,
+                                  )
+                                }
+                                className='h-7 text-[11px] cursor-pointer'
+                                onClick={(e) => {
+                                  const input = e.target as HTMLInputElement;
+                                  input.showPicker();
+                                }}
+                              />
+                              {!dateItem.fromTime && (
+                                <div className='absolute inset-0 flex items-center px-3 pointer-events-none text-[11px] text-muted-foreground'></div>
+                              )}
+                            </div>
+                            <div className='relative'>
+                              <Input
+                                type='time'
+                                value={dateItem.toTime}
+                                onChange={(e) =>
+                                  handleAdditionalTimeChange(
+                                    index,
+                                    e.target.value,
+                                    false,
+                                  )
+                                }
+                                className='h-7 text-[11px] cursor-pointer'
+                                onClick={(e) => {
+                                  const input = e.target as HTMLInputElement;
+                                  input.showPicker();
+                                }}
+                              />
+                              {!dateItem.toTime && (
+                                <div className='absolute inset-0 flex items-center px-3 pointer-events-none text-[11px] text-muted-foreground'></div>
+                              )}
+                            </div>
                           </div>
+                          <Button
+                            onClick={() => removeDate(index)}
+                            variant='ghost'
+                            className='h-7 w-7 p-0 hover:bg-red-50'
+                            type='button'
+                          >
+                            <Trash className='h-3 w-3 text-red-500' />
+                          </Button>
                         </div>
                       </div>
                     ))}

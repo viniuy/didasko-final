@@ -6,8 +6,17 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,7 +25,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import Image from 'next/image';
 import { Camera, X } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { toast } from 'react-hot-toast';
 
 interface StudentCardProps {
   student: {
@@ -28,11 +38,12 @@ interface StudentCardProps {
   };
   index: number;
   tempImage: { index: number; dataUrl: string } | null;
-  onImageUpload: (index: number, name: string) => void;
-  onSaveChanges: (index: number) => Promise<void>;
+  onImageUpload: (index: number, file: File) => void;
+  onSaveChanges: (index: number) => void;
   onRemoveImage: (index: number, name: string) => void;
   onStatusChange: (index: number, status: AttendanceStatus) => void;
   isSaving?: boolean;
+  isInCooldown?: boolean;
 }
 
 const statusStyles: Record<AttendanceStatusWithNotSet, string> = {
@@ -43,6 +54,9 @@ const statusStyles: Record<AttendanceStatusWithNotSet, string> = {
   NOT_SET: 'bg-white text-gray-500 border-gray-200',
 };
 
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
 export function StudentCard({
   student,
   index,
@@ -52,163 +66,90 @@ export function StudentCard({
   onRemoveImage,
   onStatusChange,
   isSaving = false,
+  isInCooldown = false,
 }: StudentCardProps) {
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [showImageDialog, setShowImageDialog] = useState(false);
+  const [imageToRemove, setImageToRemove] = useState<{
+    index: number;
+    name: string;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSave = async () => {
-    try {
-      await onSaveChanges(index);
-      setIsDialogOpen(false);
-    } catch (error) {
-      console.error('Error saving changes:', error);
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Check if the file is an image
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please upload an image file', {
+          style: {
+            background: '#fff',
+            color: '#dc2626',
+            border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
+          },
+          iconTheme: {
+            primary: '#dc2626',
+            secondary: '#fff',
+          },
+        });
+        // Reset the file input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        return;
+      }
+      onImageUpload(index, file);
     }
-  };
-
-  const handleRemoveImage = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    // First close the dialog
-    setIsDialogOpen(false);
-    // Then remove the image after a short delay
-    setTimeout(() => {
-      onRemoveImage(index, student.name);
-      // Ensure body styles are cleaned up
-      document.body.style.removeProperty('pointer-events');
-    }, 100);
-  };
-
-  const handleDialogOpenChange = (open: boolean) => {
-    setIsDialogOpen(open);
-    if (!open) {
-      // Clean up body styles when dialog closes
-      document.body.style.removeProperty('pointer-events');
-    }
-  };
-
-  // Clean up on unmount
-  useEffect(() => {
-    return () => {
-      document.body.style.removeProperty('pointer-events');
-    };
-  }, []);
-
-  const getImageSrc = () => {
-    if (tempImage?.index === index) {
-      return tempImage.dataUrl;
-    }
-    return student.image || '/placeholder.png';
   };
 
   return (
     <div className='w-full bg-white p-6 rounded-lg shadow-sm border border-gray-100'>
       <div className='flex flex-col items-center gap-3'>
-        <Dialog open={isDialogOpen} onOpenChange={handleDialogOpenChange}>
-          <DialogTrigger asChild>
-            <button
-              className='relative group cursor-pointer outline-none border-none bg-transparent p-0'
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsDialogOpen(true);
-              }}
-            >
-              {student.image ||
-              (tempImage?.index === index && tempImage.dataUrl) ? (
-                <div className='relative'>
-                  <Image
-                    src={getImageSrc()}
-                    alt={student.name}
-                    width={64}
-                    height={64}
-                    className='w-16 h-16 rounded-full object-cover group-hover:opacity-80 transition-opacity'
-                    onError={(e) => {
-                      // If image fails to load, show placeholder
-                      const target = e.target as HTMLImageElement;
-                      target.src = '/placeholder.png';
-                    }}
-                  />
-                  <div className='absolute inset-0 bg-black bg-opacity-40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity'>
-                    <Camera className='text-white w-8 h-8' />
-                  </div>
-                </div>
-              ) : (
-                <div className='w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center group-hover:bg-gray-200 transition-colors'>
-                  <Camera className='text-gray-400 w-6 h-6' />
-                </div>
-              )}
-            </button>
-          </DialogTrigger>
-          <DialogContent className='max-w-[400px] p-6'>
-            <DialogHeader>
-              <DialogTitle className='text-xl text-center font-semibold text-[#124A69]'>
-                Edit profile
-              </DialogTitle>
-            </DialogHeader>
-            <div className='flex flex-col items-center gap-6 py-6'>
-              <div className='relative'>
-                <div
-                  className='relative group cursor-pointer'
-                  onClick={() => onImageUpload(index, student.name)}
+        <div className='relative group'>
+          <div
+            className='cursor-pointer'
+            onClick={() => setShowImageDialog(true)}
+          >
+            {tempImage && tempImage.index === index ? (
+              <img
+                src={tempImage.dataUrl}
+                alt={student.name}
+                className='w-16 h-16 rounded-full object-cover'
+              />
+            ) : student.image ? (
+              <img
+                src={student.image}
+                alt={student.name}
+                className='w-16 h-16 rounded-full object-cover'
+              />
+            ) : (
+              <span className='inline-flex w-16 h-16 rounded-full bg-gray-200 text-gray-400 items-center justify-center'>
+                <svg
+                  width='32'
+                  height='32'
+                  fill='none'
+                  stroke='currentColor'
+                  strokeWidth='2'
+                  viewBox='0 0 24 24'
                 >
-                  {student.image ||
-                  (tempImage?.index === index && tempImage.dataUrl) ? (
-                    <div className='relative'>
-                      <Image
-                        src={getImageSrc()}
-                        alt={student.name}
-                        width={128}
-                        height={128}
-                        className='w-32 h-32 rounded-full object-cover'
-                        onError={(e) => {
-                          // If image fails to load, show placeholder
-                          const target = e.target as HTMLImageElement;
-                          target.src = '/placeholder.png';
-                        }}
-                      />
-                      <div className='absolute inset-0 bg-black bg-opacity-40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity'>
-                        <Camera className='text-white w-8 h-8' />
-                      </div>
-                      {(student.image || tempImage?.index === index) && (
-                        <button
-                          className='absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1.5 hover:bg-red-600 transition-colors'
-                          onClick={handleRemoveImage}
-                        >
-                          <X size={14} />
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <div className='w-32 h-32 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors'>
-                      <Camera className='text-gray-400 w-8 h-8' />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className='flex gap-3 mt-2'>
-              <Button
-                variant='outline'
-                className='flex-1 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 h-8 text-xs'
-                onClick={() => setIsDialogOpen(false)}
-                disabled={isSaving}
-              >
-                Cancel
-              </Button>
-              <Button
-                className='flex-1 rounded-lg bg-[#124A69] hover:bg-[#0a2f42] text-white h-8 text-xs'
-                onClick={handleSave}
-                disabled={isSaving}
-              >
-                {isSaving ? (
-                  <div className='flex items-center gap-2'>
-                    <div className='w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin' />
-                    <span>Saving...</span>
-                  </div>
-                ) : (
-                  'Save'
-                )}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+                  <circle cx='12' cy='8' r='4' />
+                  <path d='M6 20c0-2.2 3.6-4 6-4s6 1.8 6 4' />
+                </svg>
+              </span>
+            )}
+          </div>
+          <input
+            type='file'
+            ref={fileInputRef}
+            className='hidden'
+            accept='image/*'
+            onChange={handleFileChange}
+          />
+        </div>
+
         <h3
           className='text-sm font-medium text-gray-900 w-full truncate text-center'
           title={student.name}
@@ -223,27 +164,39 @@ export function StudentCard({
                 size='sm'
                 className={`w-full rounded-full px-4 py-1.5 text-sm font-medium border ${
                   statusStyles[student.status]
-                }`}
+                } ${isInCooldown ? 'opacity-50 cursor-not-allowed' : ''}`}
+                disabled={isInCooldown}
               >
                 {student.status === 'NOT_SET'
                   ? 'Select status'
                   : student.status}
+                {isInCooldown && (
+                  <div className='ml-2 w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin' />
+                )}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align='center'>
               <DropdownMenuItem
                 onClick={() => onStatusChange(index, 'PRESENT')}
+                disabled={isInCooldown}
               >
                 Present
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onStatusChange(index, 'LATE')}>
+              <DropdownMenuItem
+                onClick={() => onStatusChange(index, 'LATE')}
+                disabled={isInCooldown}
+              >
                 Late
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onStatusChange(index, 'ABSENT')}>
+              <DropdownMenuItem
+                onClick={() => onStatusChange(index, 'ABSENT')}
+                disabled={isInCooldown}
+              >
                 Absent
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => onStatusChange(index, 'EXCUSED')}
+                disabled={isInCooldown}
               >
                 Excused
               </DropdownMenuItem>
@@ -251,6 +204,112 @@ export function StudentCard({
           </DropdownMenu>
         </div>
       </div>
+
+      {/* Image Preview Dialog */}
+      <Dialog open={showImageDialog} onOpenChange={setShowImageDialog}>
+        <DialogContent className='sm:max-w-[425px]'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              {student.name}'s Profile Picture
+            </DialogTitle>
+          </DialogHeader>
+          <div className='flex flex-col items-center gap-4 py-4'>
+            <div className='relative'>
+              {tempImage && tempImage.index === index ? (
+                <img
+                  src={tempImage.dataUrl}
+                  alt={student.name}
+                  className='w-48 h-48 rounded-full object-cover'
+                />
+              ) : student.image ? (
+                <img
+                  src={student.image}
+                  alt={student.name}
+                  className='w-48 h-48 rounded-full object-cover'
+                />
+              ) : (
+                <span className='inline-flex w-48 h-48 rounded-full bg-gray-200 text-gray-400 items-center justify-center'>
+                  <svg
+                    width='80'
+                    height='80'
+                    fill='none'
+                    stroke='currentColor'
+                    strokeWidth='2'
+                    viewBox='0 0 24 24'
+                  >
+                    <circle cx='12' cy='8' r='4' />
+                    <path d='M6 20c0-2.2 3.6-4 6-4s6 1.8 6 4' />
+                  </svg>
+                </span>
+              )}
+            </div>
+            <div className='flex gap-2'>
+              <Button
+                variant='outline'
+                onClick={() => fileInputRef.current?.click()}
+                className='flex items-center gap-2 bg-[#124A69] text-white hover:bg-[#0D3A54] hover:text-white border-none'
+              >
+                <Camera className='h-4 w-4' />
+                Change Picture
+              </Button>
+              {student.image && (
+                <Button
+                  variant='outline'
+                  onClick={() => {
+                    setImageToRemove({ index, name: student.name });
+                    setShowImageDialog(false);
+                  }}
+                  className='flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50'
+                >
+                  <X className='h-4 w-4' />
+                  Remove Picture
+                </Button>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove Image Confirmation Dialog */}
+      <AlertDialog
+        open={!!imageToRemove}
+        onOpenChange={(open) => {
+          setImageToRemove(null);
+          if (!open) {
+            setTimeout(() => {
+              document.body.style.removeProperty('pointer-events');
+            }, 300);
+          }
+        }}
+      >
+        <AlertDialogContent className='sm:max-w-[425px]'>
+          <AlertDialogHeader>
+            <AlertDialogTitle className='text-[#124A69] text-xl font-bold'>
+              Remove Profile Picture
+            </AlertDialogTitle>
+            <AlertDialogDescription className='text-gray-500'>
+              Are you sure you want to remove this profile picture? This action
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className='gap-2 sm:gap-2 mt-4'>
+            <AlertDialogCancel className='border-gray-200'>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (imageToRemove) {
+                  onRemoveImage(imageToRemove.index, imageToRemove.name);
+                  setImageToRemove(null);
+                }
+              }}
+              className='bg-[#124A69] hover:bg-[#0D3A54] text-white'
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

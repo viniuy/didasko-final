@@ -2,7 +2,6 @@ export interface Note {
   id: string;
   title: string;
   description?: string;
-  date: string;
   userId: string;
   createdAt: string;
   updatedAt: string;
@@ -10,8 +9,8 @@ export interface Note {
 
 export interface NoteCreateInput {
   title: string;
-  description?: string;
-  date: string;
+  description?: string | null;
+  userId: string;
 }
 
 export interface NoteUpdateInput extends NoteCreateInput {

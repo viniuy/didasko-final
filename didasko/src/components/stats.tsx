@@ -67,19 +67,19 @@ export default function Dashboard() {
         <StatCard
           icon={<User size={24} />}
           count={stats.totalStudents}
-          label='STUDENTS COUNT'
+          label='TOTAL STUDENTS'
           isLoading={isLoading}
         />
         <StatCard
           icon={<BookOpen size={24} />}
           count={stats.totalCourses}
-          label='TOTAL COURSES'
+          label='TOTAL SUBJECTS'
           isLoading={isLoading}
         />
         <StatCard
           icon={<GraduationCap size={24} />}
           count={stats.totalClasses}
-          label='TOTAL CLASSES'
+          label='TOTAL SECTIONS'
           isLoading={isLoading}
         />
       </div>

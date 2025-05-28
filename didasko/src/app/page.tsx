@@ -1,39 +1,39 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { signIn } from 'next-auth/react';
-import { useToast } from '@/components/ui/use-toast';
+import toast from 'react-hot-toast';
 import VantaBackground from '@/components/VantaBackground';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 
 export default function AdminLogin() {
   const [isLoading, setIsLoading] = useState(false);
-  const { toast } = useToast();
+  const [accessDenied, setAccessDenied] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    // Check for error in URL parameters
+    const params = new URLSearchParams(window.location.search);
+    const error = params.get('error');
+    if (error === 'AccessDenied') {
+      setAccessDenied(true);
+      toast.error('Access Denied');
+    }
+  }, []);
 
   const handleAdminLogin = async () => {
     try {
       setIsLoading(true);
-      const result = await signIn('google', {
-        redirect: false,
+      setAccessDenied(false);
+      await signIn('azure-ad', {
+        redirect: true,
+        callbackUrl: '/redirecting',
       });
-
-      if (result?.error) {
-        throw new Error(result.error);
-      }
-
-      if (result?.ok) {
-        router.refresh();
-      }
     } catch (err) {
-      toast({
-        variant: 'destructive',
-        title: 'Authentication Error',
-        description:
-          'Failed to sign in. Please ensure you have the correct privileges.',
-      });
+      setAccessDenied(true);
+      toast.error('Authentication Error');
     } finally {
       setIsLoading(false);
     }
@@ -104,7 +104,7 @@ export default function AdminLogin() {
                 ) : (
                   <>
                     <Image
-                      src='https://upload.wikimedia.org/wikipedia/commons/4/44/Microsoft_logo.svg'
+                      src='/microsoft-logo.svg'
                       alt='Microsoft Logo'
                       width={20}
                       height={20}
@@ -120,6 +120,12 @@ export default function AdminLogin() {
             </div>
           </div>
         </div>
+        {accessDenied && (
+          <p className='mt-2 text-sm text-red-500 font-medium text-center'>
+            Access denied. You do not have the required permissions to access
+            this portal.
+          </p>
+        )}
       </div>
     </div>
   );

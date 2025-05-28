@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     // Get notes with pagination
     const notes = await prisma.note.findMany({
       where: { userId: session.user.id },
-      orderBy: { date: 'desc' },
+      orderBy: { createdAt: 'desc' },
       skip,
       take: limit,
     });
@@ -37,7 +37,6 @@ export async function GET(request: Request) {
     // Transform dates to ISO strings
     const transformedNotes: Note[] = notes.map((note) => ({
       ...note,
-      date: note.date.toISOString(),
       createdAt: note.createdAt.toISOString(),
       updatedAt: note.updatedAt.toISOString(),
     }));
@@ -70,29 +69,35 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { title, description, date } = body as NoteCreateInput;
+    const { title, description, userId } = body as NoteCreateInput;
 
     // Validate required fields
-    if (!title || !date) {
+    if (!title) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 },
       );
     }
 
+    // Verify that the userId matches the session user
+    if (userId !== session.user.id) {
+      return NextResponse.json(
+        { error: 'Unauthorized to create note for another user' },
+        { status: 403 },
+      );
+    }
+
     const note = await prisma.note.create({
       data: {
         title,
-        description,
-        date: new Date(date),
-        userId: session.user.id,
+        description: description || null,
+        userId,
       },
     });
 
     // Transform dates to ISO strings
     const transformedNote: Note = {
       ...note,
-      date: note.date.toISOString(),
       createdAt: note.createdAt.toISOString(),
       updatedAt: note.updatedAt.toISOString(),
     };
@@ -115,10 +120,10 @@ export async function PUT(request: Request) {
     }
 
     const body = await request.json();
-    const { id, title, description, date } = body as NoteUpdateInput;
+    const { id, title, description } = body as NoteUpdateInput;
 
     // Validate required fields
-    if (!id || !title || !date) {
+    if (!id || !title) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 },
@@ -133,14 +138,12 @@ export async function PUT(request: Request) {
       data: {
         title,
         description,
-        date: new Date(date),
       },
     });
 
     // Transform dates to ISO strings
     const transformedNote: Note = {
       ...note,
-      date: note.date.toISOString(),
       createdAt: note.createdAt.toISOString(),
       updatedAt: note.updatedAt.toISOString(),
     };

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, Fragment } from 'react';
+import { useState, useMemo, useEffect, Fragment, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -84,6 +84,8 @@ interface StudentCardProps {
   onSaveChanges: (index: number) => void;
   onRemoveImage: (index: number, name: string) => void;
   onStatusChange: (index: number, status: AttendanceStatus) => void;
+  isSaving: boolean;
+  isInCooldown: boolean;
 }
 
 interface AddStudentSheetProps {
@@ -199,6 +201,21 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
     AttendanceStatus
   > | null>(null);
   const [showResetConfirmation, setShowResetConfirmation] = useState(false);
+  const [cooldownMap, setCooldownMap] = useState<{ [key: string]: boolean }>(
+    {},
+  );
+  const [pendingUpdates, setPendingUpdates] = useState<{
+    [key: string]: {
+      studentId: string;
+      status: AttendanceStatus;
+    };
+  }>({});
+  const [toastTimeout, setToastTimeout] = useState<NodeJS.Timeout | null>(null);
+  const latestUpdateRef = useRef<{
+    studentId: string;
+    status: AttendanceStatus;
+  } | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const fetchStudents = async () => {
     if (!courseSlug) return;
@@ -447,106 +464,187 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
     const student = filteredStudents[actualIndex];
     if (!student) return;
 
+    // Check if this student is in cooldown
+    if (cooldownMap[student.id]) {
+      return;
+    }
+
+    // Set cooldown for this student
+    setCooldownMap((prev) => ({ ...prev, [student.id]: true }));
+    setIsUpdating(true); // Set updating state immediately
+
     // Add one day to the selected date
     const nextDay = new Date(selectedDate);
     nextDay.setDate(nextDay.getDate() + 1);
 
-    const promise = axiosInstance.post(`/courses/${courseSlug}/attendance`, {
-      date: nextDay.toISOString(),
-      attendance: [
-        {
-          studentId: student.id,
-          status: newStatus,
-        },
-      ],
+    // Store the latest update
+    latestUpdateRef.current = {
+      studentId: student.id,
+      status: newStatus,
+    };
+
+    // Add to pending updates
+    setPendingUpdates((prev) => ({
+      ...prev,
+      [student.id]: {
+        studentId: student.id,
+        status: newStatus,
+      },
+    }));
+
+    // Clear any existing toast timeout
+    if (toastTimeout) {
+      clearTimeout(toastTimeout);
+    }
+
+    // Show loading toast immediately
+    toast.loading('Updating attendance... (feel free to add more students)', {
+      id: 'attendance-update',
+      style: {
+        background: '#fff',
+        color: '#124A69',
+        border: '1px solid #e5e7eb',
+        boxShadow:
+          '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+        borderRadius: '0.5rem',
+        padding: '1rem',
+      },
     });
 
-    toast.promise(
-      promise,
-      {
-        loading: 'Updating attendance...',
-        success: 'Attendance updated',
-        error: 'Failed to update attendance',
-      },
-      {
-        style: {
-          background: '#fff',
-          color: '#124A69',
-          border: '1px solid #e5e7eb',
-          boxShadow:
-            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-          borderRadius: '0.5rem',
-          padding: '1rem',
-        },
-        success: {
-          style: {
-            background: '#fff',
-            color: '#124A69',
-            border: '1px solid #e5e7eb',
+    // Set a new timeout for the toast
+    const timeout = setTimeout(async () => {
+      try {
+        // Get the latest pending updates including the current one
+        const updates = Object.values(pendingUpdates);
+
+        // Ensure the latest update is included
+        if (latestUpdateRef.current) {
+          const latestUpdate = latestUpdateRef.current;
+          if (
+            !updates.some(
+              (update) => update.studentId === latestUpdate.studentId,
+            )
+          ) {
+            updates.push(latestUpdate);
+          }
+        }
+
+        if (updates.length === 0) {
+          setIsUpdating(false);
+          return;
+        }
+
+        const promise = axiosInstance.post(
+          `/courses/${courseSlug}/attendance`,
+          {
+            date: nextDay.toISOString(),
+            attendance: updates,
           },
-          iconTheme: {
-            primary: '#124A69',
-            secondary: '#fff',
+        );
+
+        // Update local state immediately for better UX
+        setStudentList((prev) =>
+          prev.map((s) => {
+            const update = updates.find((u) => u.studentId === s.id);
+            if (update) {
+              return { ...s, status: update.status };
+            }
+            return s;
+          }),
+        );
+
+        await promise;
+
+        // Update attendance records
+        const records = updates.map((update) => ({
+          id: crypto.randomUUID(),
+          studentId: update.studentId,
+          courseId: courseSlug!,
+          status: update.status,
+          date: format(selectedDate, 'yyyy-MM-dd'),
+          reason: null,
+        }));
+
+        setStudentList((prev) =>
+          prev.map((s) => {
+            const record = records.find((r) => r.studentId === s.id);
+            if (record) {
+              return {
+                ...s,
+                status: record.status,
+                attendanceRecords: [record],
+              };
+            }
+            return s;
+          }),
+        );
+
+        // Clear pending updates and latest update ref after successful update
+        setPendingUpdates({});
+        latestUpdateRef.current = null;
+
+        // Update the loading toast to success
+        toast.success(
+          `Updated ${updates.length} student${updates.length > 1 ? 's' : ''}`,
+          {
+            id: 'attendance-update',
+            style: {
+              background: '#fff',
+              color: '#124A69',
+              border: '1px solid #e5e7eb',
+              boxShadow:
+                '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+              borderRadius: '0.5rem',
+              padding: '1rem',
+            },
           },
-        },
-        error: {
+        );
+      } catch (error) {
+        console.error('Error saving attendance:', error);
+        // Revert local state on error
+        setStudentList((prev) =>
+          prev.map((s) => {
+            const update = Object.values(pendingUpdates).find(
+              (u) => u.studentId === s.id,
+            );
+            if (update) {
+              return { ...s, status: 'NOT_SET' };
+            }
+            return s;
+          }),
+        );
+
+        // Update the loading toast to error
+        toast.error('Failed to update attendance', {
+          id: 'attendance-update',
           style: {
             background: '#fff',
             color: '#dc2626',
             border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
           },
-          iconTheme: {
-            primary: '#dc2626',
-            secondary: '#fff',
-          },
-        },
-        loading: {
-          style: {
-            background: '#fff',
-            color: '#124A69',
-            border: '1px solid #e5e7eb',
-          },
-        },
-      },
-    );
+        });
+      } finally {
+        // Clear all cooldowns and updating state after API call is complete
+        setCooldownMap({});
+        setIsUpdating(false);
+      }
+    }, 3000); // Wait 3 seconds before sending the request
 
-    try {
-      // Update local state immediately for better UX
-      setStudentList((prev) =>
-        prev.map((s) =>
-          s.id === student.id ? { ...s, status: newStatus } : s,
-        ),
-      );
-
-      await promise;
-
-      // Update attendance records
-      const record: AttendanceRecord = {
-        id: crypto.randomUUID(),
-        studentId: student.id,
-        courseId: courseSlug!,
-        status: newStatus,
-        date: format(selectedDate, 'yyyy-MM-dd'),
-        reason: null,
-      };
-
-      setStudentList((prev) =>
-        prev.map((s) =>
-          s.id === student.id
-            ? { ...s, status: newStatus, attendanceRecords: [record] }
-            : s,
-        ),
-      );
-    } catch (error) {
-      console.error('Error saving attendance:', error);
-      // Revert local state on error
-      setStudentList((prev) =>
-        prev.map((s) =>
-          s.id === student.id ? { ...s, status: 'NOT_SET' } : s,
-        ),
-      );
-    }
+    setToastTimeout(timeout);
   };
+
+  // Clean up timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (toastTimeout) {
+        clearTimeout(toastTimeout);
+      }
+    };
+  }, [toastTimeout]);
 
   const currentStudents = useMemo(() => {
     const filtered = studentList
@@ -583,13 +681,16 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
     itemsPerPage,
   ]);
 
-  const handleImageUpload = async (studentId: string, file: File) => {
+  const handleImageUpload = async (index: number, file: File) => {
     try {
+      const student = currentStudents[index];
+      if (!student) return;
+
       const formData = new FormData();
       formData.append('image', file);
 
       const response = await axiosInstance.post(
-        `/courses/${courseSlug}/students/${studentId}/image`,
+        `/courses/${courseSlug}/students/${student.id}/image`,
         formData,
         {
           headers: {
@@ -600,12 +701,12 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
 
       // Update the student's image in the list
       setStudentList((prev) =>
-        prev.map((student) =>
-          student.id === studentId
-            ? { ...student, image: response.data.image }
-            : student,
+        prev.map((s) =>
+          s.id === student.id ? { ...s, image: response.data.imageUrl } : s,
         ),
       );
+
+      toast.success('Profile picture updated successfully');
     } catch (error) {
       console.error('Error uploading image:', error);
       toast.error('Failed to upload image');
@@ -1187,6 +1288,7 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
   useEffect(() => {
     if (courseSlug && selectedDate) {
       fetchAttendance(selectedDate);
+      fetchAttendanceDates();
     }
   }, [selectedDate, courseSlug]);
 
@@ -1316,17 +1418,38 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
               <Search className='absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400' />
               <Input
                 placeholder='Search a name'
-                className='w-full pl-9 bg-white border-gray-200 rounded-full h-10'
+                className='w-full pl-9 pr-8 bg-white border-gray-200 rounded-full h-10'
                 value={searchQuery}
                 onChange={handleSearch}
               />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className='absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600'
+                >
+                  <svg
+                    xmlns='http://www.w3.org/2000/svg'
+                    width='16'
+                    height='16'
+                    viewBox='0 0 24 24'
+                    fill='none'
+                    stroke='currentColor'
+                    strokeWidth='2'
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                  >
+                    <line x1='18' y1='6' x2='6' y2='18'></line>
+                    <line x1='6' y1='6' x2='18' y2='18'></line>
+                  </svg>
+                </button>
+              )}
             </div>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
                   variant='outline'
                   className='rounded-full h-10 pl-3 pr-2 flex items-center gap-2 w-[180px] justify-between relative'
-                  disabled={isDateLoading}
+                  disabled={isDateLoading || isUpdating}
                 >
                   <span className='truncate'>
                     {selectedDate ? format(selectedDate, 'PPP') : 'Pick a date'}
@@ -1408,7 +1531,12 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant='outline' size='icon' className='rounded-full'>
+              <Button
+                variant='outline'
+                size='icon'
+                className='rounded-full'
+                disabled={isUpdating || isDateLoading}
+              >
                 <MoreHorizontal className='h-4 w-4' />
               </Button>
             </DropdownMenuTrigger>
@@ -1416,12 +1544,13 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
               <DropdownMenuItem
                 onClick={() => setShowMarkAllConfirm(true)}
                 className='text-[#22C55E] focus:text-[#22C55E] focus:bg-[#22C55E]/10'
+                disabled={isUpdating || isDateLoading}
               >
                 Mark All as Present
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => setShowClearConfirm(true)}
-                disabled={isSaving}
+                disabled={isSaving || isUpdating || isDateLoading}
                 className='text-[#EF4444] focus:text-[#EF4444] focus:bg-[#EF4444]/10'
               >
                 {isSaving ? 'Clearing...' : 'Clear Attendance'}
@@ -1433,6 +1562,7 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
               variant='outline'
               className='rounded-full relative flex items-center gap-2 px-3'
               onClick={() => setIsFilterSheetOpen(true)}
+              disabled={isUpdating || isDateLoading}
             >
               <Filter className='h-4 w-4' />
               <span>Filter</span>
@@ -1451,21 +1581,22 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
             />
             <Button
               variant='outline'
-              size='icon'
               className='rounded-full'
               onClick={() => setShowExportPreview(true)}
               title='Export to Excel'
+              disabled={isUpdating || isDateLoading}
             >
               <Download className='h-4 w-4' />
+              Export
             </Button>
-            <AddStudentSheet
+            {/* <AddStudentSheet
               onSelectExistingStudent={handleSelectExistingStudent}
               onStudentsRemoved={() => {
                 if (courseSlug) {
                   fetchStudents();
                 }
               }}
-            />
+            /> */}
           </div>
         </div>
       </div>
@@ -1497,9 +1628,7 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
                 }}
                 index={index}
                 tempImage={tempImage}
-                onImageUpload={(index) =>
-                  handleImageUpload(student.id, new File([], ''))
-                }
+                onImageUpload={handleImageUpload}
                 onSaveChanges={handleSaveImageChanges}
                 onRemoveImage={() =>
                   setImageToRemove({ index, name: student.name })
@@ -1508,6 +1637,7 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
                   updateStatus(index, status)
                 }
                 isSaving={isSaving}
+                isInCooldown={cooldownMap[student.id] || false}
               />
             ))
           ) : (
@@ -1697,46 +1827,95 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog
+      <Dialog
         open={showMarkAllConfirm}
-        onOpenChange={setShowMarkAllConfirm}
+        onOpenChange={(open) => {
+          setShowMarkAllConfirm(open);
+          if (!open) {
+            setTimeout(() => {
+              document.body.style.removeProperty('pointer-events');
+            }, 300);
+          }
+        }}
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Mark All Students as Present</AlertDialogTitle>
-            <AlertDialogDescription>
+        <DialogContent className='sm:max-w-[425px]'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              Mark All as Present
+            </DialogTitle>
+            <DialogDescription className='text-gray-500'>
               Are you sure you want to mark all students as present for{' '}
               {selectedDate ? format(selectedDate, 'PPP') : 'this date'}? This
               action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={markAllAsPresent}>
-              Confirm
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className='gap-2 sm:gap-2'>
+            <Button
+              variant='outline'
+              onClick={() => {
+                setShowMarkAllConfirm(false);
+                setTimeout(() => {
+                  document.body.style.removeProperty('pointer-events');
+                }, 300);
+              }}
+              className='border-gray-200'
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={markAllAsPresent}
+              className='bg-[#124A69] hover:bg-[#0a2f42] text-white'
+            >
+              Mark All as Present
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      <AlertDialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Clear All Attendance</AlertDialogTitle>
-            <AlertDialogDescription>
+      <Dialog
+        open={showClearConfirm}
+        onOpenChange={(open) => {
+          setShowClearConfirm(open);
+          if (!open) {
+            setTimeout(() => {
+              document.body.style.removeProperty('pointer-events');
+            }, 300);
+          }
+        }}
+      >
+        <DialogContent className='sm:max-w-[425px]'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              Clear Attendance
+            </DialogTitle>
+            <DialogDescription className='text-gray-500'>
               Are you sure you want to clear all attendance records for{' '}
               {selectedDate ? format(selectedDate, 'PPP') : 'this date'}? This
-              will reset all students' status to "Select Status".
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={clearAllAttendance}>
-              Confirm
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className='gap-2 sm:gap-2'>
+            <Button
+              variant='outline'
+              onClick={() => {
+                setShowClearConfirm(false);
+                setTimeout(() => {
+                  document.body.style.removeProperty('pointer-events');
+                }, 300);
+              }}
+              className='border-gray-200'
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={clearAllAttendance}
+              className='bg-[#124A69] hover:bg-[#0a2f42] text-white'
+            >
+              Clear Attendance
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className='flex justify-end mt-3 gap-2'>
         <Button

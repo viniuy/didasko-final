@@ -1,91 +1,101 @@
 import NextAuth from 'next-auth';
-import GoogleProvider from 'next-auth/providers/google';
+import AzureADProvider from 'next-auth/providers/azure-ad';
 import { prisma } from '@/lib/prisma';
-import { Role } from '@/lib/types';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 
+// Validate environment variables
+if (!process.env.AZURE_AD_CLIENT_ID || !process.env.AZURE_AD_CLIENT_SECRET) {
+  throw new Error(
+    'Missing Azure AD credentials. Please set AZURE_AD_CLIENT_ID and AZURE_AD_CLIENT_SECRET in your .env.local file',
+  );
+}
+
 const handler = NextAuth({
   providers: [
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID || '',
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-      httpOptions: {
-        timeout: 10000,
+    AzureADProvider({
+      clientId: process.env.AZURE_AD_CLIENT_ID,
+      clientSecret: process.env.AZURE_AD_CLIENT_SECRET,
+      tenantId: 'common',
+      authorization: {
+        params: {
+          scope: 'openid profile email',
+        },
       },
     }),
   ],
   callbacks: {
-    async redirect({ url, baseUrl }) {
-      // Get the session to check user role
-      const session = await getServerSession(authOptions);
-      console.log('Redirect Callback - Session:', session);
-
-      if (session?.user?.role) {
-        // Role-based routing
-        switch (session.user.role) {
-          case 'ADMIN':
-            return `${baseUrl}/dashboard/admin`;
-          case 'ACADEMIC_HEAD':
-            return `${baseUrl}/dashboard/academic-head`;
-          case 'FACULTY':
-            return `${baseUrl}/dashboard/faculty`;
-          default:
-            return `${baseUrl}/dashboard`;
-        }
-      }
-
-      // If no role-based redirect or invalid URL, handle default cases
-      if (url.startsWith(baseUrl) || url.startsWith('/')) {
-        return url;
-      }
-      return baseUrl;
-    },
     async signIn({ user, account }) {
-      if (!user.email) return false;
+      if (!user.email) {
+        return false;
+      }
+
+      if (!user.email.endsWith('@alabang.sti.edu.ph')) {
+        console.error(
+          `SignIn Error: User ${user.email} is not from alabang.sti.edu.ph domain`,
+        );
+        return false;
+      }
 
       try {
-        // Check if user exists in our database
+        // Check if user exists in our database (User table)
         const dbUser = await prisma.user.findUnique({
           where: { email: user.email },
         });
 
-        // If user doesn't exist or doesn't have GRANTED permission, deny access
-        if (!dbUser || dbUser.permission !== 'GRANTED') {
-          console.log('Access denied for user:', user.email);
+        if (!dbUser) {
+          console.error(
+            `SignIn Error: User ${user.email} not found in database`,
+          );
           return false;
         }
 
-        // Set the user's role and id from the database
+        if (dbUser.permission !== 'GRANTED') {
+          console.error(
+            `SignIn Error: User ${user.email} does not have GRANTED permission`,
+          );
+          return false;
+        }
+
         user.role = dbUser.role;
         user.id = dbUser.id;
-        console.log('SignIn Callback - User with role and id:', user);
+        console.log('SignIn Success - User authenticated:', {
+          email: user.email,
+          role: user.role,
+        });
 
-        // If this is a Google account, ensure it's linked
-        if (account?.provider === 'google') {
-          const existingAccount = await prisma.account.findFirst({
-            where: {
-              userId: dbUser.id,
-              provider: 'google',
-            },
-          });
-
-          if (!existingAccount) {
-            await prisma.account.create({
-              data: {
+        if (account?.provider === 'azure-ad') {
+          try {
+            const existingAccount = await prisma.account.findFirst({
+              where: {
                 userId: dbUser.id,
-                type: 'oauth',
-                provider: 'google',
-                providerAccountId: account.providerAccountId,
-                access_token: account.access_token,
-                refresh_token: account.refresh_token,
-                expires_at: account.expires_at,
-                token_type: account.token_type,
-                scope: account.scope,
-                id_token: account.id_token,
-                session_state: account.session_state,
+                provider: 'azure-ad',
               },
             });
+
+            if (!existingAccount) {
+              await prisma.account.create({
+                data: {
+                  userId: dbUser.id,
+                  type: 'oauth',
+                  provider: 'azure-ad',
+                  providerAccountId: account.providerAccountId,
+                  access_token: account.access_token,
+                  refresh_token: account.refresh_token,
+                  expires_at: account.expires_at,
+                  token_type: account.token_type,
+                  scope: account.scope,
+                  id_token: account.id_token,
+                  session_state: account.session_state,
+                },
+              });
+              console.log(
+                'Azure AD account linked successfully for user:',
+                user.email,
+              );
+            }
+          } catch (error) {
+            console.error('Error linking Azure AD account:', error);
           }
         }
 
@@ -96,62 +106,65 @@ const handler = NextAuth({
       }
     },
     async jwt({ token, user, account, trigger }) {
-      console.log('JWT Callback - Incoming token:', token);
-      console.log('JWT Callback - User:', user);
+      try {
+        if (user) {
+          token.id = user.id;
+          token.role = user.role;
+          token.email = user.email;
+          token.image = user.image;
+        } else if (token?.email) {
+          const dbUser = await prisma.user.findUnique({
+            where: { email: token.email },
+            select: { name: true, id: true, role: true, image: true },
+          });
 
-      if (user) {
-        token.id = user.id;
-        token.role = user.role;
-        token.email = user.email;
-        token.image = user.image;
-      } else if (token) {
-        // If we have a token but no user, ensure the ID is preserved
-        const dbUser = await prisma.user.findUnique({
-          where: { email: token.email as string },
-          select: { name: true, id: true, role: true, image: true },
-        });
-
-        if (dbUser) {
-          token.name = dbUser.name;
-          token.id = dbUser.id;
-          token.role = dbUser.role;
-          token.image = dbUser.image;
+          if (dbUser) {
+            token.name = dbUser.name;
+            token.id = dbUser.id;
+            token.role = dbUser.role;
+            token.image = dbUser.image;
+          } else {
+            console.error(
+              'JWT Error: User not found in database for token:',
+              token.email,
+            );
+          }
         }
-      }
 
-      console.log('JWT Callback - Final Token:', token);
-      return token;
+        return token;
+      } catch (error) {
+        console.error('JWT callback error:', error);
+        return token;
+      }
     },
     async session({ session, token }) {
-      console.log('Session Callback - Incoming Token:', token);
-      console.log('Session Callback - Initial Session:', session);
-
-      if (session.user && session.user.email) {
-        try {
-          // Query the user from database using email
+      try {
+        if (session.user?.email) {
           const dbUser = await prisma.user.findUnique({
             where: { email: session.user.email },
             select: { name: true, id: true, role: true, image: true },
           });
-
-          console.log('Session Callback - DB User:', dbUser);
 
           if (dbUser) {
             session.user.name = dbUser.name;
             session.user.id = dbUser.id;
             session.user.role = dbUser.role;
             session.user.image = dbUser.image || undefined;
-            console.log('Session Callback - Updated Session:', session);
           } else {
-            console.log('User not found in database');
+            console.error(
+              'Session Error: User not found in database:',
+              session.user.email,
+            );
           }
-        } catch (error) {
-          console.error('Session callback error:', error);
         }
+        return session;
+      } catch (error) {
+        console.error('Session callback error:', error);
+        return session;
       }
-
-      console.log('Session Callback - Final Session:', session);
-      return session;
+    },
+    redirect() {
+      return '/redirecting';
     },
   },
   pages: {
@@ -160,7 +173,7 @@ const handler = NextAuth({
   },
   session: {
     strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: 30 * 24 * 60 * 60,
   },
   debug: process.env.NODE_ENV === 'development',
 });

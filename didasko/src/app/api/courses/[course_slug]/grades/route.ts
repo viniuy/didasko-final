@@ -220,3 +220,55 @@ export async function POST(
     );
   }
 }
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: { course_slug: string } },
+) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const criteriaId = searchParams.get('criteriaId');
+    const date = searchParams.get('date');
+
+    if (!criteriaId || !date) {
+      return NextResponse.json(
+        { error: 'Criteria ID and date are required' },
+        { status: 400 },
+      );
+    }
+
+    // First find the course by slug
+    const course = await prisma.course.findUnique({
+      where: { slug: params.course_slug },
+    });
+
+    if (!course) {
+      return NextResponse.json({ error: 'Course not found' }, { status: 404 });
+    }
+
+    // Delete grades for the specified criteria and date
+    await prisma.grade.deleteMany({
+      where: {
+        courseId: course.id,
+        criteriaId: criteriaId,
+        date: {
+          gte: new Date(date + 'T00:00:00.000Z'),
+          lt: new Date(date + 'T23:59:59.999Z'),
+        },
+      },
+    });
+
+    return NextResponse.json({ message: 'Grades deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting grades:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete grades' },
+      { status: 500 },
+    );
+  }
+}

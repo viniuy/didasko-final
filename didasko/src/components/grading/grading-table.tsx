@@ -44,6 +44,16 @@ import {
 } from '@/components/ui/pagination';
 import { ExportReporting } from './export-reporting';
 import { useRouter, usePathname } from 'next/navigation';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 
 interface Student {
   id: string;
@@ -183,6 +193,17 @@ export function GradingTable({
   );
   const [showSaveEditConfirmation, setShowSaveEditConfirmation] =
     useState(false);
+  const [tempImage, setTempImage] = useState<{
+    index: number;
+    dataUrl: string;
+  } | null>(null);
+  const [imageToRemove, setImageToRemove] = useState<{
+    index: number;
+    name: string;
+  } | null>(null);
+  const [showSuccessMessage, setShowSuccessMessage] = useState<{
+    [key: number]: boolean;
+  }>({});
 
   // Function to handle dialog close
   const handleDialogClose = () => {
@@ -1026,7 +1047,7 @@ export function GradingTable({
         studentScore.scores.some((score) => score === 0) ||
         studentScore.total === 0
           ? '---'
-          : `${studentScore.total.toFixed(0)}%`,
+          : `${studentScore.total.toFixed(2)}%`,
         studentScore.scores.some((score) => score === 0) ||
         studentScore.total === 0
           ? '---'
@@ -1519,7 +1540,7 @@ export function GradingTable({
             {studentScore.scores.some((score) => score === 0) ||
             studentScore.total === 0
               ? '---'
-              : `${studentScore.total.toFixed(0)}%`}
+              : `${studentScore.total.toFixed(2)}%`}
           </td>
           <td className='text-center px-4 py-2 align-middle w-[100px]'>
             {studentScore.scores.some((score) => score === 0) ? (
@@ -1534,9 +1555,7 @@ export function GradingTable({
                     : 'bg-red-100 text-red-800'
                 }`}
               >
-                {studentScore.total >= Number(activeReport?.passingScore)
-                  ? 'PASSED'
-                  : 'FAILED'}
+                {`${activeReport?.passingScore}%`}
               </span>
             )}
           </td>
@@ -1630,13 +1649,21 @@ export function GradingTable({
     const nameError = validateReportName(newReport.name);
     if (nameError) {
       setValidationErrors((prev) => ({ ...prev, name: nameError }));
-      toast.error(nameError);
+      toast.error(nameError, {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+      });
       return;
     }
 
     // Validate all rubric names
-    const rubricErrors = newReport.rubricDetails.map((rubric, idx) => {
-      if (isGroupView && idx === newReport.rubricDetails.length - 1) {
+    const rubricErrors = newReport.rubricDetails.map((rubric, idx, arr) => {
+      if (isGroupView && idx === arr.length - 1) {
+        // Skip validation for Participation rubric in group view
         return '';
       }
       return validateRubricName(rubric.name, idx);
@@ -1644,7 +1671,14 @@ export function GradingTable({
     const hasRubricErrors = rubricErrors.some((error) => error);
     if (hasRubricErrors) {
       setValidationErrors((prev) => ({ ...prev, rubrics: rubricErrors }));
-      toast.error('Please fix the rubric name errors');
+      toast.error('Please fix the rubric name errors', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+      });
       return;
     }
 
@@ -1654,7 +1688,14 @@ export function GradingTable({
       0,
     );
     if (totalWeight !== 100) {
-      toast.error('Total weight must equal 100%');
+      toast.error('Total weight must equal 100%', {
+        duration: 3000,
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+        },
+      });
       return;
     }
 
@@ -1677,6 +1718,51 @@ export function GradingTable({
           ? idx !== newReport.rubricDetails.length - 1
           : false,
       }));
+
+      // If we're reducing the number of rubrics, we need to remove grades for the dropped rubrics
+      if (newReport.rubricDetails.length < editingReport.rubrics.length) {
+        // Update scores to keep only the first N rubrics
+        setScores((prev) => {
+          const newScores = { ...prev };
+          Object.keys(newScores).forEach((studentId) => {
+            const studentScore = newScores[studentId];
+            // Keep only the scores for the first N rubrics
+            studentScore.scores = studentScore.scores.slice(
+              0,
+              newReport.rubricDetails.length,
+            );
+            // Recalculate total
+            studentScore.total = calculateTotal(studentScore.scores);
+          });
+          return newScores;
+        });
+
+        // Save the updated scores to preserve the first N rubrics
+        const formattedDate = selectedDate?.toISOString().split('T')[0];
+        if (formattedDate) {
+          const gradesToSave = Object.values(scores).map((score) => {
+            const total = calculateTotal(
+              score.scores.slice(0, newReport.rubricDetails.length),
+            );
+            return {
+              studentId: score.studentId,
+              scores: score.scores.slice(0, newReport.rubricDetails.length),
+              total: total,
+              reportingScore: isRecitationCriteria ? 0 : total,
+              recitationScore: isRecitationCriteria ? total : 0,
+            };
+          });
+
+          await axiosInstance.post(`/courses/${courseSlug}/grades`, {
+            date: formattedDate,
+            criteriaId: editingReport.id,
+            courseCode,
+            courseSection,
+            grades: gradesToSave,
+            isRecitationCriteria,
+          });
+        }
+      }
 
       // Use the new PUT endpoint
       const response = await axiosInstance.put(
@@ -1728,6 +1814,146 @@ export function GradingTable({
       setPendingRubricCount(null);
     }
     setShowRubricChangeWarning(false);
+  };
+
+  const handleImageUpload = async (index: number, file: File) => {
+    try {
+      const student = students[index];
+      if (!student) return;
+
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const response = await axiosInstance.post(
+        `/courses/${courseSlug}/students/${student.id}/image`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        },
+      );
+
+      // Update the student's image in the list
+      setStudents((prev) =>
+        prev.map((s) =>
+          s.id === student.id ? { ...s, image: response.data.imageUrl } : s,
+        ),
+      );
+
+      toast.success('Profile picture updated successfully');
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast.error('Failed to upload image');
+    }
+  };
+
+  const handleSaveImageChanges = async (index: number) => {
+    if (!tempImage || tempImage.index !== index) return;
+
+    try {
+      setIsSaving(true);
+      const formData = new FormData();
+      // Convert base64 to blob
+      const base64Response = await axiosInstance.get(tempImage.dataUrl, {
+        responseType: 'arraybuffer',
+      });
+      const blob = new Blob([base64Response.data]);
+
+      // Get file extension from data URL
+      const ext = tempImage.dataUrl.split(';')[0].split('/')[1];
+      const fileName = `image.${ext}`;
+
+      // Create file from blob with proper name and type
+      const file = new File([blob], fileName, { type: `image/${ext}` });
+      formData.append('image', file);
+
+      const uploadResponse = await axiosInstance.post('/upload', formData);
+      const { imageUrl } = uploadResponse.data;
+
+      // Update the student's image in the database
+      const student = students[index];
+      const updateResponse = await axiosInstance.put(
+        `/students/${student.id}/image`,
+        { imageUrl },
+      );
+      const updatedStudent = updateResponse.data;
+
+      // Update student list with new image URL
+      setStudents((prev) =>
+        prev.map((student, i) =>
+          i === index ? { ...student, image: imageUrl } : student,
+        ),
+      );
+
+      // Clear temp image
+      setTempImage(null);
+
+      // Show success message
+      setShowSuccessMessage((prev) => ({ ...prev, [index]: true }));
+      setTimeout(() => {
+        setShowSuccessMessage((prev) => ({ ...prev, [index]: false }));
+      }, 3000);
+    } catch (error) {
+      console.error('Error saving image:', error);
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to save image',
+        {
+          duration: 3000,
+          style: {
+            background: '#fff',
+            color: '#dc2626',
+            border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
+          },
+        },
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const confirmAndRemoveImage = async () => {
+    if (imageToRemove) {
+      try {
+        const student = students[imageToRemove.index];
+
+        // Delete the image file from public/uploads
+        if (student.image) {
+          const deleteResponse = await axiosInstance.delete('/upload', {
+            data: { imageUrl: student.image },
+          });
+        }
+
+        // Update the database
+        const updateResponse = await axiosInstance.put(
+          `/students/${student.id}/image`,
+          { imageUrl: null },
+        );
+        const updatedStudent = updateResponse.data;
+
+        // Update local state
+        setStudents((prev) =>
+          prev.map((student, idx) =>
+            idx === imageToRemove.index
+              ? { ...student, image: undefined }
+              : student,
+          ),
+        );
+        // Clear temp image if it exists for this student
+        if (tempImage?.index === imageToRemove.index) {
+          setTempImage(null);
+        }
+        setImageToRemove(null);
+        toast.success('Profile picture removed successfully');
+      } catch (error) {
+        console.error('Error removing image:', error);
+        toast.error('Failed to remove profile picture');
+      }
+    }
   };
 
   return (
@@ -1913,7 +2139,7 @@ export function GradingTable({
                 onClick={() => setShowCriteriaDialog(true)}
                 className='ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center '
               >
-                Report Manager
+                Manage Report
               </Button>
             </div>
           </div>
@@ -1922,11 +2148,11 @@ export function GradingTable({
           <DialogContent className='sm:max-w-[450px]'>
             <DialogHeader>
               <DialogTitle className='text-[#124A69] text-2xl font-bold'>
-                {isRecitationCriteria ? 'Recitation Report' : 'Grading Report'}
+                {isRecitationCriteria ? 'Recitation' : 'Grading Report'}
               </DialogTitle>
               <DialogDescription className='text-gray-500'>
                 {isRecitationCriteria
-                  ? 'Select existing recitation report or create new ones'
+                  ? 'Select existing recitation or create new ones'
                   : 'Select existing report or create new ones'}
               </DialogDescription>
             </DialogHeader>
@@ -1954,7 +2180,7 @@ export function GradingTable({
                   <div className='space-y-4 py-4'>
                     <div className='text-sm font-medium text-gray-700 mb-2'>
                       {isRecitationCriteria
-                        ? 'Select a recitation report'
+                        ? 'Select a recitation'
                         : 'Select a report'}
                     </div>
                     {criteriaLoading ? (
@@ -1980,7 +2206,7 @@ export function GradingTable({
                             <SelectValue
                               placeholder={
                                 isRecitationCriteria
-                                  ? 'Select saved recitation report'
+                                  ? 'Select saved recitation'
                                   : 'Select saved report'
                               }
                             />
@@ -2327,7 +2553,7 @@ export function GradingTable({
                         {isEditingCriteria
                           ? 'Save Changes'
                           : isRecitationCriteria
-                          ? 'Create New Recitation Report'
+                          ? 'Create New Recitation'
                           : 'Create New Report'}
                       </Button>
                     </DialogFooter>
@@ -2343,7 +2569,10 @@ export function GradingTable({
             {/* Grading Table */}
             <div className='overflow-x-auto max-h-[calc(100vh-300px)]'>
               <table className='w-full border-separate border-spacing-0 table-fixed'>
-                <GradingTableHeader rubricDetails={rubricDetails} />
+                <GradingTableHeader
+                  rubricDetails={rubricDetails}
+                  activeReport={activeReport}
+                />
                 {isGroupView ? (
                   <tbody>
                     {isLoadingStudents ? (
@@ -2440,6 +2669,14 @@ export function GradingTable({
                               studentScore={studentScore}
                               handleScoreChange={handleScoreChange}
                               idx={idx}
+                              onImageUpload={handleImageUpload}
+                              onSaveImageChanges={handleSaveImageChanges}
+                              onRemoveImage={(index, name) =>
+                                setImageToRemove({ index, name })
+                              }
+                              tempImage={tempImage}
+                              isSaving={isSaving}
+                              showSuccessMessage={showSuccessMessage}
                             />
                           );
                         });
@@ -2594,7 +2831,7 @@ export function GradingTable({
               className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
               disabled={isLoading || isLoadingStudents || hasChanges()}
             >
-              Edit Report
+              Edit Criteria
             </Button>
           )}
 
@@ -2791,13 +3028,11 @@ export function GradingTable({
         <DialogContent className='sm:max-w-[450px]'>
           <DialogHeader>
             <DialogTitle className='text-[#124A69] text-2xl font-bold'>
-              {isRecitationCriteria
-                ? 'Edit Recitation Report'
-                : 'Edit Grading Report'}
+              {isRecitationCriteria ? 'Recitation' : 'Grading Report'}
             </DialogTitle>
             <DialogDescription className='text-gray-500'>
               {isRecitationCriteria
-                ? 'Modify the recitation report details'
+                ? 'Modify the recitation details'
                 : 'Modify the grading report details'}
             </DialogDescription>
           </DialogHeader>
@@ -3134,6 +3369,28 @@ export function GradingTable({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Add AlertDialog for image removal confirmation */}
+      <AlertDialog
+        open={!!imageToRemove}
+        onOpenChange={() => setImageToRemove(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Profile Picture</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove this profile picture? This action
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmAndRemoveImage}>
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

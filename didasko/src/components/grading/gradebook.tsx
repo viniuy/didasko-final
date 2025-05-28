@@ -20,6 +20,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import axiosInstance from '@/lib/axios';
 
 interface Student {
@@ -29,6 +36,12 @@ interface Student {
   clarity: number | null;
   totalGrade: string;
   remarks: string;
+  image?: string;
+}
+
+interface CourseDetails {
+  code: string;
+  section: string;
 }
 
 export function TableDemo() {
@@ -37,15 +50,63 @@ export function TableDemo() {
   const [students, setStudents] = useState<Student[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+  const [courseDetails, setCourseDetails] = useState<CourseDetails | null>(
+    null,
+  );
+  const [showImageDialog, setShowImageDialog] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
 
   useEffect(() => {
     fetchGrades();
+    fetchCourseDetails();
   }, [courseId]);
+
+  const fetchCourseDetails = async () => {
+    try {
+      const response = await axiosInstance.get(`/courses/${courseId}`);
+      setCourseDetails({
+        code: response.data.code,
+        section: response.data.section,
+      });
+    } catch (error) {
+      console.error('Error fetching course details:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch course details',
+        variant: 'destructive',
+      });
+    }
+  };
 
   const fetchGrades = async () => {
     try {
-      const response = await axiosInstance.get(`/courses/${courseId}/grades`);
-      setStudents(response.data);
+      // First get the students with their images
+      const studentsResponse = await axiosInstance.get(
+        `/courses/${courseId}/students`,
+      );
+      const studentsData = studentsResponse.data.students;
+
+      // Then get the grades
+      const gradesResponse = await axiosInstance.get(
+        `/courses/${courseId}/grades`,
+      );
+      const gradesData = gradesResponse.data;
+
+      // Combine the data
+      const combinedData = studentsData.map((student: any) => {
+        const grade = gradesData.find((g: any) => g.studentId === student.id);
+        return {
+          id: student.id,
+          name: `${student.firstName} ${student.lastName}`,
+          content: grade?.content || null,
+          clarity: grade?.clarity || null,
+          totalGrade: grade?.totalGrade || '0',
+          remarks: grade?.remarks || 'NO GRADE',
+          image: student.image,
+        };
+      });
+
+      setStudents(combinedData);
     } catch (error) {
       console.error('Error fetching grades:', error);
       toast({
@@ -115,6 +176,11 @@ export function TableDemo() {
 
   const gradeOptions = Array.from({ length: 11 }, (_, i) => i);
 
+  const handleImageClick = (student: Student) => {
+    setSelectedStudent(student);
+    setShowImageDialog(true);
+  };
+
   return (
     <div className='space-y-4'>
       <div className='flex items-center justify-between'>
@@ -124,6 +190,27 @@ export function TableDemo() {
           onChange={(e) => setSearchQuery(e.target.value)}
           className='max-w-sm'
         />
+      </div>
+      <Button
+        variant='ghost'
+        className='h-9 w-9 p-0 hover:bg-gray-100'
+        onClick={() => window.history.back()}
+      >
+        <svg
+          className='h-5 w-5 text-gray-500'
+          fill='none'
+          stroke='currentColor'
+          strokeWidth='2'
+          viewBox='0 0 24 24'
+        >
+          <path d='M15 18l-6-6 6-6' />
+        </svg>
+      </Button>
+      <div className='flex flex-col mr-4'>
+        <span className='text-lg font-bold text-[#124A69] leading-tight'>
+          {courseDetails?.code}
+        </span>
+        <span className='text-sm text-gray-500'>{courseDetails?.section}</span>
       </div>
 
       <div className='rounded-md border'>
@@ -164,7 +251,41 @@ export function TableDemo() {
                     onCheckedChange={() => toggleStudent(student.id)}
                   />
                 </TableCell>
-                <TableCell className='font-medium'>{student.name}</TableCell>
+                <TableCell className='font-medium'>
+                  <div className='flex items-center gap-3'>
+                    <div className='relative group'>
+                      <div
+                        className='cursor-pointer'
+                        onClick={() => handleImageClick(student)}
+                      >
+                        {student.image ? (
+                          <img
+                            src={student.image}
+                            alt={student.name}
+                            className='w-8 h-8 rounded-full object-cover'
+                          />
+                        ) : (
+                          <span className='inline-flex w-8 h-8 rounded-full bg-gray-200 text-gray-400 items-center justify-center'>
+                            <svg
+                              width='20'
+                              height='20'
+                              fill='none'
+                              stroke='currentColor'
+                              strokeWidth='2'
+                              viewBox='0 0 24 24'
+                            >
+                              <circle cx='12' cy='8' r='4' />
+                              <path d='M6 20c0-2.2 3.6-4 6-4s6 1.8 6 4' />
+                            </svg>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span className='text-gray-700 truncate'>
+                      {student.name}
+                    </span>
+                  </div>
+                </TableCell>
                 <TableCell>
                   <Select
                     value={student.content?.toString() || ''}
@@ -220,6 +341,52 @@ export function TableDemo() {
           </TableBody>
         </Table>
       </div>
+
+      {/* Image Preview Dialog */}
+      <Dialog open={showImageDialog} onOpenChange={setShowImageDialog}>
+        <DialogContent className='sm:max-w-[425px]'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              {selectedStudent?.name}'s Profile Picture
+            </DialogTitle>
+          </DialogHeader>
+          <div className='flex flex-col items-center gap-4 py-4'>
+            <div className='relative'>
+              {selectedStudent?.image ? (
+                <img
+                  src={selectedStudent.image}
+                  alt={selectedStudent.name}
+                  className='w-48 h-48 rounded-full object-cover'
+                />
+              ) : (
+                <div className='w-48 h-48 rounded-full bg-gray-200 flex items-center justify-center'>
+                  <svg
+                    width='64'
+                    height='64'
+                    fill='none'
+                    stroke='currentColor'
+                    strokeWidth='2'
+                    viewBox='0 0 24 24'
+                    className='text-gray-400'
+                  >
+                    <circle cx='12' cy='8' r='4' />
+                    <path d='M6 20c0-2.2 3.6-4 6-4s6 1.8 6 4' />
+                  </svg>
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter className='flex justify-end gap-3 px-6 py-4 border-t mt-4'>
+            <Button
+              variant='outline'
+              onClick={() => setShowImageDialog(false)}
+              className='border-gray-300 hover:bg-gray-50'
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

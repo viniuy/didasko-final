@@ -4,7 +4,13 @@ import toast from 'react-hot-toast';
 import axiosInstance from '@/lib/axios';
 import { DateRange } from 'react-day-picker';
 import { format } from 'date-fns';
-import { Calendar as CalendarIcon, Search, Loader2 } from 'lucide-react';
+import {
+  Calendar as CalendarIcon,
+  Search,
+  Loader2,
+  X,
+  Upload,
+} from 'lucide-react';
 import {
   Pagination,
   PaginationContent,
@@ -116,72 +122,143 @@ const SearchBar = ({
   </div>
 );
 
-const StudentTable = ({ students }: { students: Student[] }) => (
-  <div className='overflow-x-auto'>
-    <table className='min-w-full border text-center'>
-      <thead>
-        <tr className='bg-gray-100'>
-          <th className='sticky left-0 z-10 bg-white px-4 py-2 border'>
-            Student
-          </th>
-          <th className='px-2 py-1 border'>Reporting</th>
-          <th className='px-2 py-1 border'>Recitation</th>
-          <th className='px-2 py-1 border'>Quiz</th>
-          <th className='px-2 py-1 border'>Total Grade</th>
-          <th className='px-2 py-1 border'>Remarks</th>
-        </tr>
-      </thead>
-      <tbody>
-        {students.map((s, idx) => (
-          <tr
-            key={s.id}
-            className={idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F6FA]'}
-          >
-            <td className='sticky left-0 z-10 bg-white px-4 py-2 align-middle w-[300px]'>
-              <div className='flex items-center gap-3'>
-                {s.image && (
-                  <img
-                    src={s.image}
-                    alt=''
-                    className='w-8 h-8 rounded-full object-cover'
-                  />
-                )}
-                <span>{`${s.lastName}, ${s.firstName}${
-                  s.middleInitial ? ` ${s.middleInitial}.` : ''
-                }`}</span>
-              </div>
-            </td>
-            <td className='px-2 py-1 border'>
-              {s.reportingScore?.toFixed(2) ?? '--'}
-            </td>
-            <td className='px-2 py-1 border'>
-              {s.recitationScore?.toFixed(2) ?? '--'}
-            </td>
-            <td className='px-2 py-1 border'>
-              {s.quizScore?.toFixed(2) ?? '--'}
-            </td>
-            <td className='px-2 py-1 border'>
-              {typeof s.totalScore === 'number'
-                ? `${s.totalScore.toFixed(2)}%`
-                : '--'}
-            </td>
-            <td
-              className={cn(
-                'px-2 py-1 border',
-                s.remarks === 'FAILED' && 'bg-red-50 text-red-600 font-bold',
-                s.remarks === 'PASSED' &&
-                  'bg-green-50 text-green-700 font-bold',
-                !s.remarks && 'bg-gray-100 text-gray-500',
-              )}
-            >
-              {s.remarks}
-            </td>
+const StudentTable = ({
+  students,
+  onAddImage,
+  onRemoveImage,
+}: {
+  students: Student[];
+  onAddImage?: (student: Student) => void;
+  onRemoveImage?: (student: Student) => void;
+}) => {
+  const [showImageDialog, setShowImageDialog] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+
+  const handleImageClick = (student: Student) => {
+    setSelectedStudent(student);
+    setShowImageDialog(true);
+  };
+
+  return (
+    <>
+      <table className='w-full border-separate border-spacing-0 table-fixed'>
+        <thead>
+          <tr className='bg-gray-100'>
+            <th className='sticky left-0 z-10 bg-gray-100 px-4 py-2 border-b text-left font-semibold text-[#124A69] w-[300px]'>
+              Students
+            </th>
+            <th className='px-4 py-2 border-b text-center font-semibold text-[#124A69] w-[120px]'>
+              Reporting
+            </th>
+            <th className='px-4 py-2 border-b text-center font-semibold text-[#124A69] w-[120px]'>
+              Recitation
+            </th>
+            <th className='px-4 py-2 border-b text-center font-semibold text-[#124A69] w-[120px]'>
+              Quiz
+            </th>
+            <th className='px-4 py-2 border-b text-center font-semibold text-[#124A69] w-[120px]'>
+              Total Grade
+            </th>
+            <th className='px-4 py-2 border-b text-center font-semibold text-[#124A69] w-[120px]'>
+              Remarks
+            </th>
           </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-);
+        </thead>
+        <tbody>
+          {students.length === 0 ? (
+            <tr>
+              <td
+                colSpan={6}
+                className='text-center py-8 text-muted-foreground'
+              >
+                No students found
+              </td>
+            </tr>
+          ) : (
+            students.map((student, idx) => (
+              <tr
+                key={student.id}
+                className={idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F6FA]'}
+              >
+                <td className='sticky left-0 z-10 bg-inherit px-4 py-2 align-middle w-[300px] border-b'>
+                  <div className='flex items-center gap-3'>
+                    <div className='relative group'>
+                      <div
+                        className='cursor-pointer'
+                        onClick={() => handleImageClick(student)}
+                      >
+                        {student.image ? (
+                          <img
+                            src={student.image}
+                            alt=''
+                            className='w-8 h-8 rounded-full object-cover'
+                          />
+                        ) : (
+                          <span className='inline-flex w-8 h-8 rounded-full bg-gray-200 text-gray-400 items-center justify-center'>
+                            <svg
+                              width='20'
+                              height='20'
+                              fill='none'
+                              stroke='currentColor'
+                              strokeWidth='2'
+                              viewBox='0 0 24 24'
+                            >
+                              <circle cx='12' cy='8' r='4' />
+                              <path d='M6 20c0-2.2 3.6-4 6-4s6 1.8 6 4' />
+                            </svg>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span>{`${student.lastName}, ${student.firstName}${
+                      student.middleInitial ? ` ${student.middleInitial}.` : ''
+                    }`}</span>
+                  </div>
+                </td>
+                <td className='text-center px-4 py-2 align-middle w-[120px] border-b'>
+                  {student.reportingScore?.toFixed(2) ?? '--'}
+                </td>
+                <td className='text-center px-4 py-2 align-middle w-[120px] border-b'>
+                  {student.recitationScore?.toFixed(2) ?? '--'}
+                </td>
+                <td className='text-center px-4 py-2 align-middle w-[120px] border-b'>
+                  {student.quizScore?.toFixed(2) ?? '--'}
+                </td>
+                <td className='text-center px-4 py-2 align-middle w-[120px] border-b font-medium'>
+                  {typeof student.totalScore === 'number'
+                    ? `${student.totalScore.toFixed(2)}%`
+                    : '--'}
+                </td>
+                <td className='text-center px-4 py-2 align-middle w-[120px] border-b'>
+                  <span
+                    className={cn(
+                      'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+                      student.remarks === 'PASSED' &&
+                        'bg-green-100 text-green-700',
+                      student.remarks === 'FAILED' && 'bg-red-100 text-red-700',
+                      !student.remarks && 'bg-gray-100 text-gray-700',
+                    )}
+                  >
+                    {student.remarks || 'No Grade'}
+                  </span>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+
+      {/* Image Preview Dialog */}
+      <StudentProfileDialog
+        open={showImageDialog}
+        onOpenChange={setShowImageDialog}
+        student={selectedStudent}
+        onAddImage={onAddImage}
+        onRemoveImage={onRemoveImage}
+      />
+    </>
+  );
+};
 
 const PaginationFooter = ({
   currentPage,
@@ -1455,6 +1532,120 @@ const EditGradeConfigDialog = ({
   );
 };
 
+// Add the new StudentProfileDialog component
+const StudentProfileDialog = ({
+  open,
+  onOpenChange,
+  student,
+  onAddImage,
+  onRemoveImage,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  student: Student | null;
+  onAddImage?: (student: Student) => void;
+  onRemoveImage?: (student: Student) => void;
+}) => {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className='sm:max-w-[425px]'>
+        <DialogHeader>
+          <DialogTitle className='text-[#124A69] text-xl font-bold'>
+            {student?.firstName} {student?.lastName}'s Profile Picture
+          </DialogTitle>
+        </DialogHeader>
+        <div className='flex flex-col items-center gap-4 py-4'>
+          <div className='relative w-48 h-48'>
+            {student?.image ? (
+              <>
+                <img
+                  src={student.image}
+                  alt={`${student.firstName} ${student.lastName}`}
+                  className='w-48 h-48 rounded-full object-cover transition-opacity duration-200'
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                    target.nextElementSibling?.classList.remove('hidden');
+                  }}
+                />
+                <div className='hidden absolute inset-0 w-48 h-48 rounded-full bg-gray-200 flex items-center justify-center'>
+                  <div className='text-center'>
+                    <svg
+                      width='48'
+                      height='48'
+                      fill='none'
+                      stroke='currentColor'
+                      strokeWidth='2'
+                      viewBox='0 0 24 24'
+                      className='text-gray-400 mx-auto mb-2'
+                    >
+                      <circle cx='12' cy='8' r='4' />
+                      <path d='M6 20c0-2.2 3.6-4 6-4s6 1.8 6 4' />
+                    </svg>
+                    <p className='text-sm text-gray-500'>
+                      Failed to load image
+                    </p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className='w-48 h-48 rounded-full bg-gray-200 flex items-center justify-center'>
+                <div className='text-center'>
+                  <svg
+                    width='48'
+                    height='48'
+                    fill='none'
+                    stroke='currentColor'
+                    strokeWidth='2'
+                    viewBox='0 0 24 24'
+                    className='text-gray-400 mx-auto mb-2'
+                  >
+                    <circle cx='12' cy='8' r='4' />
+                    <path d='M6 20c0-2.2 3.6-4 6-4s6 1.8 6 4' />
+                  </svg>
+                  <p className='text-sm text-gray-500'>No profile picture</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        <DialogFooter
+          className={`px-6 py-4 border-t mt-4 flex justify-center gap-3`}
+        >
+          <Button
+            variant='default'
+            onClick={() => {
+              if (student && onAddImage) {
+                onAddImage(student);
+                onOpenChange(false);
+              }
+            }}
+            className='flex items-center gap-2 bg-[#124A69] hover:bg-[#0D3A56] text-white'
+          >
+            <Upload className='h-4 w-4' />
+            {student?.image ? 'Change Picture' : 'Add Picture'}
+          </Button>
+          {student?.image && onRemoveImage && (
+            <Button
+              variant='outline'
+              onClick={() => {
+                if (student && onRemoveImage) {
+                  onRemoveImage(student);
+                  onOpenChange(false);
+                }
+              }}
+              className='flex items-center gap-2 text-red-600 border-red-200 hover:text-red-700 hover:bg-red-50'
+            >
+              <X className='h-4 w-4' />
+              Remove Picture
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 export function GradebookTable({
   courseSlug,
   courseCode,
@@ -1485,7 +1676,14 @@ export function GradebookTable({
     null,
   );
   const [showEditConfigDialog, setShowEditConfigDialog] = useState(false);
+  const [showImageDialog, setShowImageDialog] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const itemsPerPage = 10;
+
+  const handleImageClick = (student: Student) => {
+    setSelectedStudent(student);
+    setShowImageDialog(true);
+  };
 
   const fetchData = useCallback(async () => {
     if (!courseSlug) {
@@ -1750,6 +1948,18 @@ export function GradebookTable({
     setShowEditConfigDialog(true);
   };
 
+  const handleRemoveImage = (student: Student) => {
+    // Add your image removal logic here
+    console.log('Removing image for student:', student);
+    // You can add your API call or state update logic here
+  };
+
+  const handleAddImage = (student: Student) => {
+    // Add your image upload logic here
+    console.log('Adding/changing image for student:', student);
+    // You can add your file upload logic here
+  };
+
   return (
     <div>
       <div className='bg-white rounded-lg shadow-md'>
@@ -1919,173 +2129,79 @@ export function GradebookTable({
             </div>
           </div>
         ) : (
-          <>
-            <table className='w-full border-separate border-spacing-0 table-fixed'>
-              <thead>
-                <tr className='bg-gray-100'>
-                  <th className='sticky left-0 z-10 bg-gray-100 px-4 py-2 border-b text-left font-semibold text-[#124A69] w-[300px]'>
-                    Students
-                  </th>
-                  <th className='px-4 py-2 border-b text-center font-semibold text-[#124A69] w-[120px]'>
-                    Reporting
-                  </th>
-                  <th className='px-4 py-2 border-b text-center font-semibold text-[#124A69] w-[120px]'>
-                    Recitation
-                  </th>
-                  <th className='px-4 py-2 border-b text-center font-semibold text-[#124A69] w-[120px]'>
-                    Quiz
-                  </th>
-                  <th className='px-4 py-2 border-b text-center font-semibold text-[#124A69] w-[120px]'>
-                    Total Grade
-                  </th>
-                  <th className='px-4 py-2 border-b text-center font-semibold text-[#124A69] w-[120px]'>
-                    Remarks
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedStudents.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className='text-center py-8 text-muted-foreground'
-                    >
-                      No students found
-                    </td>
-                  </tr>
-                ) : (
-                  paginatedStudents.map((student, idx) => (
-                    <tr
-                      key={student.id}
-                      className={idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F6FA]'}
-                    >
-                      <td className='sticky left-0 z-10 bg-inherit px-4 py-2 align-middle w-[300px] border-b'>
-                        <div className='flex items-center gap-3'>
-                          {student.image ? (
-                            <img
-                              src={student.image}
-                              alt=''
-                              className='w-8 h-8 rounded-full object-cover'
-                            />
-                          ) : (
-                            <div className='w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500'>
-                              {student.firstName?.[0]}
-                              {student.lastName?.[0]}
-                            </div>
-                          )}
-                          <span className='font-medium text-gray-900'>
-                            {`${student.lastName}, ${student.firstName}${
-                              student.middleInitial
-                                ? ` ${student.middleInitial}.`
-                                : ''
-                            }`}
-                          </span>
-                        </div>
-                      </td>
-                      <td className='text-center px-4 py-2 align-middle w-[120px] border-b'>
-                        {student.reportingScore?.toFixed(2) ?? '--'}
-                      </td>
-                      <td className='text-center px-4 py-2 align-middle w-[120px] border-b'>
-                        {student.recitationScore?.toFixed(2) ?? '--'}
-                      </td>
-                      <td className='text-center px-4 py-2 align-middle w-[120px] border-b'>
-                        {student.quizScore?.toFixed(2) ?? '--'}
-                      </td>
-                      <td className='text-center px-4 py-2 align-middle w-[120px] border-b font-medium'>
-                        {typeof student.totalScore === 'number'
-                          ? `${student.totalScore.toFixed(2)}%`
-                          : '--'}
-                      </td>
-                      <td className='text-center px-4 py-2 align-middle w-[120px] border-b'>
-                        <span
-                          className={cn(
-                            'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
-                            student.remarks === 'PASSED' &&
-                              'bg-green-100 text-green-700',
-                            student.remarks === 'FAILED' &&
-                              'bg-red-100 text-red-700',
-                            !student.remarks && 'bg-gray-100 text-gray-700',
-                          )}
-                        >
-                          {student.remarks || 'No Grade'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-
-            {/* Pagination Footer */}
-            <div className='flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 border-t bg-white'>
-              <div className='flex flex-col sm:flex-row items-center gap-4 w-full'>
-                <div className='flex items-center gap-2'>
-                  <p className='text-sm text-gray-500 whitespace-nowrap'>
-                    {filteredStudents.length > 0 ? (
-                      <>
-                        {currentPage * itemsPerPage - (itemsPerPage - 1)}-
-                        {Math.min(
-                          currentPage * itemsPerPage,
-                          filteredStudents.length,
-                        )}{' '}
-                        of {filteredStudents.length} students
-                      </>
-                    ) : (
-                      'No students found'
-                    )}
-                  </p>
-                </div>
-                <div className='flex-1 flex justify-end'>
-                  <Pagination className='w-full flex justify-end'>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious
-                          onClick={() =>
-                            setCurrentPage((prev) => Math.max(prev - 1, 1))
-                          }
-                          className={
-                            currentPage === 1
-                              ? 'pointer-events-none opacity-50'
-                              : 'hover:bg-gray-100'
-                          }
-                        />
-                      </PaginationItem>
-                      {[...Array(totalPages)].map((_, i) => (
-                        <PaginationItem key={i}>
-                          <PaginationLink
-                            isActive={currentPage === i + 1}
-                            onClick={() => setCurrentPage(i + 1)}
-                            className={`${
-                              currentPage === i + 1
-                                ? 'bg-[#124A69] text-white hover:bg-[#0d3a56]'
-                                : 'hover:bg-gray-100'
-                            }`}
-                          >
-                            {i + 1}
-                          </PaginationLink>
-                        </PaginationItem>
-                      ))}
-                      <PaginationItem>
-                        <PaginationNext
-                          onClick={() =>
-                            setCurrentPage((prev) =>
-                              Math.min(prev + 1, totalPages),
-                            )
-                          }
-                          className={
-                            currentPage === totalPages
-                              ? 'pointer-events-none opacity-50'
-                              : 'hover:bg-gray-100'
-                          }
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
-                </div>
-              </div>
-            </div>
-          </>
+          <StudentTable
+            students={paginatedStudents}
+            onAddImage={handleAddImage}
+            onRemoveImage={handleRemoveImage}
+          />
         )}
+
+        {/* Pagination Footer */}
+        <div className='flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 border-t bg-white'>
+          <div className='flex flex-col sm:flex-row items-center gap-4 w-full'>
+            <div className='flex items-center gap-2'>
+              <p className='text-sm text-gray-500 whitespace-nowrap'>
+                {filteredStudents.length > 0 ? (
+                  <>
+                    {currentPage * itemsPerPage - (itemsPerPage - 1)}-
+                    {Math.min(
+                      currentPage * itemsPerPage,
+                      filteredStudents.length,
+                    )}{' '}
+                    of {filteredStudents.length} students
+                  </>
+                ) : (
+                  'No students found'
+                )}
+              </p>
+            </div>
+            <div className='flex-1 flex justify-end'>
+              <Pagination className='w-full flex justify-end'>
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      onClick={() =>
+                        setCurrentPage((prev) => Math.max(prev - 1, 1))
+                      }
+                      className={
+                        currentPage === 1
+                          ? 'pointer-events-none opacity-50'
+                          : 'hover:bg-gray-100'
+                      }
+                    />
+                  </PaginationItem>
+                  {[...Array(totalPages)].map((_, i) => (
+                    <PaginationItem key={i}>
+                      <PaginationLink
+                        isActive={currentPage === i + 1}
+                        onClick={() => setCurrentPage(i + 1)}
+                        className={`${
+                          currentPage === i + 1
+                            ? 'bg-[#124A69] text-white hover:bg-[#0d3a56]'
+                            : 'hover:bg-gray-100'
+                        }`}
+                      >
+                        {i + 1}
+                      </PaginationLink>
+                    </PaginationItem>
+                  ))}
+                  <PaginationItem>
+                    <PaginationNext
+                      onClick={() =>
+                        setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                      }
+                      className={
+                        currentPage === totalPages
+                          ? 'pointer-events-none opacity-50'
+                          : 'hover:bg-gray-100'
+                      }
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            </div>
+          </div>
+        </div>
 
         {/* Grade Configuration Dialog */}
         <GradeConfigDialog
@@ -2199,6 +2315,15 @@ export function GradebookTable({
         onDateRangeChange={setDateRange}
         currentConfig={currentConfig}
         setCurrentConfig={setCurrentConfig}
+      />
+
+      {/* Replace the old dialog with the new component */}
+      <StudentProfileDialog
+        open={showImageDialog}
+        onOpenChange={setShowImageDialog}
+        student={selectedStudent}
+        onAddImage={handleAddImage}
+        onRemoveImage={handleRemoveImage}
       />
     </div>
   );

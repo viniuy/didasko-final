@@ -74,7 +74,7 @@ function ReportingTypeContent({ course_slug }: { course_slug: string }) {
               </div>
               <div className='container mx-auto py-6 max-w-4xl'>
                 <div className='grid md:grid-cols-2 gap-6'>
-                  <Card className='p-6 hover:bg-accent transition-colors h-full'>
+                  <Card className='p-6 transition-colors h-full'>
                     <div className='flex flex-col items-center text-center space-y-4'>
                       <div className='h-24 w-24 rounded-full bg-secondary flex items-center justify-center'>
                         <User className='h-12 w-12' />
@@ -111,7 +111,7 @@ function ReportingTypeContent({ course_slug }: { course_slug: string }) {
                     </div>
                   </Card>
 
-                  <Card className='p-6 hover:bg-accent transition-colors  h-full'>
+                  <Card className='p-6 transition-colors  h-full'>
                     <div className='flex flex-col items-center text-center space-y-4'>
                       <div className='h-24 w-24 rounded-full bg-secondary flex items-center justify-center'>
                         <Users className='h-12 w-12' />
