@@ -259,7 +259,7 @@ export function StudentCard({
                     setImageToRemove({ index, name: student.name });
                     setShowImageDialog(false);
                   }}
-                  className='flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50'
+                  className='flex items-center gap-2 text-red-500 hover:text-red-600 hover:bg-red-50'
                 >
                   <X className='h-4 w-4' />
                   Remove Picture

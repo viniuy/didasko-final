@@ -175,7 +175,10 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
   } | null>(null);
   const [showExportPreview, setShowExportPreview] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [unsavedChanges, setUnsavedChanges] = useState<{
     [key: string]: AttendanceStatus;
@@ -781,183 +784,13 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
     }
   };
 
-  const confirmAndRemoveImage = async () => {
-    if (imageToRemove) {
-      try {
-        const student = studentList[imageToRemove.index];
-
-        // Delete the image file from public/uploads
-        if (student.image) {
-          const deleteResponse = await axiosInstance.delete('/upload', {
-            data: { imageUrl: student.image },
-          });
-        }
-
-        // Update the database
-        const updateResponse = await axiosInstance.put(
-          `/students/${student.id}/image`,
-          { imageUrl: null },
-        );
-        const updatedStudent = updateResponse.data;
-
-        // Update local state
-        setStudentList((prev) =>
-          prev.map((student, idx) =>
-            idx === imageToRemove.index
-              ? { ...student, image: undefined }
-              : student,
-          ),
-        );
-        // Clear temp image if it exists for this student
-        if (tempImage?.index === imageToRemove.index) {
-          setTempImage(null);
-        }
-        setImageToRemove(null);
-        toast.success('Profile picture removed successfully');
-      } catch (error) {
-        console.error('Error removing image:', error);
-        toast.error('Failed to remove profile picture');
-      }
-    }
-  };
-
-  const markAllAsPresent = async () => {
-    if (!selectedDate || !courseSlug) {
-      toast.error('Please select a date first', {
-        style: {
-          background: '#fff',
-          color: '#124A69',
-          border: '1px solid #e5e7eb',
-          boxShadow:
-            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-          borderRadius: '0.5rem',
-          padding: '1rem',
-        },
-      });
-      return;
-    }
-
-    const attendanceData = studentList.map((student) => ({
-      studentId: student.id,
-      status: 'PRESENT' as AttendanceStatus,
-    }));
-
-    // Add one day to the selected date
-    const nextDay = new Date(selectedDate);
-    nextDay.setDate(nextDay.getDate() + 1);
-
-    const promise = axiosInstance.post(`/courses/${courseSlug}/attendance`, {
-      date: nextDay.toISOString(),
-      attendance: attendanceData,
-    });
-
-    toast.promise(
-      promise,
-      {
-        loading: 'Marking all as present...',
-        success: 'All students marked as present',
-        error: 'Failed to update attendance',
-      },
-      {
-        style: {
-          background: '#fff',
-          color: '#124A69',
-          border: '1px solid #e5e7eb',
-          boxShadow:
-            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-          borderRadius: '0.5rem',
-          padding: '1rem',
-        },
-        success: {
-          style: {
-            background: '#fff',
-            color: '#124A69',
-            border: '1px solid #e5e7eb',
-          },
-          iconTheme: {
-            primary: '#124A69',
-            secondary: '#fff',
-          },
-        },
-        error: {
-          style: {
-            background: '#fff',
-            color: '#dc2626',
-            border: '1px solid #e5e7eb',
-          },
-          iconTheme: {
-            primary: '#dc2626',
-            secondary: '#fff',
-          },
-        },
-        loading: {
-          style: {
-            background: '#fff',
-            color: '#124A69',
-            border: '1px solid #e5e7eb',
-          },
-        },
-      },
-    );
-
-    try {
-      // Update local state immediately
-      setStudentList((prev) =>
-        prev.map((student) => ({
-          ...student,
-          status: 'PRESENT' as AttendanceStatus,
-          attendanceRecords: [
-            {
-              id: crypto.randomUUID(),
-              studentId: student.id,
-              courseId: courseSlug,
-              status: 'PRESENT',
-              date: format(selectedDate, 'yyyy-MM-dd'),
-              reason: null,
-            },
-          ],
-        })),
-      );
-
-      await promise;
-      setShowMarkAllConfirm(false);
-    } catch (error) {
-      console.error('Error marking all as present:', error);
-      // Revert local state on error
-      setStudentList((prev) =>
-        prev.map((student) => ({
-          ...student,
-          status: 'NOT_SET',
-          attendanceRecords: [],
-        })),
-      );
-    }
-  };
-
-  const handleApplyFilters = () => {
-    setFilters((prev) => ({
-      ...prev,
-      status: filters.status,
-    }));
-    setIsFilterSheetOpen(false);
-  };
-
-  const hasIncompleteAttendance = useMemo(() => {
-    return filteredStudents.some((student) => student.status === 'NOT_SET');
-  }, [filteredStudents]);
-
-  const incompleteAttendanceCount = useMemo(() => {
-    return filteredStudents.filter((student) => student.status === 'NOT_SET')
-      .length;
-  }, [filteredStudents]);
-
   const handleExport = () => {
     if (!selectedDate) {
       toast.error('Please select a date before exporting');
       return;
     }
 
-    if (hasIncompleteAttendance) {
+    if (filteredStudents.some((student) => student.status === 'NOT_SET')) {
       toast.error(
         'Please set attendance status for all students before exporting',
       );
@@ -1297,6 +1130,72 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
     setCurrentPage(1);
   }, [searchQuery, filters.status, sortDate]);
 
+  // Add cleanup effect at the component level
+  useEffect(() => {
+    // Clean up any existing pointer-events style
+    document.body.style.removeProperty('pointer-events');
+
+    return () => {
+      document.body.style.removeProperty('pointer-events');
+    };
+  }, []);
+
+  // Add cleanup effect that runs on mount and unmount
+  useEffect(() => {
+    return () => {
+      // Remove all styles that Radix UI might add
+      document.body.style.removeProperty('pointer-events');
+      document.body.style.removeProperty('overflow');
+      document.body.style.removeProperty('position');
+      document.body.style.removeProperty('width');
+      document.body.style.removeProperty('height');
+      document.body.style.removeProperty('top');
+      document.body.style.removeProperty('left');
+      document.body.style.removeProperty('right');
+      document.body.style.removeProperty('bottom');
+    };
+  }, []);
+
+  const handleRemoveImage = async (index: number, name: string) => {
+    try {
+      const student = studentList[index];
+
+      // Delete the image file from public/uploads
+      if (student.image) {
+        const deleteResponse = await axiosInstance.delete('/upload', {
+          data: { imageUrl: student.image },
+        });
+      }
+
+      // Update the database
+      const updateResponse = await axiosInstance.put(
+        `/students/${student.id}/image`,
+        { imageUrl: null },
+      );
+      const updatedStudent = updateResponse.data;
+
+      // Update local state
+      setStudentList((prev) =>
+        prev.map((student, idx) =>
+          idx === index ? { ...student, image: undefined } : student,
+        ),
+      );
+      // Clear temp image if it exists for this student
+      if (tempImage?.index === index) {
+        setTempImage(null);
+      }
+      toast.success('Profile picture removed successfully');
+    } catch (error) {
+      console.error('Error removing image:', error);
+      toast.error('Failed to remove profile picture');
+    }
+  };
+
+  const handleApplyFilters = () => {
+    setCurrentPage(1);
+    setIsFilterSheetOpen(false);
+  };
+
   if (isLoading) {
     return (
       <div className='flex flex-col h-screen'>
@@ -1589,14 +1488,6 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
               <Download className='h-4 w-4' />
               Export
             </Button>
-            {/* <AddStudentSheet
-              onSelectExistingStudent={handleSelectExistingStudent}
-              onStudentsRemoved={() => {
-                if (courseSlug) {
-                  fetchStudents();
-                }
-              }}
-            /> */}
           </div>
         </div>
       </div>
@@ -1630,9 +1521,7 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
                 tempImage={tempImage}
                 onImageUpload={handleImageUpload}
                 onSaveChanges={handleSaveImageChanges}
-                onRemoveImage={() =>
-                  setImageToRemove({ index, name: student.name })
-                }
+                onRemoveImage={handleRemoveImage}
                 onStatusChange={(index, status: AttendanceStatus) =>
                   updateStatus(index, status)
                 }
@@ -1702,27 +1591,6 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
         )}
       </div>
 
-      <AlertDialog
-        open={!!imageToRemove}
-        onOpenChange={() => setImageToRemove(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove Profile Picture</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to remove this profile picture? This action
-              cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmAndRemoveImage}>
-              Remove
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       <Dialog open={showExportPreview} onOpenChange={setShowExportPreview}>
         <DialogContent className='max-w-[600px] p-6'>
           <DialogHeader>
@@ -1740,12 +1608,27 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
           </DialogHeader>
           {selectedDate ? (
             <>
-              {hasIncompleteAttendance && (
+              {filteredStudents.some(
+                (student) => student.status === 'NOT_SET',
+              ) && (
                 <div className='mt-2 text-sm text-red-500'>
-                  {incompleteAttendanceCount} student
-                  {incompleteAttendanceCount !== 1 ? 's' : ''}{' '}
-                  {incompleteAttendanceCount !== 1 ? 'do' : 'does'} not have
-                  attendance set yet
+                  {
+                    filteredStudents.filter(
+                      (student) => student.status === 'NOT_SET',
+                    ).length
+                  }{' '}
+                  student
+                  {filteredStudents.filter(
+                    (student) => student.status === 'NOT_SET',
+                  ).length !== 1
+                    ? 's'
+                    : ''}
+                  {filteredStudents.filter(
+                    (student) => student.status === 'NOT_SET',
+                  ).length !== 1
+                    ? 'do'
+                    : 'does'}{' '}
+                  not have attendance set yet
                 </div>
               )}
               <div className='mt-6 max-h-[400px] overflow-auto'>
@@ -1784,9 +1667,16 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
                 <Button
                   className='bg-[#124A69] hover:bg-[#0D3A54] text-white'
                   onClick={handleExport}
-                  disabled={!selectedDate || hasIncompleteAttendance}
+                  disabled={
+                    !selectedDate ||
+                    filteredStudents.some(
+                      (student) => student.status === 'NOT_SET',
+                    )
+                  }
                 >
-                  {hasIncompleteAttendance
+                  {filteredStudents.some(
+                    (student) => student.status === 'NOT_SET',
+                  )
                     ? 'Complete Attendance First'
                     : 'Export to Excel'}
                 </Button>
@@ -1827,95 +1717,91 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
         </DialogContent>
       </Dialog>
 
-      <Dialog
+      <AlertDialog
         open={showMarkAllConfirm}
         onOpenChange={(open) => {
           setShowMarkAllConfirm(open);
           if (!open) {
-            setTimeout(() => {
-              document.body.style.removeProperty('pointer-events');
-            }, 300);
+            document.body.style.removeProperty('pointer-events');
           }
         }}
       >
-        <DialogContent className='sm:max-w-[425px]'>
-          <DialogHeader>
-            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+        <AlertDialogContent className='sm:max-w-[425px]'>
+          <AlertDialogHeader>
+            <AlertDialogTitle className='text-[#124A69] text-xl font-bold'>
               Mark All as Present
-            </DialogTitle>
-            <DialogDescription className='text-gray-500'>
+            </AlertDialogTitle>
+            <AlertDialogDescription className='text-gray-500'>
               Are you sure you want to mark all students as present for{' '}
               {selectedDate ? format(selectedDate, 'PPP') : 'this date'}? This
               action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className='gap-2 sm:gap-2'>
-            <Button
-              variant='outline'
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className='gap-2 sm:gap-2'>
+            <AlertDialogCancel
               onClick={() => {
                 setShowMarkAllConfirm(false);
-                setTimeout(() => {
-                  document.body.style.removeProperty('pointer-events');
-                }, 300);
+                document.body.style.removeProperty('pointer-events');
               }}
               className='border-gray-200'
             >
               Cancel
-            </Button>
-            <Button
-              onClick={markAllAsPresent}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                markAllAsPresent();
+                document.body.style.removeProperty('pointer-events');
+              }}
               className='bg-[#124A69] hover:bg-[#0a2f42] text-white'
             >
               Mark All as Present
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-      <Dialog
+      <AlertDialog
         open={showClearConfirm}
         onOpenChange={(open) => {
           setShowClearConfirm(open);
           if (!open) {
-            setTimeout(() => {
-              document.body.style.removeProperty('pointer-events');
-            }, 300);
+            document.body.style.removeProperty('pointer-events');
           }
         }}
       >
-        <DialogContent className='sm:max-w-[425px]'>
-          <DialogHeader>
-            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+        <AlertDialogContent className='sm:max-w-[425px]'>
+          <AlertDialogHeader>
+            <AlertDialogTitle className='text-[#124A69] text-xl font-bold'>
               Clear Attendance
-            </DialogTitle>
-            <DialogDescription className='text-gray-500'>
+            </AlertDialogTitle>
+            <AlertDialogDescription className='text-gray-500'>
               Are you sure you want to clear all attendance records for{' '}
               {selectedDate ? format(selectedDate, 'PPP') : 'this date'}? This
               action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className='gap-2 sm:gap-2'>
-            <Button
-              variant='outline'
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className='gap-2 sm:gap-2'>
+            <AlertDialogCancel
               onClick={() => {
                 setShowClearConfirm(false);
-                setTimeout(() => {
-                  document.body.style.removeProperty('pointer-events');
-                }, 300);
+                document.body.style.removeProperty('pointer-events');
               }}
               className='border-gray-200'
             >
               Cancel
-            </Button>
-            <Button
-              onClick={clearAllAttendance}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                clearAllAttendance();
+                document.body.style.removeProperty('pointer-events');
+              }}
               className='bg-[#124A69] hover:bg-[#0a2f42] text-white'
             >
               Clear Attendance
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className='flex justify-end mt-3 gap-2'>
         <Button

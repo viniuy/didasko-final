@@ -15,5 +15,8 @@ export async function POST() {
     });
   }
 
-  return NextResponse.json({ message: 'Logged out' });
+  // Return a redirect response to the home page
+  return NextResponse.redirect(
+    new URL('/', process.env.NEXTAUTH_URL || 'http://localhost:3000'),
+  );
 }

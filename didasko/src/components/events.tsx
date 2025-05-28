@@ -289,6 +289,7 @@ export default function UpcomingEvents() {
     fromTime: string,
     toTime: string,
     excludeEventId?: string,
+    eventTitle?: string,
   ): boolean {
     const sameDayEvents =
       eventList.find((event) => isSameDay(event.date, date))?.items || [];
@@ -297,22 +298,27 @@ export default function UpcomingEvents() {
       // Skip the event being edited
       if (excludeEventId && event.id === excludeEventId) return false;
 
-      // If either event is all-day, there's a conflict
-      if ((!fromTime && !toTime) || (!event.fromTime && !event.toTime))
-        return true;
+      // If either event is all-day, there's a conflict only if titles match
+      if ((!fromTime && !toTime) || (!event.fromTime && !event.toTime)) {
+        return eventTitle === event.title;
+      }
 
-      // If one event has time and the other doesn't, there's a conflict
-      if ((!fromTime || !toTime) !== (!event.fromTime || !event.toTime))
-        return true;
+      // If one event has time and the other doesn't, there's a conflict only if titles match
+      if ((!fromTime || !toTime) !== (!event.fromTime || !event.toTime)) {
+        return eventTitle === event.title;
+      }
 
-      // If both events have times, check for overlap
+      // If both events have times, check for overlap and title match
       if (fromTime && toTime && event.fromTime && event.toTime) {
         const newStart = fromTime;
         const newEnd = toTime;
         const existingStart = event.fromTime;
         const existingEnd = event.toTime;
 
-        return !(newEnd <= existingStart || newStart >= existingEnd);
+        const timeOverlap = !(
+          newEnd <= existingStart || newStart >= existingEnd
+        );
+        return timeOverlap && eventTitle === event.title;
       }
 
       return false;
@@ -329,13 +335,19 @@ export default function UpcomingEvents() {
     // Check for conflicts
     if (
       newEvent.date &&
-      checkEventConflict(newEvent.date, newEvent.fromTime, newEvent.toTime)
+      checkEventConflict(
+        newEvent.date,
+        newEvent.fromTime,
+        newEvent.toTime,
+        undefined,
+        newEvent.title,
+      )
     ) {
       setAlert({
         show: true,
         title: 'Error',
         description:
-          'There is already an event scheduled for this date and time.',
+          'There is already an event with the same title scheduled for this date and time.',
         variant: 'error',
       });
       return;
@@ -502,13 +514,14 @@ export default function UpcomingEvents() {
         editData.fromTime,
         editData.toTime,
         editData.id,
+        editData.title,
       )
     ) {
       setAlert({
         show: true,
         title: 'Error',
         description:
-          'There is already an event scheduled for this date and time.',
+          'There is already an event with the same title scheduled for this date and time.',
         variant: 'error',
       });
       return;

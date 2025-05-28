@@ -42,7 +42,7 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from '@/components/ui/alert-dialog';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   Collapsible,
   CollapsibleContent,
@@ -121,6 +121,13 @@ export function AppSidebar() {
   const { open, setOpen } = useSidebar();
   const { data: session, status } = useSession();
   const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/');
+    }
+  }, [status, router]);
 
   const isAdmin = session?.user?.role === 'ADMIN';
   const isAcademicHead = session?.user?.role === 'ACADEMIC_HEAD';

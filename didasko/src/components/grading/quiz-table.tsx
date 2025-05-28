@@ -1246,34 +1246,100 @@ export function QuizTable({
         </DialogContent>
       </Dialog>
       {/* Action Buttons */}
-      <div className='flex justify-end mt-3 gap-2'>
-        <Button
-          variant='outline'
-          size='sm'
-          onClick={() => {
-            if (previousScores) {
-              // Undo action
-              if (!previousScores) return;
+      <div className='flex justify-between mt-3'>
+        <div className='flex items-center text-sm text-gray-500'>
+          Quiz:{' '}
+          <span className='font-medium text-[#124A69] ml-1'>
+            {selectedQuiz?.name}
+          </span>
+        </div>
+        <div className='flex gap-2'>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => {
+              if (previousScores) {
+                // Undo action
+                if (!previousScores) return;
 
-              // Create a new object to ensure state update triggers re-render
-              const restoredScores = { ...previousScores };
+                // Create a new object to ensure state update triggers re-render
+                const restoredScores = { ...previousScores };
 
-              // Recalculate total grades for all students
-              Object.keys(restoredScores).forEach((studentId) => {
-                const score = restoredScores[studentId];
-                score.totalGrade = calculateTotalGrade(
-                  score.quizScore,
-                  score.plusPoints,
-                  selectedQuiz?.maxScore || 100,
-                );
-              });
+                // Recalculate total grades for all students
+                Object.keys(restoredScores).forEach((studentId) => {
+                  const score = restoredScores[studentId];
+                  score.totalGrade = calculateTotalGrade(
+                    score.quizScore,
+                    score.plusPoints,
+                    selectedQuiz?.maxScore || 100,
+                  );
+                });
 
-              // Update states in sequence to ensure proper re-render
-              setScores({}); // Clear current scores first
-              setTimeout(() => {
-                setScores(restoredScores);
-                setPreviousScores(null);
-                toast.success('Grades restored', {
+                // Update states in sequence to ensure proper re-render
+                setScores({}); // Clear current scores first
+                setTimeout(() => {
+                  setScores(restoredScores);
+                  setPreviousScores(null);
+                  toast.success('Grades restored', {
+                    duration: 3000,
+                    style: {
+                      background: '#fff',
+                      color: '#124A69',
+                      border: '1px solid #e5e7eb',
+                    },
+                  });
+                }, 0);
+              } else {
+                // Show reset confirmation modal
+                setShowResetConfirmation(true);
+              }
+            }}
+            className={
+              previousScores
+                ? 'h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] border-none'
+                : 'h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
+            }
+            disabled={loading || (!previousScores && hasChanges())}
+          >
+            {previousScores ? 'Undo Reset' : 'Reset Grades'}
+          </Button>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={handleExport}
+            className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
+            disabled={loading || !selectedQuiz || hasChanges()}
+          >
+            Export to Excel
+          </Button>
+          <Button
+            variant='default'
+            size='sm'
+            className='h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden'
+            onClick={async () => {
+              if (!selectedQuiz?.id) return;
+
+              try {
+                setSaving(true);
+                // Convert scores object to array and format each score
+                const scoresArray = Object.values(scores).map((score) => ({
+                  studentId: score.studentId,
+                  score: score.quizScore,
+                  attendance: score.attendance,
+                  plusPoints: score.plusPoints,
+                  totalGrade: score.totalGrade,
+                }));
+
+                // Save all scores in one request
+                await axios.post(`/api/quizzes/${selectedQuiz.id}/scores`, {
+                  scores: scoresArray,
+                });
+
+                // Update original scores after successful save
+                setOriginalScores(scores);
+                setPreviousScores(null); // Clear previous scores after saving
+
+                toast.success('Grades saved successfully', {
                   duration: 3000,
                   style: {
                     background: '#fff',
@@ -1281,90 +1347,32 @@ export function QuizTable({
                     border: '1px solid #e5e7eb',
                   },
                 });
-              }, 0);
-            } else {
-              // Show reset confirmation modal
-              setShowResetConfirmation(true);
-            }
-          }}
-          className={
-            previousScores
-              ? 'h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] border-none'
-              : 'h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
-          }
-          disabled={loading || (!previousScores && hasChanges())}
-        >
-          {previousScores ? 'Undo Reset' : 'Reset Grades'}
-        </Button>
-        <Button
-          variant='outline'
-          size='sm'
-          onClick={handleExport}
-          className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
-          disabled={loading || !selectedQuiz || hasChanges()}
-        >
-          Export to Excel
-        </Button>
-        <Button
-          variant='default'
-          size='sm'
-          className='h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden'
-          onClick={async () => {
-            if (!selectedQuiz?.id) return;
-
-            try {
-              setSaving(true);
-              // Convert scores object to array and format each score
-              const scoresArray = Object.values(scores).map((score) => ({
-                studentId: score.studentId,
-                score: score.quizScore,
-                attendance: score.attendance,
-                plusPoints: score.plusPoints,
-                totalGrade: score.totalGrade,
-              }));
-
-              // Save all scores in one request
-              await axios.post(`/api/quizzes/${selectedQuiz.id}/scores`, {
-                scores: scoresArray,
-              });
-
-              // Update original scores after successful save
-              setOriginalScores(scores);
-              setPreviousScores(null); // Clear previous scores after saving
-
-              toast.success('Grades saved successfully', {
-                duration: 3000,
-                style: {
-                  background: '#fff',
-                  color: '#124A69',
-                  border: '1px solid #e5e7eb',
-                },
-              });
-            } catch (error) {
-              console.error('Error saving quiz scores:', error);
-              toast.error('Failed to save grades', {
-                duration: 3000,
-                style: {
-                  background: '#fff',
-                  color: '#dc2626',
-                  border: '1px solid #e5e7eb',
-                },
-              });
-            } finally {
-              setSaving(false);
-            }
-          }}
-          disabled={loading || !hasChanges() || saving}
-        >
-          {saving ? (
-            <>
-              <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-              Saving...
-            </>
-          ) : (
-            'Save Grades'
-          )}
-        </Button>
+              } catch (error) {
+                console.error('Error saving quiz scores:', error);
+                toast.error('Failed to save grades', {
+                  duration: 3000,
+                  style: {
+                    background: '#fff',
+                    color: '#dc2626',
+                    border: '1px solid #e5e7eb',
+                  },
+                });
+              } finally {
+                setSaving(false);
+              }
+            }}
+            disabled={loading || !hasChanges() || saving}
+          >
+            {saving ? (
+              <>
+                <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                Saving...
+              </>
+            ) : (
+              'Save Grades'
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Export Preview Dialog */}

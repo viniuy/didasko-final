@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
 import axiosInstance from '@/lib/axios';
@@ -10,6 +10,7 @@ import {
   Loader2,
   X,
   Upload,
+  Camera,
 } from 'lucide-react';
 import {
   Pagination,
@@ -49,6 +50,16 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ExportGrades } from '@/components/grading/grades-export';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 
 interface Student {
   id: string;
@@ -89,6 +100,18 @@ interface ExistingConfig extends GradeConfiguration {
   isCurrent?: boolean;
   startDate?: string;
   endDate?: string;
+}
+
+interface Course {
+  id: string;
+  title: string;
+  code: string;
+  description: string | null;
+  semester: string;
+  section: string;
+  slug: string;
+  academicYear: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
 }
 
 const SearchBar = ({
@@ -340,6 +363,7 @@ const GradeConfigDialog = ({
   setHasSelectedConfig,
   onDateRangeChange,
   setCurrentConfig,
+  fetchData,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -349,6 +373,7 @@ const GradeConfigDialog = ({
   setHasSelectedConfig: (value: boolean) => void;
   onDateRangeChange: (range: DateRange | undefined) => void;
   setCurrentConfig: (config: ExistingConfig | null) => void;
+  fetchData: () => Promise<void>;
 }) => {
   const { data: session } = useSession();
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -518,9 +543,23 @@ const GradeConfigDialog = ({
           },
         },
       );
+
+      // Set the new configuration as current
+      const newConfig = response.data;
+      setCurrentConfig(newConfig);
+      setGradebookConfigDate(newConfig.createdAt);
+      setHasSelectedConfig(true);
+
+      // Update date range if provided
+      if (dateRange?.from && dateRange?.to) {
+        onDateRangeChange(dateRange);
+      }
+
+      // Fetch updated data
+      await fetchData();
+
       toast.success('Grade configuration saved successfully');
       onConfigSaved();
-      onDateRangeChange(dateRange);
       onOpenChange(false);
       resetForm();
     } catch (error) {
@@ -989,6 +1028,7 @@ const EditGradeConfigDialog = ({
   onDateRangeChange,
   currentConfig,
   setCurrentConfig,
+  fetchData,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -999,6 +1039,7 @@ const EditGradeConfigDialog = ({
   onDateRangeChange: (range: DateRange | undefined) => void;
   currentConfig: ExistingConfig | null;
   setCurrentConfig: (config: ExistingConfig | null) => void;
+  fetchData: () => Promise<void>;
 }) => {
   const { data: session } = useSession();
   const [config, setConfig] = useState<GradeConfiguration>(() => {
@@ -1204,6 +1245,10 @@ const EditGradeConfigDialog = ({
       } else {
         onDateRangeChange(undefined);
       }
+
+      // Fetch updated data
+      await fetchData();
+
       onConfigSaved(); // This might trigger data refresh in parent
       onOpenChange(false);
       // Keep isLoading true until dialog is fully closed or data reloaded in parent
@@ -1546,29 +1591,118 @@ const StudentProfileDialog = ({
   onAddImage?: (student: Student) => void;
   onRemoveImage?: (student: Student) => void;
 }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [imageToRemove, setImageToRemove] = useState<Student | null>(null);
+  const [tempImage, setTempImage] = useState<string | null>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Check if the file is an image
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please upload an image file', {
+          style: {
+            background: '#fff',
+            color: '#dc2626',
+            border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
+          },
+          iconTheme: {
+            primary: '#dc2626',
+            secondary: '#fff',
+          },
+        });
+        // Reset the file input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        return;
+      }
+
+      // Create a temporary URL for the image preview
+      const dataUrl = URL.createObjectURL(file);
+      setTempImage(dataUrl);
+
+      // Call onAddImage with the file
+      if (student && onAddImage) {
+        try {
+          await onAddImage(student);
+          setTempImage(null);
+          onOpenChange(false);
+        } catch (error) {
+          console.error('Error uploading image:', error);
+          setTempImage(null);
+        }
+      }
+    }
+  };
+
+  const handleRemoveImage = async () => {
+    if (student && onRemoveImage) {
+      try {
+        await onRemoveImage(student);
+        setImageToRemove(null);
+        onOpenChange(false);
+      } catch (error) {
+        console.error('Error removing image:', error);
+      }
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='sm:max-w-[425px]'>
-        <DialogHeader>
-          <DialogTitle className='text-[#124A69] text-xl font-bold'>
-            {student?.firstName} {student?.lastName}'s Profile Picture
-          </DialogTitle>
-        </DialogHeader>
-        <div className='flex flex-col items-center gap-4 py-4'>
-          <div className='relative w-48 h-48'>
-            {student?.image ? (
-              <>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className='sm:max-w-[425px]'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              {student?.firstName} {student?.lastName}'s Profile Picture
+            </DialogTitle>
+          </DialogHeader>
+          <div className='flex flex-col items-center gap-4 py-4'>
+            <div className='relative w-48 h-48'>
+              {tempImage ? (
                 <img
-                  src={student.image}
-                  alt={`${student.firstName} ${student.lastName}`}
+                  src={tempImage}
+                  alt={`${student?.firstName} ${student?.lastName}`}
                   className='w-48 h-48 rounded-full object-cover transition-opacity duration-200'
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = 'none';
-                    target.nextElementSibling?.classList.remove('hidden');
-                  }}
                 />
-                <div className='hidden absolute inset-0 w-48 h-48 rounded-full bg-gray-200 flex items-center justify-center'>
+              ) : student?.image ? (
+                <>
+                  <img
+                    src={student.image}
+                    alt={`${student.firstName} ${student.lastName}`}
+                    className='w-48 h-48 rounded-full object-cover transition-opacity duration-200'
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                      target.nextElementSibling?.classList.remove('hidden');
+                    }}
+                  />
+                  <div className='hidden absolute inset-0 w-48 h-48 rounded-full bg-gray-200 flex items-center justify-center'>
+                    <div className='text-center'>
+                      <svg
+                        width='48'
+                        height='48'
+                        fill='none'
+                        stroke='currentColor'
+                        strokeWidth='2'
+                        viewBox='0 0 24 24'
+                        className='text-gray-400 mx-auto mb-2'
+                      >
+                        <circle cx='12' cy='8' r='4' />
+                        <path d='M6 20c0-2.2 3.6-4 6-4s6 1.8 6 4' />
+                      </svg>
+                      <p className='text-sm text-gray-500'>
+                        Failed to load image
+                      </p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className='w-48 h-48 rounded-full bg-gray-200 flex items-center justify-center'>
                   <div className='text-center'>
                     <svg
                       width='48'
@@ -1582,67 +1716,86 @@ const StudentProfileDialog = ({
                       <circle cx='12' cy='8' r='4' />
                       <path d='M6 20c0-2.2 3.6-4 6-4s6 1.8 6 4' />
                     </svg>
-                    <p className='text-sm text-gray-500'>
-                      Failed to load image
-                    </p>
+                    <p className='text-sm text-gray-500'>No profile picture</p>
                   </div>
                 </div>
-              </>
-            ) : (
-              <div className='w-48 h-48 rounded-full bg-gray-200 flex items-center justify-center'>
-                <div className='text-center'>
-                  <svg
-                    width='48'
-                    height='48'
-                    fill='none'
-                    stroke='currentColor'
-                    strokeWidth='2'
-                    viewBox='0 0 24 24'
-                    className='text-gray-400 mx-auto mb-2'
-                  >
-                    <circle cx='12' cy='8' r='4' />
-                    <path d='M6 20c0-2.2 3.6-4 6-4s6 1.8 6 4' />
-                  </svg>
-                  <p className='text-sm text-gray-500'>No profile picture</p>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
-        <DialogFooter
-          className={`px-6 py-4 border-t mt-4 flex justify-center gap-3`}
-        >
-          <Button
-            variant='default'
-            onClick={() => {
-              if (student && onAddImage) {
-                onAddImage(student);
-                onOpenChange(false);
-              }
-            }}
-            className='flex items-center gap-2 bg-[#124A69] hover:bg-[#0D3A56] text-white'
+          <DialogFooter
+            className={cn(
+              'px-6 py-4 border-t mt-4 flex gap-3',
+              !student?.image && 'justify-center',
+            )}
           >
-            <Upload className='h-4 w-4' />
-            {student?.image ? 'Change Picture' : 'Add Picture'}
-          </Button>
-          {student?.image && onRemoveImage && (
+            <input
+              type='file'
+              ref={fileInputRef}
+              className='hidden'
+              accept='image/*'
+              onChange={handleFileChange}
+            />
             <Button
-              variant='outline'
-              onClick={() => {
-                if (student && onRemoveImage) {
-                  onRemoveImage(student);
-                  onOpenChange(false);
-                }
-              }}
-              className='flex items-center gap-2 text-red-600 border-red-200 hover:text-red-700 hover:bg-red-50'
+              variant='default'
+              onClick={() => fileInputRef.current?.click()}
+              className='flex items-center gap-2 bg-[#124A69] text-white hover:bg-[#0D3A56] hover:text-white border-none'
             >
-              <X className='h-4 w-4' />
-              Remove Picture
+              <Camera className='h-4 w-4' />
+              {student?.image ? 'Change Picture' : 'Add Picture'}
             </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            {student?.image && onRemoveImage && (
+              <Button
+                variant='outline'
+                onClick={() => {
+                  setImageToRemove(student);
+                  onOpenChange(false);
+                }}
+                className='flex items-center gap-2 text-red-600 border-red-200 hover:text-red-700 hover:bg-red-50'
+              >
+                <X className='h-4 w-4' />
+                Remove Picture
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove Image Confirmation Dialog */}
+      <AlertDialog
+        open={!!imageToRemove}
+        onOpenChange={(open) => {
+          if (!open) {
+            setImageToRemove(null);
+            setTimeout(() => {
+              document.body.style.removeProperty('pointer-events');
+            }, 300);
+          }
+        }}
+      >
+        <AlertDialogContent className='sm:max-w-[425px]'>
+          <AlertDialogHeader>
+            <AlertDialogTitle className='text-[#124A69] text-xl font-bold'>
+              Remove Profile Picture
+            </AlertDialogTitle>
+            <AlertDialogDescription className='text-gray-500'>
+              Are you sure you want to remove this profile picture? This action
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className='gap-2 sm:gap-2 mt-4'>
+            <AlertDialogCancel className='border-gray-200'>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRemoveImage}
+              className='bg-[#124A69] hover:bg-[#0D3A54] text-white'
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 };
 
@@ -1652,6 +1805,7 @@ export function GradebookTable({
   courseSection,
 }: GradebookTableProps) {
   const [students, setStudents] = useState<Student[]>([]);
+  const [courseInfo, setCourseInfo] = useState<Course | null>(null);
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -1707,6 +1861,20 @@ export function GradebookTable({
         console.error('Invalid students data format:', studentsRes.data);
         throw new Error('Invalid students data format');
       }
+
+      // Set course info
+      setCourseInfo({
+        id: studentsRes.data.course.id,
+        code: studentsRes.data.course.code,
+        title: studentsRes.data.course.title,
+        description: studentsRes.data.course.description,
+        semester: studentsRes.data.course.semester,
+        section: studentsRes.data.course.section,
+        slug: studentsRes.data.course.slug,
+        academicYear: studentsRes.data.course.academicYear,
+        status: studentsRes.data.course.status,
+      });
+
       const studentsData = studentsRes.data.students;
       console.log('Initial students data:', studentsData);
 
@@ -1899,7 +2067,11 @@ export function GradebookTable({
 
       // Create header rows
       const header = [
-        [`${courseCode} - ${courseSection} GRADEBOOK`],
+        [
+          `${courseInfo?.code || courseCode} - ${
+            courseInfo?.section || courseSection
+          } GRADEBOOK`,
+        ],
         [''],
         ['Date:', format(new Date(gradeConfig.createdAt), 'MMMM d, yyyy')],
         [''],
@@ -1948,16 +2120,69 @@ export function GradebookTable({
     setShowEditConfigDialog(true);
   };
 
-  const handleRemoveImage = (student: Student) => {
-    // Add your image removal logic here
-    console.log('Removing image for student:', student);
-    // You can add your API call or state update logic here
+  const handleRemoveImage = async (student: Student) => {
+    try {
+      // Call the API to remove the image
+      await axiosInstance.delete(
+        `/courses/${courseSlug}/students/${student.id}/image`,
+      );
+
+      // Update the student's image in the local state
+      setStudents((prevStudents) =>
+        prevStudents.map((s) =>
+          s.id === student.id ? { ...s, image: undefined } : s,
+        ),
+      );
+      toast.success('Profile picture removed successfully');
+    } catch (error) {
+      console.error('Error removing image:', error);
+      toast.error('Failed to remove profile picture');
+      throw error;
+    }
   };
 
-  const handleAddImage = (student: Student) => {
-    // Add your image upload logic here
-    console.log('Adding/changing image for student:', student);
-    // You can add your file upload logic here
+  const handleAddImage = async (student: Student) => {
+    try {
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'image/*';
+
+      fileInput.onchange = async (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (!file) return;
+
+        // Create FormData
+        const formData = new FormData();
+        formData.append('image', file);
+
+        // Upload the image
+        const response = await axiosInstance.post(
+          `/courses/${courseSlug}/students/${student.id}/image`,
+          formData,
+          {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+          },
+        );
+
+        if (response.data) {
+          // Update the student's image in the local state
+          setStudents((prevStudents) =>
+            prevStudents.map((s) =>
+              s.id === student.id ? { ...s, image: response.data.imageUrl } : s,
+            ),
+          );
+          toast.success('Profile picture updated successfully');
+        }
+      };
+
+      fileInput.click();
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast.error('Failed to upload profile picture');
+      throw error;
+    }
   };
 
   return (
@@ -1982,9 +2207,11 @@ export function GradebookTable({
           </Button>
           <div className='flex flex-col mr-4'>
             <span className='text-lg font-bold text-[#124A69] leading-tight'>
-              {courseCode}
+              {courseInfo?.code || courseCode}
             </span>
-            <span className='text-sm text-gray-500'>{courseSection}</span>
+            <span className='text-sm text-gray-500'>
+              {courseInfo?.section || courseSection}
+            </span>
           </div>
           <div className='flex-1 flex items-center gap-2'>
             {/* Header Controls */}
@@ -2213,6 +2440,7 @@ export function GradebookTable({
           setHasSelectedConfig={setHasSelectedConfig}
           onDateRangeChange={setDateRange}
           setCurrentConfig={setCurrentConfig}
+          fetchData={fetchData}
         />
 
         {/* Export Preview Dialog */}
@@ -2224,84 +2452,94 @@ export function GradebookTable({
           courseSection={courseSection}
         />
       </div>
-      <div className='flex justify-end mt-3 gap-2'>
-        <Button
-          variant='outline'
-          onClick={handleExport}
-          disabled={students.length === 0 || loadingStudents}
-          className={cn(
-            'h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50',
-            (students.length === 0 || loadingStudents) &&
-              'opacity-50 cursor-not-allowed',
-          )}
-        >
-          Export to Excel
-        </Button>
-        <Button
-          variant='outline'
-          onClick={handleEditConfigClick}
-          disabled={!hasSelectedConfig}
-          className={cn(
-            'h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50',
-            !hasSelectedConfig && 'opacity-50 cursor-not-allowed',
-          )}
-        >
-          Edit Configuration
-        </Button>
-        <Button
-          onClick={async () => {
-            try {
-              // Get the latest grade configuration
-              // We can use the currentConfig state directly now
-              const gradeConfig = currentConfig;
+      <div className='flex justify-between mt-3'>
+        <div className='flex items-center text-sm text-gray-500'>
+          Gradebook:{' '}
+          <span className='font-medium text-[#124A69] ml-1'>
+            {currentConfig?.name}
+          </span>
+        </div>
+        <div className='flex gap-2'>
+          <Button
+            variant='outline'
+            onClick={handleExport}
+            disabled={students.length === 0 || loadingStudents}
+            className={cn(
+              'h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50',
+              (students.length === 0 || loadingStudents) &&
+                'opacity-50 cursor-not-allowed',
+            )}
+          >
+            Export to Excel
+          </Button>
+          <Button
+            variant='outline'
+            onClick={handleEditConfigClick}
+            disabled={!hasSelectedConfig}
+            className={cn(
+              'h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50',
+              !hasSelectedConfig && 'opacity-50 cursor-not-allowed',
+            )}
+          >
+            Edit Configuration
+          </Button>
+          <Button
+            onClick={async () => {
+              try {
+                // Get the latest grade configuration
+                // We can use the currentConfig state directly now
+                const gradeConfig = currentConfig;
 
-              if (!gradeConfig) {
-                toast.error(
-                  'No grade configuration found. Please configure the gradebook first.',
-                );
-                return;
-              }
+                if (!gradeConfig) {
+                  toast.error(
+                    'No grade configuration found. Please configure the gradebook first.',
+                  );
+                  return;
+                }
 
-              // Calculate total scores for each student
-              const gradesToSave = students.map((student) => ({
-                studentId: student.id,
-                reportingScore: student.reportingScore || 0,
-                recitationScore: student.recitationScore || 0,
-                quizScore: student.quizScore || 0,
-              }));
+                // Calculate total scores for each student
+                const gradesToSave = students.map((student) => ({
+                  studentId: student.id,
+                  reportingScore: student.reportingScore || 0,
+                  recitationScore: student.recitationScore || 0,
+                  quizScore: student.quizScore || 0,
+                }));
 
-              // Save grades for all students
-              await Promise.all(
-                gradesToSave.map((grade) =>
-                  axiosInstance.post(
-                    `/courses/${courseSlug}/students/${grade.studentId}/grades`,
-                    {
-                      reportingScore: grade.reportingScore,
-                      recitationScore: grade.recitationScore,
-                      quizScore: grade.quizScore,
-                    },
+                // Save grades for all students
+                await Promise.all(
+                  gradesToSave.map((grade) =>
+                    axiosInstance.post(
+                      `/courses/${courseSlug}/students/${grade.studentId}/grades`,
+                      {
+                        reportingScore: grade.reportingScore,
+                        recitationScore: grade.recitationScore,
+                        quizScore: grade.quizScore,
+                      },
+                    ),
                   ),
-                ),
-              );
+                );
 
-              setHasUnsavedChanges(false);
-              toast.success('Grades saved successfully');
-            } catch (error) {
-              console.error('Error saving grades:', error);
-              toast.error('Failed to save grades');
+                setHasUnsavedChanges(false);
+                toast.success('Grades saved successfully');
+              } catch (error) {
+                console.error('Error saving grades:', error);
+                toast.error('Failed to save grades');
+              }
+            }}
+            disabled={
+              students.length === 0 || loadingStudents || !hasUnsavedChanges
             }
-          }}
-          disabled={
-            students.length === 0 || loadingStudents || !hasUnsavedChanges
-          }
-          className={cn(
-            'ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center',
-            (students.length === 0 || loadingStudents || !hasUnsavedChanges) &&
-              'opacity-50 cursor-not-allowed',
-          )}
-        >
-          Save Grades
-        </Button>
+            className={cn(
+              'ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center',
+              (students.length === 0 ||
+                loadingStudents ||
+                !hasUnsavedChanges) &&
+                'opacity-50 cursor-not-allowed',
+            )}
+          >
+            Save Grades
+          </Button>
+        </div>
       </div>
 
       {/* Edit Grade Configuration Dialog */}
@@ -2315,6 +2553,7 @@ export function GradebookTable({
         onDateRangeChange={setDateRange}
         currentConfig={currentConfig}
         setCurrentConfig={setCurrentConfig}
+        fetchData={fetchData}
       />
 
       {/* Replace the old dialog with the new component */}
