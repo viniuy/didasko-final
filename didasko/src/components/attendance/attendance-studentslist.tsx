@@ -86,6 +86,7 @@ interface StudentCardProps {
   onStatusChange: (index: number, status: AttendanceStatus) => void;
   isSaving: boolean;
   isInCooldown: boolean;
+  disabled: boolean;
 }
 
 interface AddStudentSheetProps {
@@ -219,6 +220,8 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
     status: AttendanceStatus;
   } | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [isMarkingAll, setIsMarkingAll] = useState(false);
 
   const fetchStudents = async () => {
     if (!courseSlug) return;
@@ -814,7 +817,7 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
     // Create student data rows using filtered students
     const studentRows = filteredStudents.map((student) => [
       student.name,
-      student.status,
+      student.status === 'NOT_SET' ? 'No Status' : student.status,
     ]);
 
     // Combine header and data
@@ -1001,6 +1004,14 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
       return;
     }
 
+    setIsClearing(true);
+    // Set cooldown for all students
+    const allStudentCooldowns = studentList.reduce((acc, student) => {
+      acc[student.id] = true;
+      return acc;
+    }, {} as { [key: string]: boolean });
+    setCooldownMap(allStudentCooldowns);
+
     const dateStr = format(selectedDate, 'yyyy-MM-dd');
 
     // Get all attendance records for the selected date
@@ -1026,6 +1037,8 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
           padding: '1rem',
         },
       });
+      setIsClearing(false);
+      setCooldownMap({});
       return;
     }
 
@@ -1053,35 +1066,6 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
             '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
           borderRadius: '0.5rem',
           padding: '1rem',
-        },
-        success: {
-          style: {
-            background: '#fff',
-            color: '#124A69',
-            border: '1px solid #e5e7eb',
-          },
-          iconTheme: {
-            primary: '#124A69',
-            secondary: '#fff',
-          },
-        },
-        error: {
-          style: {
-            background: '#fff',
-            color: '#dc2626',
-            border: '1px solid #e5e7eb',
-          },
-          iconTheme: {
-            primary: '#dc2626',
-            secondary: '#fff',
-          },
-        },
-        loading: {
-          style: {
-            background: '#fff',
-            color: '#124A69',
-            border: '1px solid #e5e7eb',
-          },
         },
       },
     );
@@ -1114,6 +1098,10 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
               ?.status || 'NOT_SET',
         })),
       );
+    } finally {
+      setIsClearing(false);
+      // Clear all cooldowns
+      setCooldownMap({});
     }
   };
 
@@ -1194,6 +1182,101 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
   const handleApplyFilters = () => {
     setCurrentPage(1);
     setIsFilterSheetOpen(false);
+  };
+
+  const markAllAsPresent = async () => {
+    if (!selectedDate || !courseSlug) {
+      toast.error('Please select a date before marking attendance', {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+          boxShadow:
+            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+          borderRadius: '0.5rem',
+          padding: '1rem',
+        },
+      });
+      return;
+    }
+
+    setIsMarkingAll(true);
+    // Set cooldown for all students
+    const allStudentCooldowns = studentList.reduce((acc, student) => {
+      acc[student.id] = true;
+      return acc;
+    }, {} as { [key: string]: boolean });
+    setCooldownMap(allStudentCooldowns);
+
+    const dateStr = format(selectedDate, 'yyyy-MM-dd');
+
+    try {
+      // Create attendance records for all students
+      const attendanceRecords = studentList.map((student) => ({
+        studentId: student.id,
+        status: 'PRESENT' as AttendanceStatus,
+      }));
+
+      const promise = axiosInstance.post(`/courses/${courseSlug}/attendance`, {
+        date: dateStr,
+        attendance: attendanceRecords,
+      });
+
+      toast.promise(
+        promise,
+        {
+          loading: 'Marking all students as present...',
+          success: 'All students marked as present',
+          error: 'Failed to mark students as present',
+        },
+        {
+          style: {
+            background: '#fff',
+            color: '#124A69',
+            border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
+          },
+        },
+      );
+
+      // Update local state immediately for better UX
+      setStudentList((prev) =>
+        prev.map((student) => ({
+          ...student,
+          status: 'PRESENT',
+          attendanceRecords: [
+            {
+              id: crypto.randomUUID(),
+              studentId: student.id,
+              courseId: courseSlug,
+              status: 'PRESENT',
+              date: dateStr,
+              reason: null,
+            },
+          ],
+        })),
+      );
+
+      await promise;
+      setShowMarkAllConfirm(false);
+    } catch (error) {
+      console.error('Error marking all as present:', error);
+      // Revert local state on error
+      setStudentList((prev) =>
+        prev.map((student) => ({
+          ...student,
+          status: 'NOT_SET',
+          attendanceRecords: [],
+        })),
+      );
+    } finally {
+      setIsMarkingAll(false);
+      // Clear all cooldowns
+      setCooldownMap({});
+    }
   };
 
   if (isLoading) {
@@ -1348,10 +1431,14 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
                 <Button
                   variant='outline'
                   className='rounded-full h-10 pl-3 pr-2 flex items-center gap-2 w-[180px] justify-between relative'
-                  disabled={isDateLoading || isUpdating}
+                  disabled={
+                    isDateLoading || isUpdating || isClearing || isMarkingAll
+                  }
                 >
                   <span className='truncate'>
-                    {selectedDate ? format(selectedDate, 'PPP') : 'Pick a date'}
+                    {selectedDate
+                      ? format(selectedDate, 'MMMM d, yyyy')
+                      : 'Pick a date'}
                   </span>
                   {isDateLoading ? (
                     <div className='animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent' />
@@ -1434,7 +1521,9 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
                 variant='outline'
                 size='icon'
                 className='rounded-full'
-                disabled={isUpdating || isDateLoading}
+                disabled={
+                  isUpdating || isDateLoading || isClearing || isMarkingAll
+                }
               >
                 <MoreHorizontal className='h-4 w-4' />
               </Button>
@@ -1443,13 +1532,21 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
               <DropdownMenuItem
                 onClick={() => setShowMarkAllConfirm(true)}
                 className='text-[#22C55E] focus:text-[#22C55E] focus:bg-[#22C55E]/10'
-                disabled={isUpdating || isDateLoading}
+                disabled={
+                  isUpdating || isDateLoading || isClearing || isMarkingAll
+                }
               >
                 Mark All as Present
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => setShowClearConfirm(true)}
-                disabled={isSaving || isUpdating || isDateLoading}
+                disabled={
+                  isSaving ||
+                  isUpdating ||
+                  isDateLoading ||
+                  isClearing ||
+                  isMarkingAll
+                }
                 className='text-[#EF4444] focus:text-[#EF4444] focus:bg-[#EF4444]/10'
               >
                 {isSaving ? 'Clearing...' : 'Clear Attendance'}
@@ -1461,7 +1558,9 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
               variant='outline'
               className='rounded-full relative flex items-center gap-2 px-3'
               onClick={() => setIsFilterSheetOpen(true)}
-              disabled={isUpdating || isDateLoading}
+              disabled={
+                isUpdating || isDateLoading || isClearing || isMarkingAll
+              }
             >
               <Filter className='h-4 w-4' />
               <span>Filter</span>
@@ -1477,13 +1576,21 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
               filters={filters}
               onFiltersChange={setFilters}
               onApplyFilters={handleApplyFilters}
+              statusLabels={{
+                NOT_SET: 'No Status',
+                PRESENT: 'Present',
+                ABSENT: 'Absent',
+                LATE: 'Late',
+              }}
             />
             <Button
               variant='outline'
               className='rounded-full'
               onClick={() => setShowExportPreview(true)}
               title='Export to Excel'
-              disabled={isUpdating || isDateLoading}
+              disabled={
+                isUpdating || isDateLoading || isClearing || isMarkingAll
+              }
             >
               <Download className='h-4 w-4' />
               Export
@@ -1626,9 +1733,9 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
                   {filteredStudents.filter(
                     (student) => student.status === 'NOT_SET',
                   ).length !== 1
-                    ? 'do'
-                    : 'does'}{' '}
-                  not have attendance set yet
+                    ? ' have'
+                    : ' '}{' '}
+                  no attendance status yet
                 </div>
               )}
               <div className='mt-6 max-h-[400px] overflow-auto'>
@@ -1650,7 +1757,9 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
                           {student.name}
                         </td>
                         <td className='px-4 py-2 text-sm text-gray-900'>
-                          {student.status}
+                          {student.status === 'NOT_SET'
+                            ? 'NO STATUS'
+                            : student.status}
                         </td>
                       </tr>
                     ))}
@@ -1733,8 +1842,10 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
             </AlertDialogTitle>
             <AlertDialogDescription className='text-gray-500'>
               Are you sure you want to mark all students as present for{' '}
-              {selectedDate ? format(selectedDate, 'PPP') : 'this date'}? This
-              action cannot be undone.
+              {selectedDate
+                ? format(selectedDate, 'MMMM d, yyyy')
+                : 'this date'}
+              ? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className='gap-2 sm:gap-2'>
@@ -1753,8 +1864,9 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
                 document.body.style.removeProperty('pointer-events');
               }}
               className='bg-[#124A69] hover:bg-[#0a2f42] text-white'
+              disabled={isMarkingAll}
             >
-              Mark All as Present
+              {isMarkingAll ? 'Marking...' : 'Mark All as Present'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1776,8 +1888,10 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
             </AlertDialogTitle>
             <AlertDialogDescription className='text-gray-500'>
               Are you sure you want to clear all attendance records for{' '}
-              {selectedDate ? format(selectedDate, 'PPP') : 'this date'}? This
-              action cannot be undone.
+              {selectedDate
+                ? format(selectedDate, 'MMMM d, yyyy')
+                : 'this date'}
+              ? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className='gap-2 sm:gap-2'>
@@ -1796,8 +1910,9 @@ export default function StudentList({ courseSlug }: { courseSlug: string }) {
                 document.body.style.removeProperty('pointer-events');
               }}
               className='bg-[#124A69] hover:bg-[#0a2f42] text-white'
+              disabled={isClearing}
             >
-              Clear Attendance
+              {isClearing ? 'Clearing...' : 'Clear Attendance'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

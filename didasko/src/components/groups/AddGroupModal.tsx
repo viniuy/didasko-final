@@ -23,6 +23,7 @@ interface AddGroupModalProps {
   excludedStudentIds?: string[];
   nextGroupNumber?: number;
   onGroupAdded?: () => void;
+  isValidationNeeded?: boolean;
 }
 
 interface Student {
@@ -31,22 +32,37 @@ interface Student {
   status: 'PRESENT' | 'LATE' | 'ABSENT' | 'No Attendance';
 }
 
+interface GroupName {
+  id: string;
+  name: string;
+}
+
+interface GroupNumber {
+  id: string;
+  number: number;
+}
+
 export function AddGroupModal({
   courseCode,
   excludedStudentIds = [],
   nextGroupNumber,
   onGroupAdded,
+  isValidationNeeded = false,
 }: AddGroupModalProps) {
   const [groupNumber, setGroupNumber] = React.useState('');
   const [groupName, setGroupName] = React.useState('');
   const [selectedStudents, setSelectedStudents] = React.useState<string[]>([]);
   const [selectedLeader, setSelectedLeader] = React.useState<string>('');
   const [students, setStudents] = React.useState<Student[]>([]);
+  const [groupNames, setGroupNames] = React.useState<GroupName[]>([]);
+  const [groupNumbers, setGroupNumbers] = React.useState<GroupNumber[]>([]);
   const [isLoading, setIsLoading] = React.useState(false);
   const [studentSearch, setStudentSearch] = React.useState('');
   const [open, setOpen] = React.useState(false);
   const [groupNameError, setGroupNameError] = React.useState('');
   const [groupNumberError, setGroupNumberError] = React.useState('');
+  const [isValidatingName, setIsValidatingName] = React.useState(false);
+  const [isValidatingNumber, setIsValidatingNumber] = React.useState(false);
 
   // Clear form when modal is opened
   React.useEffect(() => {
@@ -78,6 +94,118 @@ export function AddGroupModal({
     };
     fetchStudents();
   }, [courseCode]);
+
+  // Fetch group names when component mounts
+  React.useEffect(() => {
+    const fetchGroupNames = async () => {
+      try {
+        const res = await fetch(`/api/courses/${courseCode}/groups/names`);
+        const data = await res.json();
+        setGroupNames(data.groups || []);
+      } catch (err) {
+        console.error('Error fetching group names:', err);
+        setGroupNames([]);
+      }
+    };
+    fetchGroupNames();
+  }, [courseCode]);
+
+  // Fetch group numbers when component mounts
+  React.useEffect(() => {
+    const fetchGroupNumbers = async () => {
+      try {
+        const res = await fetch(`/api/courses/${courseCode}/groups/numbers`);
+        const data = await res.json();
+        setGroupNumbers(data.groups || []);
+      } catch (err) {
+        console.error('Error fetching group numbers:', err);
+        setGroupNumbers([]);
+      }
+    };
+    fetchGroupNumbers();
+  }, [courseCode]);
+
+  // Validate group name as user types
+  React.useEffect(() => {
+    const validateGroupName = async () => {
+      if (!groupName) {
+        setGroupNameError('');
+        return;
+      }
+
+      setIsValidatingName(true);
+      try {
+        const checkResponse = await fetch(
+          `/api/courses/${courseCode}/groups/check-name?name=${encodeURIComponent(
+            groupName,
+          )}`,
+        );
+        if (!checkResponse.ok) {
+          throw new Error('Failed to check group name');
+        }
+        const { exists } = await checkResponse.json();
+        if (exists) {
+          setGroupNameError('A group with this name already exists');
+        } else {
+          setGroupNameError('');
+        }
+      } catch (error) {
+        console.error('Error checking group name:', error);
+        setGroupNameError('Error checking group name');
+      } finally {
+        setIsValidatingName(false);
+      }
+    };
+
+    const debounceTimer = setTimeout(() => {
+      validateGroupName();
+    }, 500); // Debounce for 500ms
+
+    return () => clearTimeout(debounceTimer);
+  }, [groupName, courseCode]);
+
+  // Validate group number as user types
+  React.useEffect(() => {
+    const validateGroupNumber = async () => {
+      if (!groupNumber) {
+        setGroupNumberError('');
+        return;
+      }
+
+      const groupNum = parseInt(groupNumber);
+      if (isNaN(groupNum) || groupNum < 1 || groupNum > 15) {
+        setGroupNumberError('Group number must be between 1 and 15');
+        return;
+      }
+
+      setIsValidatingNumber(true);
+      try {
+        const checkResponse = await fetch(
+          `/api/courses/${courseCode}/groups/check-number?number=${groupNum}`,
+        );
+        if (!checkResponse.ok) {
+          throw new Error('Failed to check group number');
+        }
+        const { exists } = await checkResponse.json();
+        if (exists) {
+          setGroupNumberError('A group with this number already exists');
+        } else {
+          setGroupNumberError('');
+        }
+      } catch (error) {
+        console.error('Error checking group number:', error);
+        setGroupNumberError('Error checking group number');
+      } finally {
+        setIsValidatingNumber(false);
+      }
+    };
+
+    const debounceTimer = setTimeout(() => {
+      validateGroupNumber();
+    }, 500); // Debounce for 500ms
+
+    return () => clearTimeout(debounceTimer);
+  }, [groupNumber, courseCode]);
 
   // Set default group number when nextGroupNumber changes
   React.useEffect(() => {
@@ -228,37 +356,44 @@ export function AddGroupModal({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button className='relative h-35 w-35 rounded-full bg-gray-200 flex flex-col items-center justify-center shadow-none transition-all p-0 mb-2 border-none outline-none focus:outline-none cursor-pointer group hover:bg-gray-300'>
+        <button
+          className='relative h-35 w-35 rounded-full bg-gray-200 flex flex-col items-center justify-center shadow-none transition-all p-0 mb-2 border-none outline-none focus:outline-none cursor-pointer group hover:bg-gray-300'
+          disabled={isValidationNeeded}
+        >
           <span className='absolute inset-0 flex items-center justify-center'>
-            <svg
-              className='h-20 w-20 text-gray-400 opacity-70'
-              fill='none'
-              stroke='currentColor'
-              strokeWidth='1.5'
-              viewBox='0 0 24 24'
-            >
-              <path d='M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2' />
-              <circle cx='9' cy='7' r='4' />
-              <path d='M23 21v-2a4 4 0 0 0-3-3.87' />
-              <path d='M16 3.13a4 4 0 0 1 0 7.75' />
-            </svg>
-            <svg
-              className='h-10 w-10 text-white absolute'
-              style={{
-                filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.15))',
-              }}
-              fill='none'
-              stroke='currentColor'
-              strokeWidth='2.5'
-              viewBox='0 0 24 24'
-            >
-              <path d='M12 5v14m7-7H5' strokeLinecap='round' />
-            </svg>
+            {isValidationNeeded ? (
+              <Loader2 className='h-20 w-20 text-gray-400 animate-spin' />
+            ) : (
+              <>
+                <svg
+                  className='h-20 w-20 text-gray-400 opacity-70'
+                  fill='none'
+                  stroke='currentColor'
+                  strokeWidth='1.5'
+                  viewBox='0 0 24 24'
+                >
+                  <path d='M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2' />
+                  <circle cx='9' cy='7' r='4' />
+                  <path d='M23 21v-2a4 4 0 0 0-3-3.87' />
+                  <path d='M16 3.13a4 4 0 0 1 0 7.75' />
+                </svg>
+                <svg
+                  className='h-10 w-10 text-white absolute'
+                  style={{
+                    filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.15))',
+                  }}
+                  fill='none'
+                  stroke='currentColor'
+                  strokeWidth='2.5'
+                  viewBox='0 0 24 24'
+                >
+                  <path d='M12 5v14m7-7H5' strokeLinecap='round' />
+                </svg>
+              </>
+            )}
           </span>
           <span className='mt-20 text-sm font-bold text-shadow-lg text-white drop-shadow-sm text-center pointer-events-none select-none'>
-            Add groups
-            <br />
-            manually
+            {isValidationNeeded ? 'Validating...' : 'Add groups\nmanually'}
           </span>
         </button>
       </DialogTrigger>
@@ -278,32 +413,61 @@ export function AddGroupModal({
                 >
                   Group Number <span className='text-red-500'> *</span>
                 </label>
-                <Input
-                  id='groupNumber'
-                  value={groupNumber}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    // Only allow numbers and limit to 15
-                    if (/^\d*$/.test(value)) {
-                      const num = parseInt(value);
-                      if (value === '' || (num >= 1 && num <= 15)) {
-                        setGroupNumber(value);
-                        setGroupNumberError('');
-                      } else {
-                        setGroupNumberError('Maximum group number is 15');
+                <div className='relative'>
+                  <Input
+                    id='groupNumber'
+                    value={groupNumber}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      // Only allow numbers and limit to 15
+                      if (/^\d*$/.test(value)) {
+                        const num = parseInt(value);
+                        if (value === '' || (num >= 1 && num <= 15)) {
+                          setGroupNumber(value);
+                        }
                       }
-                    }
-                  }}
-                  placeholder='1'
-                  required
-                  className={groupNumberError ? 'border-red-500' : ''}
-                  maxLength={2}
-                />
+                    }}
+                    placeholder='1'
+                    required
+                    className={groupNumberError ? 'border-red-500' : ''}
+                    maxLength={2}
+                  />
+                  {isValidatingNumber && (
+                    <div className='absolute right-2 top-1/2 -translate-y-1/2'>
+                      <Loader2 className='h-4 w-4 animate-spin text-gray-400' />
+                    </div>
+                  )}
+                </div>
                 {groupNumberError && (
                   <span className='text-red-500 text-xs mt-1'>
                     {groupNumberError}
                   </span>
                 )}
+                {groupNumbers.length > 0 &&
+                  !groupNumberError &&
+                  groupNumber && (
+                    <div className='mt-1 text-xs text-gray-500'>
+                      Available group numbers:
+                      <div className='mt-1 flex flex-wrap gap-1'>
+                        {groupNumbers
+                          .filter((g) =>
+                            g.number.toString().includes(groupNumber),
+                          )
+                          .slice(0, 3)
+                          .map((g) => (
+                            <span
+                              key={g.id}
+                              className='px-2 py-1 bg-gray-100 rounded cursor-pointer hover:bg-gray-200'
+                              onClick={() =>
+                                setGroupNumber(g.number.toString())
+                              }
+                            >
+                              {g.number}
+                            </span>
+                          ))}
+                      </div>
+                    </div>
+                  )}
               </div>
               <div className='flex flex-col'>
                 <label
@@ -312,20 +476,49 @@ export function AddGroupModal({
                 >
                   Group Name <span className='text-gray-400'>(optional)</span>
                 </label>
-                <Input
-                  id='groupName'
-                  value={groupName}
-                  onChange={(e) => {
-                    setGroupName(e.target.value);
-                    setGroupNameError(''); // Clear error when user types
-                  }}
-                  placeholder='Group Name'
-                  className={groupNameError ? 'border-red-500' : ''}
-                />
+                <div className='relative'>
+                  <Input
+                    id='groupName'
+                    value={groupName}
+                    onChange={(e) => {
+                      setGroupName(e.target.value);
+                    }}
+                    placeholder='Group Name'
+                    className={groupNameError ? 'border-red-500' : ''}
+                  />
+                  {isValidatingName && (
+                    <div className='absolute right-2 top-1/2 -translate-y-1/2'>
+                      <Loader2 className='h-4 w-4 animate-spin text-gray-400' />
+                    </div>
+                  )}
+                </div>
                 {groupNameError && (
                   <span className='text-red-500 text-xs mt-1'>
                     {groupNameError}
                   </span>
+                )}
+                {groupNames.length > 0 && !groupNameError && groupName && (
+                  <div className='mt-1 text-xs text-gray-500'>
+                    Available group names:
+                    <div className='mt-1 flex flex-wrap gap-1'>
+                      {groupNames
+                        .filter((g) =>
+                          g.name
+                            .toLowerCase()
+                            .includes(groupName.toLowerCase()),
+                        )
+                        .slice(0, 3)
+                        .map((g) => (
+                          <span
+                            key={g.id}
+                            className='px-2 py-1 bg-gray-100 rounded cursor-pointer hover:bg-gray-200'
+                            onClick={() => setGroupName(g.name)}
+                          >
+                            {g.name}
+                          </span>
+                        ))}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

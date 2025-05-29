@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { PrismaClient } from '@prisma/client';
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 
 const prisma = new PrismaClient();
 
@@ -15,8 +16,11 @@ export async function POST() {
     });
   }
 
-  // Return a redirect response to the home page
-  return NextResponse.redirect(
-    new URL('/', process.env.NEXTAUTH_URL || 'http://localhost:3000'),
-  );
+  // Clear the session cookie
+  const response = NextResponse.json({ success: true });
+  response.cookies.delete('next-auth.session-token');
+  response.cookies.delete('next-auth.callback-url');
+  response.cookies.delete('next-auth.csrf-token');
+
+  return response;
 }

@@ -29,7 +29,7 @@ export default function AttendancePage() {
 
               <div className='space-y-2'>
                 <h2 className='pl-2 pb-1 text-xl sm:text-2xl font-bold text-muted-foreground'>
-                  List of Students
+                  Overview of Attendance
                 </h2>
 
                 <div className='grid gap-4 md:gap-6 lg:gap-8'>

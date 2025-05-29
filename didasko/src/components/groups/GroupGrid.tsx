@@ -21,6 +21,7 @@ interface GroupGridProps {
   excludedStudentIds: string[];
   nextGroupNumber: number;
   onGroupAdded: () => void;
+  isValidationNeeded?: boolean;
 }
 
 export function GroupGrid({
@@ -31,6 +32,7 @@ export function GroupGrid({
   excludedStudentIds,
   nextGroupNumber,
   onGroupAdded,
+  isValidationNeeded = false,
 }: GroupGridProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
@@ -58,6 +60,7 @@ export function GroupGrid({
           excludedStudentIds={excludedStudentIds}
           nextGroupNumber={nextGroupNumber}
           onGroupAdded={onGroupAdded}
+          isValidationNeeded={isValidationNeeded}
         />
         <RandomizerButton disabled />
       </div>
@@ -87,6 +90,7 @@ export function GroupGrid({
               excludedStudentIds={excludedStudentIds}
               nextGroupNumber={nextGroupNumber}
               onGroupAdded={onGroupAdded}
+              isValidationNeeded={isValidationNeeded}
             />
             <RandomizerButton disabled />
           </div>

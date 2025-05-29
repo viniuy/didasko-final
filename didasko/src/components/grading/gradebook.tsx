@@ -191,27 +191,6 @@ export function TableDemo() {
           className='max-w-sm'
         />
       </div>
-      <Button
-        variant='ghost'
-        className='h-9 w-9 p-0 hover:bg-gray-100'
-        onClick={() => window.history.back()}
-      >
-        <svg
-          className='h-5 w-5 text-gray-500'
-          fill='none'
-          stroke='currentColor'
-          strokeWidth='2'
-          viewBox='0 0 24 24'
-        >
-          <path d='M15 18l-6-6 6-6' />
-        </svg>
-      </Button>
-      <div className='flex flex-col mr-4'>
-        <span className='text-lg font-bold text-[#124A69] leading-tight'>
-          {courseDetails?.code}
-        </span>
-        <span className='text-sm text-gray-500'>{courseDetails?.section}</span>
-      </div>
 
       <div className='rounded-md border'>
         <Table>

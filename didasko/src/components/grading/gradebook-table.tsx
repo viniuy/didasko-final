@@ -1817,9 +1817,8 @@ export function GradebookTable({
     studentRows: string[][];
   } | null>(null);
   const [gradeFilter, setGradeFilter] = useState({
-    passed: true,
-    failed: true,
-    noGrades: true,
+    passed: false,
+    failed: false,
   });
   const [gradebookConfigDate, setGradebookConfigDate] = useState<string | null>(
     null,
@@ -1991,10 +1990,20 @@ export function GradebookTable({
   }, [courseSlug, dateRange, currentConfig]);
 
   const handleFilterChange = (filter: keyof typeof gradeFilter) => {
-    setGradeFilter((prev) => ({
-      ...prev,
-      [filter]: !prev[filter],
-    }));
+    const newFilter = {
+      ...gradeFilter,
+      [filter]: !gradeFilter[filter],
+    };
+
+    // If all options are checked, set all to true
+    if (Object.values(newFilter).every(Boolean)) {
+      setGradeFilter({
+        passed: true,
+        failed: true,
+      });
+    } else {
+      setGradeFilter(newFilter);
+    }
   };
 
   // useEffect to load data when dependencies change
@@ -2039,10 +2048,15 @@ export function GradebookTable({
       student.middleInitial || ''
     }`.toLowerCase();
     const matchesSearch = name.includes(searchQuery.toLowerCase());
+
+    // If no filters are checked, show all students
+    if (!gradeFilter.passed && !gradeFilter.failed) {
+      return matchesSearch;
+    }
+
     const matchesFilter =
       (gradeFilter.passed && student.remarks === 'PASSED') ||
-      (gradeFilter.failed && student.remarks === 'FAILED') ||
-      (gradeFilter.noGrades && !student.remarks);
+      (gradeFilter.failed && student.remarks === 'FAILED');
     return matchesSearch && matchesFilter;
   });
 
@@ -2055,13 +2069,17 @@ export function GradebookTable({
   const handleExport = async () => {
     try {
       // Get the latest grade configuration
-      // We can use the currentConfig state directly now
       const gradeConfig = currentConfig;
 
       if (!gradeConfig) {
         toast.error(
           'No grade configuration found. Please configure the gradebook first.',
         );
+        return;
+      }
+
+      if (!dateRange?.from || !dateRange?.to) {
+        toast.error('Please select a date range first.');
         return;
       }
 
@@ -2073,7 +2091,14 @@ export function GradebookTable({
           } GRADEBOOK`,
         ],
         [''],
-        ['Date:', format(new Date(gradeConfig.createdAt), 'MMMM d, yyyy')],
+        ['Gradebook:', gradeConfig.name],
+        [
+          'Date Range:',
+          `${format(dateRange.from, 'MMMM d, yyyy')} - ${format(
+            dateRange.to,
+            'MMMM d, yyyy',
+          )}`,
+        ],
         [''],
         [
           'Student Name',
@@ -2207,11 +2232,9 @@ export function GradebookTable({
           </Button>
           <div className='flex flex-col mr-4'>
             <span className='text-lg font-bold text-[#124A69] leading-tight'>
-              {courseInfo?.code || courseCode}
+              {courseCode}
             </span>
-            <span className='text-sm text-gray-500'>
-              {courseInfo?.section || courseSection}
-            </span>
+            <span className='text-sm text-gray-500'>{courseSection}</span>
           </div>
           <div className='flex-1 flex items-center gap-2'>
             {/* Header Controls */}
@@ -2277,23 +2300,23 @@ export function GradebookTable({
                         Failed
                       </label>
                     </div>
-                    <div className='flex items-center space-x-2'>
-                      <Checkbox
-                        id='noGrades'
-                        checked={gradeFilter.noGrades}
-                        onCheckedChange={() => handleFilterChange('noGrades')}
-                        disabled={!hasSelectedConfig}
-                      />
-                      <label
-                        htmlFor='noGrades'
-                        className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
-                      >
-                        No Grades
-                      </label>
-                    </div>
                   </div>
                 </PopoverContent>
               </Popover>
+              {Object.entries(gradeFilter).some(([_, value]) => !value) && (
+                <div className='flex items-center gap-1.5'>
+                  {gradeFilter.passed && (
+                    <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700'>
+                      Passed
+                    </span>
+                  )}
+                  {gradeFilter.failed && (
+                    <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700'>
+                      Failed
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           <div className='flex items-center gap-1'>
@@ -2448,8 +2471,9 @@ export function GradebookTable({
           showExportPreview={showExportPreview}
           setShowExportPreview={setShowExportPreview}
           exportData={exportData}
-          courseCode={courseCode}
-          courseSection={courseSection}
+          courseCode={courseInfo?.code || courseCode}
+          courseSection={courseInfo?.section || courseSection}
+          gradebookName={currentConfig?.name || ''}
         />
       </div>
       <div className='flex justify-between mt-3'>
@@ -2482,62 +2506,6 @@ export function GradebookTable({
             )}
           >
             Edit Configuration
-          </Button>
-          <Button
-            onClick={async () => {
-              try {
-                // Get the latest grade configuration
-                // We can use the currentConfig state directly now
-                const gradeConfig = currentConfig;
-
-                if (!gradeConfig) {
-                  toast.error(
-                    'No grade configuration found. Please configure the gradebook first.',
-                  );
-                  return;
-                }
-
-                // Calculate total scores for each student
-                const gradesToSave = students.map((student) => ({
-                  studentId: student.id,
-                  reportingScore: student.reportingScore || 0,
-                  recitationScore: student.recitationScore || 0,
-                  quizScore: student.quizScore || 0,
-                }));
-
-                // Save grades for all students
-                await Promise.all(
-                  gradesToSave.map((grade) =>
-                    axiosInstance.post(
-                      `/courses/${courseSlug}/students/${grade.studentId}/grades`,
-                      {
-                        reportingScore: grade.reportingScore,
-                        recitationScore: grade.recitationScore,
-                        quizScore: grade.quizScore,
-                      },
-                    ),
-                  ),
-                );
-
-                setHasUnsavedChanges(false);
-                toast.success('Grades saved successfully');
-              } catch (error) {
-                console.error('Error saving grades:', error);
-                toast.error('Failed to save grades');
-              }
-            }}
-            disabled={
-              students.length === 0 || loadingStudents || !hasUnsavedChanges
-            }
-            className={cn(
-              'ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center',
-              (students.length === 0 ||
-                loadingStudents ||
-                !hasUnsavedChanges) &&
-                'opacity-50 cursor-not-allowed',
-            )}
-          >
-            Save Grades
           </Button>
         </div>
       </div>

@@ -30,26 +30,31 @@ export default function GradebookCoursePage({
   const { data: session } = useSession();
   const [open, setOpen] = useState(false);
   const [courseId, setCourseId] = useState<string>('');
+  const [courseInfo, setCourseInfo] = useState<{
+    code: string;
+    section: string;
+  } | null>(null);
 
   useEffect(() => {
     const fetchCourseId = async () => {
       try {
-        console.log('Fetching course ID for:', {
-          code: resolvedParams.course_code,
-          section: resolvedParams.course_section,
-        });
+        console.log('Fetching course ID for slug:', resolvedParams.course_slug);
         const response = await axiosInstance.get(`/courses`, {
           params: {
-            code: resolvedParams.course_code,
-            section: resolvedParams.course_section,
+            slug: resolvedParams.course_slug,
           },
         });
         if (response.data.courses && response.data.courses.length > 0) {
-          const fetchedCourseId = response.data.courses[0].id;
+          const course = response.data.courses[0];
+          const fetchedCourseId = course.id;
           console.log('Fetched course ID:', fetchedCourseId);
           setCourseId(fetchedCourseId);
+          setCourseInfo({
+            code: course.code,
+            section: course.section,
+          });
         } else {
-          console.warn('No course found for the given code and section');
+          console.warn('No course found for the given slug');
         }
       } catch (error) {
         console.error('Error fetching course ID:', error);
@@ -58,7 +63,7 @@ export default function GradebookCoursePage({
     };
 
     fetchCourseId();
-  }, [resolvedParams.course_code, resolvedParams.course_section]);
+  }, [resolvedParams.course_slug]);
 
   return (
     <SidebarProvider open={open} onOpenChange={setOpen}>
@@ -74,11 +79,11 @@ export default function GradebookCoursePage({
                 </h1>
               </div>
 
-              {courseId && (
+              {courseId && courseInfo && (
                 <GradebookTable
                   courseSlug={resolvedParams.course_slug}
-                  courseCode={resolvedParams.course_code}
-                  courseSection={resolvedParams.course_section}
+                  courseCode={courseInfo.code}
+                  courseSection={courseInfo.section}
                 />
               )}
             </div>

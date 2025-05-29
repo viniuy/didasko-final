@@ -28,7 +28,7 @@ export default function AcademicHeadDashboard() {
                 <Stats />
                 <div className='space-y-4'>
                   <h2 className='pl-2 pb-1 text-2xl font-bold text-muted-foreground'>
-                    All Courses
+                    Your Subjects
                   </h2>
                   <AllCourses type='attendance' />
                 </div>

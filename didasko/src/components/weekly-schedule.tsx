@@ -161,7 +161,7 @@ export default function WeeklySchedule({ teacherInfo }: WeeklyScheduleProps) {
     <div className='bg-white rounded-lg shadow-sm'>
       <div className='p-4 border-b'>
         <h2 className='text-xl font-bold text-center text-[#124A69]'>
-          MY WEEKLY COURSE SCHEDULE
+          MY WEEKLY SCHEDULE
         </h2>
       </div>
       <div className='grid grid-cols-7 gap-4 p-4'>

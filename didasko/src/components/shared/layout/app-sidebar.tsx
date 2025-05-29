@@ -142,28 +142,16 @@ export function AppSidebar() {
 
   const handleLogout = async () => {
     try {
-      // Call our custom logout endpoint
-      const response = await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        throw new Error('Logout failed');
-      }
-
-      // Sign out from NextAuth and redirect
+      // Sign out from NextAuth without automatic redirect
       await signOut({
-        callbackUrl: '/',
-        redirect: true,
+        redirect: false,
       });
+      // Manually redirect to home page
+      router.push('/');
     } catch (error) {
       console.error('Logout error:', error);
-      // If our custom logout fails, still try to sign out from NextAuth
-      await signOut({
-        callbackUrl: '/',
-        redirect: true,
-      });
+      // If NextAuth signOut fails, still try to redirect manually
+      router.push('/');
     }
   };
 

@@ -22,4 +22,4 @@ export interface Group {
     middleInitial: string | null;
     image: string | null;
   } | null;
-} 
+}

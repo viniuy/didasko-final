@@ -126,12 +126,12 @@ export default function Notes() {
   // Skeleton UI for loading state
   if (status === 'loading' || isLoading)
     return (
-      <div className='mb-2'>
+      <div className='h-full flex flex-col'>
         <div className='flex justify-between items-center mb-1'>
           <h2 className='text-lg font-semibold text-[#FAEDCB]'>Notes</h2>
           <Skeleton className='w-6 h-6 rounded-full' />
         </div>
-        <div className='bg-white rounded-lg p-2 shadow-md h-[280px] overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#124A69] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#0a2f42]'>
+        <div className='flex-1 bg-white rounded-lg p-2 shadow-md overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#124A69] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#0a2f42]'>
           <div className='space-y-2 mt-2'>
             {/* First date group */}
             <div className='flex items-center gap-2 text-[#124A69] mb-1'>
@@ -297,19 +297,19 @@ export default function Notes() {
   };
 
   return (
-    <div className='mb-2'>
+    <div className='h-full flex flex-col'>
       <div className='flex justify-between items-center mb-1'>
-        <h2 className='text-lg font-semibold text-[#FAEDCB] mb-1'>Notes</h2>
+        <h2 className='text-lg font-semibold text-[#FAEDCB]'>Notes</h2>
         <Button
           variant='ghost'
           size='icon'
-          className='w-6 h-6 rounded-full bg-[#124A69] text-white flex items-center justify-center hover:bg-[#0a2f42]'
+          className='text-[#FAEDCB] hover:text-white hover:bg-[#0a2f42]'
           onClick={handleAddClick}
         >
-          <Plus className='w-3 h-3' />
+          <Plus className='h-5 w-5' />
         </Button>
       </div>
-      <div className='bg-white rounded-lg p-2 shadow-md h-[280px] overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#124A69] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#0a2f42]'>
+      <div className='flex-1 bg-white rounded-lg p-2 shadow-md overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#124A69] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#0a2f42]'>
         {noteList.length > 0 ? (
           noteList.map((note) => (
             <Card
@@ -411,7 +411,7 @@ export default function Notes() {
                 Description <span className='text-gray-400'>(optional)</span>
               </Label>
               <Textarea
-                placeholder='Add your note content'
+                placeholder='Add your description'
                 className='resize-none min-h-[100px] max-h-[100px] overflow-y-auto w-full break-words rounded-lg'
                 value={editData.description || ''}
                 onChange={(e) => {
@@ -475,7 +475,7 @@ export default function Notes() {
                 Description <span className='text-gray-400'>(optional)</span>
               </Label>
               <Textarea
-                placeholder='Add your note content'
+                placeholder='Add your description'
                 className='resize-none min-h-[100px] max-h-[200px] overflow-y-auto w-full break-words whitespace-pre-wrap rounded-lg'
                 value={newNote.description || ''}
                 onChange={(e) => {

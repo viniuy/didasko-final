@@ -15,6 +15,9 @@ interface FilterSheetProps {
   filters: FilterState;
   onFiltersChange: (filters: FilterState) => void;
   onApplyFilters: () => void;
+  statusLabels?: {
+    [key in AttendanceStatusWithNotSet]: string;
+  };
 }
 
 export function FilterSheet({
@@ -23,8 +26,12 @@ export function FilterSheet({
   filters,
   onFiltersChange,
   onApplyFilters,
+  statusLabels,
 }: FilterSheetProps) {
   const getStatusDisplay = (status: AttendanceStatusWithNotSet) => {
+    if (statusLabels?.[status]) {
+      return statusLabels[status];
+    }
     switch (status) {
       case 'PRESENT':
         return 'Present';
@@ -35,7 +42,7 @@ export function FilterSheet({
       case 'EXCUSED':
         return 'Excused';
       case 'NOT_SET':
-        return 'No Attendance';
+        return 'No Status';
       default:
         return 'Status';
     }

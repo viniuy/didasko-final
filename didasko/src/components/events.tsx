@@ -685,76 +685,23 @@ export default function UpcomingEvents() {
   }
 
   return (
-    <div className='mb-2'>
-      <Toaster
-        toastOptions={{
-          className: '',
-          style: {
-            background: '#fff',
-            color: '#124A69',
-            border: '1px solid #e5e7eb',
-            boxShadow:
-              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-            borderRadius: '0.5rem',
-            padding: '1rem',
-          },
-          success: {
-            style: {
-              background: '#fff',
-              color: '#124A69',
-              border: '1px solid #e5e7eb',
-            },
-            iconTheme: {
-              primary: '#124A69',
-              secondary: '#fff',
-            },
-          },
-          error: {
-            style: {
-              background: '#fff',
-              color: '#dc2626',
-              border: '1px solid #e5e7eb',
-            },
-            iconTheme: {
-              primary: '#dc2626',
-              secondary: '#fff',
-            },
-          },
-          loading: {
-            style: {
-              background: '#fff',
-              color: '#124A69',
-              border: '1px solid #e5e7eb',
-            },
-          },
-        }}
-      />
-
+    <div className='h-full flex flex-col'>
       <div className='flex justify-between items-center mb-1'>
-        <h2 className='text-lg font-semibold text-[#FAEDCB]'>Events</h2>
+        <h2 className='text-lg font-semibold text-[#FAEDCB]'>
+          Upcoming Events
+        </h2>
         {canManageEvents && (
           <Button
             variant='ghost'
             size='icon'
-            className='w-6 h-6 rounded-full bg-[#124A69] text-white flex items-center justify-center hover:bg-[#0a2f42]'
-            onClick={() => {
-              handleOpenAdd();
-              setTimeError('');
-              setNewEvent({
-                title: '',
-                description: '',
-                date: null,
-                fromTime: '',
-                toTime: '',
-                dates: [],
-              });
-            }}
+            className='text-[#FAEDCB] hover:text-white hover:bg-[#0a2f42]'
+            onClick={handleOpenAdd}
           >
-            <Plus className='w-3 h-3' />
+            <Plus className='h-5 w-5' />
           </Button>
         )}
       </div>
-      <div className='bg-white rounded-lg p-2 shadow-md h-135 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#124A69] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#0a2f42] transition-all duration-300'>
+      <div className='flex-1 bg-white rounded-lg p-2 shadow-md overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#124A69] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#0a2f42]'>
         <div className='space-y-2 mt-2'>
           {isLoading ? (
             <>

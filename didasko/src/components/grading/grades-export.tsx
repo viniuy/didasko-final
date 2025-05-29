@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import toast from 'react-hot-toast';
+import { format } from 'date-fns';
 
 interface ExportGradesProps {
   showExportPreview: boolean;
@@ -20,6 +21,7 @@ interface ExportGradesProps {
   } | null;
   courseCode: string;
   courseSection: string;
+  gradebookName: string;
 }
 
 export function ExportGrades({
@@ -28,6 +30,7 @@ export function ExportGrades({
   exportData,
   courseCode,
   courseSection,
+  gradebookName,
 }: ExportGradesProps) {
   const handleConfirmExport = () => {
     if (!exportData) return;
@@ -35,10 +38,6 @@ export function ExportGrades({
     try {
       const { header, studentRows } = exportData;
       const ws = XLSX.utils.aoa_to_sheet([...header, ...studentRows]);
-
-      // Extract date from header
-      const dateRow = header.find((row) => row[0]?.startsWith('Date:'));
-      const dateStr = dateRow ? dateRow[0].replace('Date:', '').trim() : '';
 
       // Configure column widths
       ws['!cols'] = [
@@ -138,11 +137,50 @@ export function ExportGrades({
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Grades');
 
-      // Generate filename with date
-      const formattedDate = dateStr
-        ? dateStr.replace(/,/g, '').replace(/\s+/g, '-')
+      // Extract date range from header
+      const dateRow = header.find((row) => row[0]?.startsWith('Date Range:'));
+      const dateStr = dateRow
+        ? dateRow[0].replace('Date Range:', '').trim()
         : '';
-      const filename = `${courseCode}-${courseSection}-${formattedDate}-grades.xlsx`;
+
+      // Format the date range for filename
+      const dateRangeMatch = dateStr.match(
+        /(\w+ \d+, \d{4}) - (\w+ \d+, \d{4})/,
+      );
+      let formattedDate;
+
+      if (dateRangeMatch) {
+        try {
+          const startDate = new Date(dateRangeMatch[1]);
+          const endDate = new Date(dateRangeMatch[2]);
+          formattedDate = `${format(startDate, 'yyyy-MM-dd')}-to-${format(
+            endDate,
+            'yyyy-MM-dd',
+          )}`;
+        } catch (error) {
+          console.error('Error parsing dates:', error);
+          formattedDate = format(new Date(), 'yyyy-MM-dd');
+        }
+      } else {
+        formattedDate = format(new Date(), 'yyyy-MM-dd');
+      }
+
+      // Sanitize gradebook name for filename
+      const sanitizedGradebookName = gradebookName
+        .replace(/[^a-zA-Z0-9\s-]/g, '') // Remove special characters
+        .replace(/\s+/g, '-') // Replace spaces with hyphens
+        .toLowerCase();
+
+      console.log('Export values:', {
+        courseCode,
+        courseSection,
+        gradebookName,
+        sanitizedGradebookName,
+        formattedDate,
+      });
+
+      const filename = `${courseCode}-${courseSection}-${sanitizedGradebookName}-${formattedDate}-grades.xlsx`;
+      console.log('Generated filename:', filename); // Debug log
       XLSX.writeFile(wb, filename);
 
       setShowExportPreview(false);
@@ -169,7 +207,7 @@ export function ExportGrades({
 
   return (
     <Dialog open={showExportPreview} onOpenChange={setShowExportPreview}>
-      <DialogContent className='sm:max-w-[800px] max-h-[80vh] overflow-y-auto'>
+      <DialogContent className='sm:max-w-[1200px] max-h-[90vh] overflow-y-auto'>
         <DialogHeader>
           <DialogTitle className='text-[#124A69] text-xl font-bold'>
             Export Preview
@@ -181,18 +219,22 @@ export function ExportGrades({
 
         {exportData && (
           <div className='mt-4 overflow-x-auto'>
-            <table className='w-full border-collapse'>
+            <table className='w-full border-collapse min-w-[1000px]'>
               <tbody>
                 {exportData.header.map((row, rowIndex) => (
                   <tr key={`header-${rowIndex}`}>
                     {row.map((cell, cellIndex) => (
                       <td
                         key={`header-cell-${cellIndex}`}
-                        className={`border border-gray-200 p-2 ${
+                        className={`border border-gray-200 p-3 ${
                           rowIndex === 0
-                            ? 'bg-[#124A69] text-white text-center font-bold'
+                            ? 'bg-[#124A69] text-white text-center font-bold text-lg'
                             : rowIndex === 1
                             ? 'bg-gray-100 font-medium'
+                            : rowIndex === 2
+                            ? 'bg-gray-50 font-medium'
+                            : rowIndex === 3
+                            ? 'bg-gray-50 font-medium'
                             : ''
                         }`}
                         colSpan={
@@ -209,7 +251,7 @@ export function ExportGrades({
                     {row.map((cell, cellIndex) => (
                       <td
                         key={`student-cell-${cellIndex}`}
-                        className={`border border-gray-200 p-2 ${
+                        className={`border border-gray-200 p-3 ${
                           cellIndex === row.length - 1
                             ? cell === 'PASSED'
                               ? 'text-green-600 font-medium'
@@ -229,7 +271,7 @@ export function ExportGrades({
           </div>
         )}
 
-        <DialogFooter className='gap-2 sm:gap-2 mt-4'>
+        <DialogFooter className='gap-2 sm:gap-2 mt-6'>
           <Button
             variant='outline'
             onClick={() => setShowExportPreview(false)}
