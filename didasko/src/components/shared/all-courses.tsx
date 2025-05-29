@@ -17,6 +17,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import axiosInstance from '@/lib/axios';
 import { Skeleton } from '@/components/ui/skeleton';
+import axios from 'axios';
 
 interface Course {
   id: string;
@@ -82,8 +83,6 @@ const CourseCard = ({
   );
 };
 
-// Loading Skeleton Component
-// Loading Skeleton Component
 const LoadingSkeleton = ({ index }: { index: number }) => (
   <Card className='bg-white text-[#124A69] rounded-lg shadow-md w-full max-w-[320px] sm:max-w-[360px] md:max-w-[320px] lg:max-w-[380px] xl:max-w-[440px] flex flex-col justify-between h-45'>
     <div>
@@ -118,24 +117,53 @@ export default function AllCourses({ type }: AllCoursesProps) {
     }
 
     try {
+      console.log('Fetching courses for faculty ID:', session.user.id);
       const response = await axiosInstance.get('/courses', {
         params: {
           facultyId: session.user.id,
         },
       });
+      console.log('Raw API Response:', response.data);
       const courses = response.data.courses || [];
+      console.log(
+        'Courses before stats:',
+        courses.map((c: Course) => ({ id: c.id, title: c.title })),
+      );
+
       const coursesWithStats = await Promise.all(
         courses.map(async (course: Course) => {
-          const stats = await fetchAttendanceStats(course.slug);
-          return {
-            ...course,
-            attendanceStats: stats,
-          };
+          try {
+            const stats = await fetchAttendanceStats(course.slug);
+            return {
+              ...course,
+              attendanceStats: stats,
+            };
+          } catch (error) {
+            console.error(
+              `Failed to fetch stats for course ${course.slug}:`,
+              error,
+            );
+            return {
+              ...course,
+              attendanceStats: null,
+            };
+          }
         }),
+      );
+      console.log(
+        'Final courses with stats:',
+        coursesWithStats.map((c) => ({ id: c.id, title: c.title })),
       );
       setCourses(coursesWithStats);
     } catch (error) {
       console.error('Error in fetchSchedules:', error);
+      if (axios.isAxiosError(error)) {
+        console.error('API Error Details:', {
+          status: error.response?.status,
+          data: error.response?.data,
+          message: error.message,
+        });
+      }
       setCourses([]);
     } finally {
       setIsLoading(false);

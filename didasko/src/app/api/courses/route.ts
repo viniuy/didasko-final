@@ -19,9 +19,6 @@ export async function GET(request: Request) {
     const semester = searchParams.get('semester');
     const code = searchParams.get('code');
     const section = searchParams.get('section');
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
-    const skip = (page - 1) * limit;
 
     // Build where clause based on filters
     const where: Prisma.CourseWhereInput = {
@@ -58,10 +55,7 @@ export async function GET(request: Request) {
       ].filter((condition) => Object.keys(condition).length > 0),
     };
 
-    // Get total count for pagination
-    const total = await prisma.course.count({ where });
-
-    // Get courses with pagination and include related data
+    // Get courses with include related data
     const courses = await prisma.course.findMany({
       where,
       include: {
@@ -83,8 +77,6 @@ export async function GET(request: Request) {
         },
         schedules: true,
       },
-      skip,
-      take: limit,
       orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
     });
 
@@ -97,10 +89,10 @@ export async function GET(request: Request) {
         })),
       })),
       pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        total: courses.length,
+        page: 1,
+        limit: courses.length,
+        totalPages: 1,
       },
     };
 

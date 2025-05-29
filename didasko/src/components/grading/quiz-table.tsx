@@ -735,6 +735,16 @@ export function QuizTable({
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className='pl-8 w-[200px]'
                   />
+                  {searchQuery && (
+                    <button
+                      type='button'
+                      onClick={() => setSearchQuery('')}
+                      className='absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600'
+                      tabIndex={-1}
+                    >
+                      &#10005;
+                    </button>
+                  )}
                 </div>
               </div>
               <div className='flex items-center gap-2'>

@@ -35,6 +35,16 @@ interface Schedule {
   course: Course;
 }
 
+// Day order mapping for sorting
+const dayOrder: { [key: string]: number } = {
+  Monday: 1,
+  Tuesday: 2,
+  Wednesday: 3,
+  Thursday: 4,
+  Friday: 5,
+  Saturday: 6,
+};
+
 // Course Card Component
 const CourseCard = ({ schedule }: { schedule: Schedule }) => {
   const router = useRouter();
@@ -114,7 +124,13 @@ export default function AttendanceSchedule({
           courseSlug,
         },
       });
-      setSchedules(response.data.schedules || []);
+      // Sort schedules by day of the week
+      const sortedSchedules = (response.data.schedules || []).sort(
+        (a: Schedule, b: Schedule) => {
+          return (dayOrder[a.day] || 0) - (dayOrder[b.day] || 0);
+        },
+      );
+      setSchedules(sortedSchedules);
     } catch (error) {
       console.error('Error fetching schedules:', error);
       setSchedules([]);

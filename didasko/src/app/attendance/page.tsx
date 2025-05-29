@@ -22,7 +22,7 @@ export default function AttendancePage() {
             <div className='space-y-4 md:space-y-6 lg:space-y-8'>
               <div className='space-y-2'>
                 <h2 className='pl-2 pb-1 text-xl sm:text-2xl font-bold text-muted-foreground'>
-                  Your Schedule
+                  Your Class Schedule
                 </h2>
                 <Schedule />
               </div>
