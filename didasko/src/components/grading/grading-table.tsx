@@ -67,6 +67,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { HeaderSection } from './components/header-section';
+import { BottomActionBar } from './components/bottom-action-bar';
+import { EmptyState } from './components/empty-state';
 
 interface Student {
   id: string;
@@ -381,6 +384,7 @@ export function GradingTable({
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [showImageDialog, setShowImageDialog] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   // Function to handle dialog close
   const handleDialogClose = () => {
@@ -818,20 +822,20 @@ export function GradingTable({
 
   const validateRubricName = (name: string, index: number) => {
     if (!name.trim()) {
-      return 'Rubric name is required';
+      return 'Criteria name is required';
     }
     if (name.length > 15) {
-      return 'Rubric name must not exceed 15 characters';
+      return 'Criteria name must not exceed 15 characters';
     }
     if (!/^[a-zA-Z0-9\s]+$/.test(name)) {
-      return 'Rubric name can only contain letters, numbers, and spaces';
+      return 'Criteria name can only contain letters, numbers, and spaces';
     }
     // Check for duplicate names
     const isDuplicate = newReport.rubricDetails.some(
       (r, i) => i !== index && r.name.toLowerCase() === name.toLowerCase(),
     );
     if (isDuplicate) {
-      return 'Rubric name must be unique';
+      return 'Criteria name must be unique';
     }
     return '';
   };
@@ -1020,10 +1024,10 @@ export function GradingTable({
       return;
     }
 
-    // Validate all rubric names
+    // Validate all criteria names
     const rubricErrors = newReport.rubricDetails.map((rubric, idx, arr) => {
       if (isGroupView && idx === arr.length - 1) {
-        // Skip validation for Participation rubric in group view
+        // Skip validation for Participation criteria in group view
         return '';
       }
       return validateRubricName(rubric.name, idx);
@@ -1031,7 +1035,7 @@ export function GradingTable({
     const hasRubricErrors = rubricErrors.some((error) => error);
     if (hasRubricErrors) {
       setValidationErrors((prev) => ({ ...prev, rubrics: rubricErrors }));
-      toast.error('Please fix the rubric name errors', {
+      toast.error('Please fix the criteria name errors', {
         duration: 3000,
         style: {
           background: '#fff',
@@ -1848,7 +1852,7 @@ export function GradingTable({
     const hasRubricErrors = rubricErrors.some((error) => error);
     if (hasRubricErrors) {
       setValidationErrors((prev) => ({ ...prev, rubrics: rubricErrors }));
-      toast.error('Please fix the rubric name errors', {
+      toast.error('Please fix the criteria name errors', {
         duration: 3000,
         style: {
           background: '#fff',
@@ -1883,6 +1887,7 @@ export function GradingTable({
   const handleConfirmSaveEdit = async () => {
     if (!editingReport) return; // Add null check for editingReport
 
+    setIsSavingEdit(true);
     const loadingToast = toast.loading('Updating report...');
     try {
       const rubrics = newReport.rubricDetails.map((r, idx) => ({
@@ -1982,6 +1987,8 @@ export function GradingTable({
       console.error('Error updating report:', error);
       toast.dismiss(loadingToast);
       toast.error('Failed to update report');
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -2206,593 +2213,23 @@ export function GradingTable({
         }}
       />
       <div className='max-w-6xl mx-auto'>
-        {/* x */}
-        <div className='bg-white rounded-lg shadow-md'>
-          {/* Card Header */}
-          <div className='flex items-center gap-2 px-4 py-3 border-b'>
-            <Button
-              variant='ghost'
-              className='h-9 w-9 p-0 hover:bg-gray-100'
-              onClick={() => window.history.back()}
-            >
-              <svg
-                className='h-5 w-5 text-gray-500'
-                fill='none'
-                stroke='currentColor'
-                strokeWidth='2'
-                viewBox='0 0 24 24'
-              >
-                <path d='M15 18l-6-6 6-6' />
-              </svg>
-            </Button>
-            <div className='flex flex-col mr-4'>
-              <span className='text-lg font-bold text-[#124A69] leading-tight'>
-                {courseCode}
-              </span>
-              <span className='text-sm text-gray-500'>{courseSection}</span>
-            </div>
-            <div className='flex-1 flex items-center gap-2'>
-              {/* Header Controls */}
-              <div className='flex items-center gap-4'>
-                <div className='relative'>
-                  <Search className='absolute left-2 top-2.5 h-4 w-4 text-gray-500' />
-                  <Input
-                    placeholder='Search students...'
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className='pl-8 w-[200px]'
-                  />
-                  {searchQuery && (
-                    <button
-                      type='button'
-                      onClick={() => setSearchQuery('')}
-                      className='absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600'
-                      tabIndex={-1}
-                    >
-                      &#10005;
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className='flex items-center gap-2'>
-                <Button
-                  variant='outline'
-                  className='rounded-full relative flex items-center gap-2 px-3 bg-white text-[#124A69] hover:bg-gray-100 border border-gray-200'
-                  onClick={() => setIsFilterOpen(true)}
-                >
-                  <Filter className='h-4 w-4' />
-                  <span>Filter</span>
-                  {(gradeFilter.passed ||
-                    gradeFilter.failed ||
-                    gradeFilter.noGrades) && (
-                    <span className='absolute -top-1 -right-1 bg-[#124A69] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center'>
-                      {Number(gradeFilter.passed) +
-                        Number(gradeFilter.failed) +
-                        Number(gradeFilter.noGrades)}
-                    </span>
-                  )}
-                </Button>
-                <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
-                  <SheetContent
-                    side='right'
-                    className='w-[340px] sm:w-[400px] p-0'
-                  >
-                    <div className='p-6 border-b'>
-                      <SheetHeader>
-                        <SheetTitle className='text-xl font-semibold'>
-                          Filter Options
-                        </SheetTitle>
-                      </SheetHeader>
-                    </div>
-                    <div className='p-6 space-y-6'>
-                      <div className='space-y-4'>
-                        <label className='text-sm font-medium text-gray-700'>
-                          Remarks
-                        </label>
-                        <div className='space-y-3 border rounded-lg p-4 bg-white'>
-                          <label className='flex items-center gap-2 cursor-pointer'>
-                            <input
-                              type='checkbox'
-                              checked={gradeFilter.passed}
-                              onChange={() => handleFilterChange('passed')}
-                              className='rounded border-gray-300 text-[#124A69] focus:ring-[#124A69]'
-                            />
-                            <span className='text-sm text-gray-700'>
-                              Passed
-                            </span>
-                          </label>
-                          <label className='flex items-center gap-2 cursor-pointer'>
-                            <input
-                              type='checkbox'
-                              checked={gradeFilter.failed}
-                              onChange={() => handleFilterChange('failed')}
-                              className='rounded border-gray-300 text-[#124A69] focus:ring-[#124A69]'
-                            />
-                            <span className='text-sm text-gray-700'>
-                              Failed
-                            </span>
-                          </label>
-                          <label className='flex items-center gap-2 cursor-pointer'>
-                            <input
-                              type='checkbox'
-                              checked={gradeFilter.noGrades}
-                              onChange={() => handleFilterChange('noGrades')}
-                              className='rounded border-gray-300 text-[#124A69] focus:ring-[#124A69]'
-                            />
-                            <span className='text-sm text-gray-700'>
-                              No Grades
-                            </span>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                    <div className='flex items-center gap-4 p-6 border-t mt-auto'>
-                      <Button
-                        variant='outline'
-                        className='flex-1 rounded-lg'
-                        onClick={() => {
-                          setGradeFilter({
-                            passed: false,
-                            failed: false,
-                            noGrades: false,
-                          });
-                          setIsFilterOpen(false);
-                        }}
-                      >
-                        Clear
-                      </Button>
-                      <Button
-                        className='flex-1 rounded-lg bg-[#124A69] hover:bg-[#0D3A54] text-white'
-                        onClick={() => setIsFilterOpen(false)}
-                      >
-                        Apply
-                      </Button>
-                    </div>
-                  </SheetContent>
-                </Sheet>
-              </div>
-            </div>
-            <div className='flex items-center gap-1'>
-              <Button
-                variant='outline'
-                className={cn(
-                  'w-[180px] justify-start text-left font-normal',
-                  !selectedDate && 'text-muted-foreground',
-                )}
-              >
-                <CalendarIcon className='mr-2 h-4 w-4' />
-                {selectedDate ? format(selectedDate, 'PPP') : 'Pick a date'}
-              </Button>
-              <Button
-                onClick={() => setShowCriteriaDialog(true)}
-                className='ml-2 h-9 px-4 bg-[#124A69] text-white rounded shadow flex items-center '
-              >
-                Manage Report
-              </Button>
-            </div>
-          </div>
-        </div>
-        <Dialog open={showCriteriaDialog} onOpenChange={handleDialogClose}>
-          <DialogContent className='sm:max-w-[450px]'>
-            <DialogHeader>
-              <DialogTitle className='text-[#124A69] text-2xl font-bold'>
-                {isRecitationCriteria ? 'Recitation' : 'Grading Report'}
-              </DialogTitle>
-              <DialogDescription className='text-gray-500'>
-                {isRecitationCriteria
-                  ? 'Select existing recitation or create new ones'
-                  : 'Select existing report or create new ones'}
-              </DialogDescription>
-            </DialogHeader>
-            {criteriaLoading ? (
-              <div className='flex justify-center items-center py-8'>
-                <Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
-              </div>
-            ) : (
-              <Tabs defaultValue='existing' className='w-full'>
-                <TabsList className='grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg'>
-                  <TabsTrigger
-                    value='existing'
-                    className='data-[state=active]:bg-white data-[state=active]:shadow-sm'
-                  >
-                    Use Existing
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value='new'
-                    className='data-[state=active]:bg-white data-[state=active]:shadow-sm'
-                  >
-                    Create New
-                  </TabsTrigger>
-                </TabsList>
-                <TabsContent value='existing'>
-                  <div className='space-y-4 py-4'>
-                    <div className='text-sm font-medium text-gray-700 mb-2'>
-                      {isRecitationCriteria
-                        ? 'Select a recitation'
-                        : 'Select a report'}
-                    </div>
-                    {criteriaLoading ? (
-                      <div className='flex flex-col items-center justify-center py-8'>
-                        <Loader2 className='h-8 w-8 animate-spin text-[#124A69]' />
-                        <p className='text-sm text-gray-500 mt-2'>
-                          {loadingMessage}
-                        </p>
-                      </div>
-                    ) : savedReports.length === 0 ? (
-                      <div className='text-gray-500 text-center py-4'>
-                        {isRecitationCriteria
-                          ? 'No recitation reports found.'
-                          : 'No reports found.'}
-                      </div>
-                    ) : (
-                      <div className='flex flex-col gap-4'>
-                        <Select
-                          value={selectedReport}
-                          onValueChange={setSelectedReport}
-                        >
-                          <SelectTrigger className='bg-gray-50 border-gray-200 w-full max-w-[400px]'>
-                            <SelectValue
-                              placeholder={
-                                isRecitationCriteria
-                                  ? 'Select saved recitation'
-                                  : 'Select saved report'
-                              }
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {savedReports.map((report) => {
-                              // Count students without grades for this report
-                              const ungradedCount = students.filter(
-                                (student) => {
-                                  const studentScore = scores[student.id];
-                                  return (
-                                    !studentScore ||
-                                    studentScore.scores.length === 0 ||
-                                    studentScore.scores.every(
-                                      (score) => score === 0,
-                                    )
-                                  );
-                                },
-                              ).length;
+        <HeaderSection
+          courseCode={courseCode}
+          courseSection={courseSection}
+          selectedDate={selectedDate}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onFilterClick={() => setIsFilterOpen(true)}
+          onDateSelect={() => onDateSelect?.(selectedDate)}
+          onManageReport={() => setShowCriteriaDialog(true)}
+          filterCount={
+            Number(gradeFilter.passed) +
+            Number(gradeFilter.failed) +
+            Number(gradeFilter.noGrades)
+          }
+        />
 
-                              return (
-                                <SelectItem key={report.id} value={report.id}>
-                                  <div className='flex flex-col items-start'>
-                                    <span className='font-medium text-[#124A69]'>
-                                      {report.name}
-                                    </span>
-                                    <span className='text-xs text-gray-500'>
-                                      {format(new Date(report.date), 'PPP')} |{' '}
-                                      {report.rubrics.length} Rubrics | Passing
-                                      Score: {report.passingScore}%
-                                    </span>
-                                  </div>
-                                </SelectItem>
-                              );
-                            })}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                    <DialogFooter className='gap-2 sm:gap-2'>
-                      <Button
-                        variant='outline'
-                        onClick={handleDialogClose}
-                        className='border-gray-200'
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        onClick={handleApplyCriteria}
-                        disabled={!selectedReport}
-                        className='bg-[#124A69] hover:bg-[#0d3a56]'
-                      >
-                        {isRecitationCriteria
-                          ? 'Apply Selected Recitation'
-                          : 'Apply Selected Report'}
-                      </Button>
-                    </DialogFooter>
-                  </div>
-                </TabsContent>
-                <TabsContent value='new'>
-                  <div className='space-y-4 py-4'>
-                    <div className='grid gap-4'>
-                      <div className='grid gap-2'>
-                        <label
-                          htmlFor='name'
-                          className='text-sm font-medium text-gray-700'
-                        >
-                          {isRecitationCriteria
-                            ? 'Recitation Name'
-                            : 'Report Name'}
-                          <span className='text-red-500'> *</span>
-                        </label>
-                        <Input
-                          id='name'
-                          value={newReport.name}
-                          onChange={handleReportNameChange}
-                          placeholder={
-                            isRecitationCriteria
-                              ? 'e.g., Week 1 Recitation'
-                              : 'e.g., Mt. Mayon Report'
-                          }
-                          maxLength={20}
-                          className={`bg-gray-50 border-gray-200 ${
-                            validationErrors.name ? 'border-red-500' : ''
-                          }`}
-                        />
-                        <div className='flex justify-between mt-1'>
-                          {validationErrors.name && (
-                            <p className='text-sm text-red-500'>
-                              {validationErrors.name}
-                            </p>
-                          )}
-                          <p className='text-xs text-gray-500 -mt-2 ml-auto'>
-                            {newReport.name.length}/20
-                          </p>
-                        </div>
-                      </div>
-                      <div className='grid gap-2'>
-                        <label
-                          htmlFor='rubrics'
-                          className='text-sm font-medium text-gray-700'
-                        >
-                          Number of Rubrics{' '}
-                          <span className='text-red-500'> *</span>
-                        </label>
-                        <Select
-                          value={newReport.rubrics}
-                          onValueChange={handleRubricCountChange}
-                        >
-                          <SelectTrigger className='bg-gray-50 border-gray-200'>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value='2'>2 Rubrics</SelectItem>
-                            <SelectItem value='3'>3 Rubrics</SelectItem>
-                            <SelectItem value='4'>4 Rubrics</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className='grid grid-cols-2 gap-4'>
-                        <div className='grid gap-2'>
-                          <label
-                            htmlFor='scoringRange'
-                            className='text-sm font-medium text-gray-700'
-                          >
-                            Scoring Range{' '}
-                            <span className='text-red-500'> *</span>
-                          </label>
-                          <Select
-                            value={newReport.scoringRange}
-                            onValueChange={(value) =>
-                              setNewReport((prev) => ({
-                                ...prev,
-                                scoringRange: value,
-                              }))
-                            }
-                          >
-                            <SelectTrigger className='bg-gray-50 border-gray-200'>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value='5'>1-5</SelectItem>
-                              <SelectItem value='10'>1-10</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className='grid gap-2'>
-                          <label
-                            htmlFor='passingScore'
-                            className='text-sm font-medium text-gray-700'
-                          >
-                            Passing Score (%)
-                            <span className='text-red-500'> *</span>
-                          </label>
-                          <Select
-                            value={newReport.passingScore}
-                            onValueChange={(value) =>
-                              setNewReport((prev) => ({
-                                ...prev,
-                                passingScore: value,
-                              }))
-                            }
-                          >
-                            <SelectTrigger className='bg-gray-50 border-gray-200'>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value='60'>60%</SelectItem>
-                              <SelectItem value='65'>65%</SelectItem>
-                              <SelectItem value='70'>70%</SelectItem>
-                              <SelectItem value='75'>75%</SelectItem>
-                              <SelectItem value='80'>80%</SelectItem>
-                              <SelectItem value='85'>85%</SelectItem>
-                              <SelectItem value='90'>90%</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      <div className='grid gap-4 mt-2'>
-                        <label className='text-sm font-medium text-gray-700'>
-                          Rubric Details{' '}
-                          <span className='text-red-500'> *</span>
-                        </label>
-                        <div className='space-y-4 max-h-[200px] overflow-y-auto pr-2'>
-                          {newReport.rubricDetails.map((rubric, index) => (
-                            <div
-                              key={index}
-                              className='flex items-center gap-2'
-                            >
-                              <div className='relative w-[400px]'>
-                                <Input
-                                  value={
-                                    isGroupView &&
-                                    index === newReport.rubricDetails.length - 1
-                                      ? 'Participation'
-                                      : rubric.name
-                                  }
-                                  onChange={(e) =>
-                                    updateRubricDetail(
-                                      index,
-                                      'name',
-                                      e.target.value,
-                                    )
-                                  }
-                                  placeholder={`Rubric ${index + 1} name`}
-                                  className={`bg-gray-50 border-gray-200 ${
-                                    validationErrors.rubrics?.[index]
-                                      ? 'border-red-500'
-                                      : ''
-                                  } ${
-                                    isGroupView &&
-                                    index === newReport.rubricDetails.length - 1
-                                      ? 'bg-gray-100 cursor-not-allowed'
-                                      : ''
-                                  }`}
-                                  disabled={
-                                    isGroupView &&
-                                    index === newReport.rubricDetails.length - 1
-                                  }
-                                />
-                                {validationErrors.rubrics?.[index] && (
-                                  <p className='text-sm text-red-500'>
-                                    {validationErrors.rubrics[index]}
-                                  </p>
-                                )}
-                                <p className='flex justify-end text-xs text-gray-500 ml-auto'>
-                                  {rubric.name.length}/15
-                                </p>
-                              </div>
-                              <div className='relative w-[200px] -mt-4'>
-                                <div className='flex items-center gap-2'>
-                                  <Slider
-                                    value={[rubric.weight]}
-                                    onValueChange={(value: number[]) =>
-                                      updateRubricDetail(
-                                        index,
-                                        'weight',
-                                        value[0],
-                                      )
-                                    }
-                                    max={100}
-                                    step={1}
-                                    className='w-[100px]'
-                                  />
-                                  <Input
-                                    value={rubric.weight}
-                                    onChange={(e) =>
-                                      updateRubricDetail(
-                                        index,
-                                        'weight',
-                                        parseInt(e.target.value),
-                                      )
-                                    }
-                                    type='number'
-                                    min={0}
-                                    max={100}
-                                    className='w-[60px] bg-gray-50 border-gray-200'
-                                  />
-                                  <span className='text-sm text-gray-500'>
-                                    %
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        <div className='flex justify-end mt-2'>
-                          <p className='text-sm font-medium'>
-                            Total Weight:{' '}
-                            <span
-                              className={
-                                newReport.rubricDetails.reduce(
-                                  (sum, r) => sum + r.weight,
-                                  0,
-                                ) === 100
-                                  ? 'text-green-600'
-                                  : 'text-red-500'
-                              }
-                            >
-                              {newReport.rubricDetails.reduce(
-                                (sum, r) => sum + r.weight,
-                                0,
-                              )}
-                              %
-                            </span>
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <DialogFooter className='gap-2 sm:gap-2'>
-                      <Button
-                        variant='outline'
-                        onClick={() => {
-                          if (isEditingCriteria) {
-                            setIsEditingCriteria(false);
-                            setEditingReport(null);
-                            setNewReport({
-                              name: '',
-                              rubrics: '2',
-                              scoringRange: '5',
-                              passingScore: '75',
-                              rubricDetails: [
-                                { name: '', weight: 50 },
-                                { name: '', weight: 50 },
-                              ],
-                            });
-                            setValidationErrors({});
-                          } else {
-                            handleDialogClose();
-                          }
-                        }}
-                        className='border-gray-200'
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        onClick={
-                          isEditingCriteria
-                            ? handleSaveEdit
-                            : handleCreateReport
-                        }
-                        disabled={
-                          !newReport.name ||
-                          !newReport.rubrics ||
-                          newReport.rubricDetails.reduce(
-                            (sum, r) => sum + r.weight,
-                            0,
-                          ) !== 100 ||
-                          newReport.rubricDetails.some((r) => !r.name.trim()) ||
-                          newReport.rubricDetails.some((r, i) =>
-                            newReport.rubricDetails.some(
-                              (other, j) =>
-                                i !== j &&
-                                r.name.toLowerCase() ===
-                                  other.name.toLowerCase(),
-                            ),
-                          )
-                        }
-                        className='bg-[#124A69] hover:bg-[#0d3a56]'
-                      >
-                        {isEditingCriteria
-                          ? 'Save Changes'
-                          : isRecitationCriteria
-                          ? 'Create New Recitation'
-                          : 'Create New Report'}
-                      </Button>
-                    </DialogFooter>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            )}
-          </DialogContent>
-        </Dialog>
-
-        {!showCriteriaDialog && activeReport && (
+        {activeReport && (
           <div className='space-y-4 p-0 rounded-lg shadow-md'>
             {/* Grading Table */}
             <div className='overflow-x-auto max-h-[calc(100vh-300px)]'>
@@ -2988,284 +2425,623 @@ export function GradingTable({
             </div>
           </div>
         )}
+
         {!showCriteriaDialog && !activeReport && (
-          <div className='flex flex-col items-center justify-center py-12 text-center'>
-            {criteriaLoading ? (
-              <div className='flex flex-col items-center gap-4'>
-                <Loader2 className='h-8 w-8 animate-spin text-[#124A69]' />
-                <p className='text-gray-500'>Loading grading criteria...</p>
-              </div>
-            ) : (
-              <>
-                <div className='text-2xl font-semibold text-[#124A69] mb-2'>
-                  No Report Selected
-                </div>
-                <p className='text-gray-500'>
-                  Please select a date and create or choose a grading report to
-                  begin.
-                </p>
-              </>
-            )}
-          </div>
+          <EmptyState isLoading={criteriaLoading} />
         )}
-        <div className='flex justify-between mt-3'>
-          <div className='flex items-center text-sm text-gray-500'>
-            Criteria:{' '}
-            <span className='font-medium text-[#124A69] ml-1'>
-              {activeReport?.name}
-            </span>
-          </div>
-          <div className='flex gap-2'>
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={() => {
-                if (previousScores) {
-                  // Undo action
-                  if (!previousScores) return;
 
-                  // Create a new object to ensure state update triggers re-render
-                  const restoredScores = { ...previousScores };
+        <BottomActionBar
+          activeReport={activeReport}
+          previousScores={previousScores}
+          isLoading={isLoading}
+          isLoadingStudents={isLoadingStudents}
+          hasChanges={hasChanges}
+          isSaving={isSaving}
+          onReset={() => {
+            if (previousScores) {
+              // Undo action
+              if (!previousScores) return;
 
-                  // Update states in sequence to ensure proper re-render
-                  setScores({}); // Clear current scores first
-                  setTimeout(() => {
-                    setScores(restoredScores);
-                    setPreviousScores(null);
-                    toast.success('Grades restored', {
-                      duration: 3000,
-                      style: {
-                        background: '#fff',
-                        color: '#124A69',
-                        border: '1px solid #e5e7eb',
-                      },
-                    });
-                  }, 0);
-                } else {
-                  // Show reset confirmation modal
-                  setShowResetConfirmation(true);
-                }
-              }}
-              className={
-                previousScores
-                  ? 'h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] border-none'
-                  : 'h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
-              }
-              disabled={
-                isLoading ||
-                isLoadingStudents ||
-                (!previousScores && hasChanges())
-              }
-            >
-              {previousScores ? 'Undo Reset' : 'Reset Grades'}
-            </Button>
+              // Create a new object to ensure state update triggers re-render
+              const restoredScores = { ...previousScores };
 
-            {activeReport && (
-              <Button
-                variant='outline'
-                size='sm'
-                onClick={() => {
-                  if (activeReport) {
-                    handleEditCriteria(activeReport);
-                    setShowEditDialog(true);
-                  }
-                }}
-                className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
-                disabled={isLoading || isLoadingStudents || hasChanges()}
-              >
-                Edit Criteria
-              </Button>
-            )}
-
-            <Button
-              variant='outline'
-              onClick={handleExport}
-              className='h-9 px-4 border-gray-200 text-gray-600 hover:bg-gray-50'
-              disabled={
-                isLoading || isLoadingStudents || !activeReport || hasChanges()
-              }
-            >
-              Export to Excel
-            </Button>
-            <Button
-              onClick={handleSaveGrades}
-              disabled={isLoading || !hasChanges() || isSaving}
-              className='h-9 px-4 bg-[#124A69] text-white hover:bg-[#0d3a56] disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden'
-            >
-              {isSaving ? (
-                <>
-                  <span className='absolute inset-0 flex items-center justify-center bg-[#124A69]'>
-                    <Loader2 className='h-4 w-4 animate-spin text-white' />
-                  </span>
-                  <span className='opacity-0'>Save Grades</span>
-                </>
-              ) : (
-                'Save Grades'
-              )}
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <div className='max-w-6xl mx-auto'>
-        {/* Reset Confirmation Dialog */}
-        <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
-          <DialogContent className='sm:max-w-[425px]'>
-            <DialogHeader>
-              <DialogTitle className='text-[#124A69] text-xl font-bold'>
-                Reset Grades
-              </DialogTitle>
-              <DialogDescription className='text-gray-500'>
-                Are you sure you want to reset all grades? This action cannot be
-                undone.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className='gap-2 sm:gap-2'>
-              <Button
-                variant='outline'
-                onClick={() => setShowResetDialog(false)}
-                className='border-gray-200'
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleResetGrades}
-                className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
-              >
-                Reset Grades
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Export Warning Dialog */}
-        <Dialog open={showExportWarning} onOpenChange={setShowExportWarning}>
-          <DialogContent className='sm:max-w-[425px]'>
-            <DialogHeader>
-              <DialogTitle className='text-[#124A69] text-xl font-bold'>
-                Warning: Unscored Students
-              </DialogTitle>
-              <DialogDescription className='text-gray-500'>
-                There are students who have not been scored yet. Do you want to
-                proceed with the export?
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className='gap-2 sm:gap-2'>
-              <Button
-                variant='outline'
-                onClick={() => setShowExportWarning(false)}
-                className='border-gray-200'
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleConfirmExportWithWarning}
-                className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
-              >
-                Proceed with Export
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Export Preview Dialog */}
-        <ExportReporting
-          showExportPreview={showExportPreview}
-          setShowExportPreview={setShowExportPreview}
-          exportData={exportData}
-          selectedDate={selectedDate}
-          courseCode={courseCode}
-          courseSection={courseSection}
-          rubricDetails={rubricDetails}
+              // Update states in sequence to ensure proper re-render
+              setScores({}); // Clear current scores first
+              setTimeout(() => {
+                setScores(restoredScores);
+                setPreviousScores(null);
+                toast.success('Grades restored', {
+                  duration: 3000,
+                  style: {
+                    background: '#fff',
+                    color: '#124A69',
+                    border: '1px solid #e5e7eb',
+                  },
+                });
+              }, 0);
+            } else {
+              // Show reset confirmation modal
+              setShowResetConfirmation(true);
+            }
+          }}
+          onEdit={() => {
+            if (activeReport) {
+              handleEditCriteria(activeReport);
+              setShowEditDialog(true);
+            }
+          }}
+          onExport={handleExport}
+          onSave={handleSaveGrades}
         />
-
-        {/* Reset Confirmation Modal */}
-        <Dialog
-          open={showResetConfirmation}
-          onOpenChange={setShowResetConfirmation}
-        >
-          <DialogContent className='sm:max-w-[425px]'>
-            <DialogHeader>
-              <DialogTitle className='text-[#124A69] text-xl font-bold'>
-                Reset Grades
-              </DialogTitle>
-              <DialogDescription className='text-gray-500'>
-                Are you sure you want to reset all grades? This action cannot be
-                undone.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className='gap-2 sm:gap-2 mt-4'>
-              <Button
-                variant='outline'
-                onClick={() => setShowResetConfirmation(false)}
-                className='border-gray-200'
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={() => {
-                  setPreviousScores(scores);
-                  setScores({});
-                  students.forEach((student) => {
-                    // Reset each rubric score individually
-                    rubricDetails.forEach((_, index) => {
-                      handleScoreChange(student.id, index, 0);
-                    });
-                  });
-                  setShowResetConfirmation(false);
-                  toast.success('Grades reset successfully', {
-                    duration: 5000,
-                    style: {
-                      background: '#fff',
-                      color: '#124A69',
-                      border: '1px solid #e5e7eb',
-                    },
-                  });
-                }}
-                className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
-              >
-                Reset Grades
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Unsaved Changes Dialog */}
-        <Dialog
-          open={showUnsavedChangesDialog}
-          onOpenChange={setShowUnsavedChangesDialog}
-        >
-          <DialogContent className='sm:max-w-[425px]'>
-            <DialogHeader>
-              <DialogTitle className='text-[#124A69] text-xl font-bold'>
-                Unsaved Changes
-              </DialogTitle>
-              <DialogDescription className='text-gray-500'>
-                You have unsaved changes. Are you sure you want to leave? Your
-                changes will be lost.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className='gap-2 sm:gap-2'>
-              <Button
-                variant='outline'
-                onClick={() => {
-                  setShowUnsavedChangesDialog(false);
-                  setPendingNavigation(null);
-                }}
-                className='border-gray-200'
-              >
-                Stay
-              </Button>
-              <Button
-                onClick={handleNavigation}
-                className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
-              >
-                Leave
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
+
+      {/* Keep all the dialogs here */}
+      {/* ... existing dialogs ... */}
+      <Dialog open={showCriteriaDialog} onOpenChange={setShowCriteriaDialog}>
+        <DialogContent className='sm:max-w-[450px] p-6'>
+          <DialogHeader>
+            <DialogTitle className='text-xl font-semibold text-[#124A69]'>
+              {isEditingCriteria ? 'Edit Report' : 'Create New Report'}
+            </DialogTitle>
+            <DialogDescription>
+              {isEditingCriteria
+                ? 'Edit the rubric details below'
+                : 'Set up your grading criteria and weights'}
+            </DialogDescription>
+          </DialogHeader>
+          {criteriaLoading ? (
+            <div className='flex justify-center items-center py-8'>
+              <Loader2 className='h-8 w-8 animate-spin text-muted-foreground' />
+            </div>
+          ) : (
+            <Tabs defaultValue='existing' className='w-full'>
+              <TabsList className='grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg'>
+                <TabsTrigger
+                  value='existing'
+                  className='data-[state=active]:bg-white data-[state=active]:shadow-sm'
+                >
+                  Use Existing
+                </TabsTrigger>
+                <TabsTrigger
+                  value='new'
+                  className='data-[state=active]:bg-white data-[state=active]:shadow-sm'
+                >
+                  Create New
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value='existing'>
+                <div className='space-y-4 py-4'>
+                  <div className='text-sm font-medium text-gray-700 mb-2'>
+                    {isRecitationCriteria
+                      ? 'Select a recitation'
+                      : 'Select a report'}
+                  </div>
+                  {criteriaLoading ? (
+                    <div className='flex flex-col items-center justify-center py-8'>
+                      <Loader2 className='h-8 w-8 animate-spin text-[#124A69]' />
+                      <p className='text-sm text-gray-500 mt-2'>
+                        {loadingMessage}
+                      </p>
+                    </div>
+                  ) : savedReports.length === 0 ? (
+                    <div className='text-gray-500 text-center py-4'>
+                      {isRecitationCriteria
+                        ? 'No recitation reports found.'
+                        : 'No reports found.'}
+                    </div>
+                  ) : (
+                    <div className='flex flex-col gap-4'>
+                      <Select
+                        value={selectedReport}
+                        onValueChange={setSelectedReport}
+                      >
+                        <SelectTrigger className='bg-gray-50 border-gray-200 w-full max-w-[400px]'>
+                          <SelectValue
+                            placeholder={
+                              isRecitationCriteria
+                                ? 'Select saved recitation'
+                                : 'Select saved report'
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {savedReports.map((report) => {
+                            // Count students without grades for this report
+                            const ungradedCount = students.filter((student) => {
+                              const studentScore = scores[student.id];
+                              return (
+                                !studentScore ||
+                                studentScore.scores.length === 0 ||
+                                studentScore.scores.every(
+                                  (score) => score === 0,
+                                )
+                              );
+                            }).length;
+
+                            return (
+                              <SelectItem key={report.id} value={report.id}>
+                                <div className='flex flex-col items-start'>
+                                  <span className='font-medium text-[#124A69]'>
+                                    {report.name}
+                                  </span>
+                                  <span className='text-xs text-gray-500'>
+                                    {format(new Date(report.date), 'PPP')} |{' '}
+                                    {report.rubrics.length} Criteria | Passing
+                                    Score: {report.passingScore}%
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  <DialogFooter className='gap-2 sm:gap-2'>
+                    <Button
+                      variant='outline'
+                      onClick={handleDialogClose}
+                      className='border-gray-200'
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleApplyCriteria}
+                      disabled={!selectedReport}
+                      className='bg-[#124A69] hover:bg-[#0d3a56]'
+                    >
+                      {isRecitationCriteria
+                        ? 'Apply Selected Recitation'
+                        : 'Apply Selected Report'}
+                    </Button>
+                  </DialogFooter>
+                </div>
+              </TabsContent>
+              <TabsContent value='new'>
+                <div className='space-y-4 py-4'>
+                  <div className='grid gap-4'>
+                    <div className='grid gap-2'>
+                      <label
+                        htmlFor='name'
+                        className='text-sm font-medium text-gray-700'
+                      >
+                        {isRecitationCriteria
+                          ? 'Recitation Name'
+                          : 'Report Name'}
+                        <span className='text-red-500'> *</span>
+                      </label>
+                      <Input
+                        id='name'
+                        value={newReport.name}
+                        onChange={handleReportNameChange}
+                        placeholder={
+                          isRecitationCriteria
+                            ? 'e.g., Week 1 Recitation'
+                            : 'e.g., Mt. Mayon Report'
+                        }
+                        maxLength={20}
+                        className={`bg-gray-50 border-gray-200 ${
+                          validationErrors.name ? 'border-red-500' : ''
+                        }`}
+                      />
+                      <div className='flex justify-between mt-1'>
+                        {validationErrors.name && (
+                          <p className='text-sm text-red-500'>
+                            {validationErrors.name}
+                          </p>
+                        )}
+                        <p className='text-xs text-gray-500 -mt-2 ml-auto'>
+                          {newReport.name.length}/20
+                        </p>
+                      </div>
+                    </div>
+                    <div className='grid gap-2'>
+                      <label
+                        htmlFor='rubrics'
+                        className='text-sm font-medium text-gray-700'
+                      >
+                        Number of Criteria{' '}
+                        <span className='text-red-500'> *</span>
+                      </label>
+                      <Select
+                        value={newReport.rubrics}
+                        onValueChange={handleRubricCountChange}
+                      >
+                        <SelectTrigger className='bg-gray-50 border-gray-200'>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value='2'>2 Criteria</SelectItem>
+                          <SelectItem value='3'>3 Criteria</SelectItem>
+                          <SelectItem value='4'>4 Criteria</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className='grid grid-cols-2 gap-4'>
+                      <div className='grid gap-2'>
+                        <label
+                          htmlFor='scoringRange'
+                          className='text-sm font-medium text-gray-700'
+                        >
+                          Scoring Range <span className='text-red-500'> *</span>
+                        </label>
+                        <Select
+                          value={newReport.scoringRange}
+                          onValueChange={(value) =>
+                            setNewReport((prev) => ({
+                              ...prev,
+                              scoringRange: value,
+                            }))
+                          }
+                        >
+                          <SelectTrigger className='bg-gray-50 border-gray-200'>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value='5'>1-5</SelectItem>
+                            <SelectItem value='10'>1-10</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className='grid gap-2'>
+                        <label
+                          htmlFor='passingScore'
+                          className='text-sm font-medium text-gray-700'
+                        >
+                          Passing Score (%)
+                          <span className='text-red-500'> *</span>
+                        </label>
+                        <Select
+                          value={newReport.passingScore}
+                          onValueChange={(value) =>
+                            setNewReport((prev) => ({
+                              ...prev,
+                              passingScore: value,
+                            }))
+                          }
+                        >
+                          <SelectTrigger className='bg-gray-50 border-gray-200'>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value='60'>60%</SelectItem>
+                            <SelectItem value='65'>65%</SelectItem>
+                            <SelectItem value='70'>70%</SelectItem>
+                            <SelectItem value='75'>75%</SelectItem>
+                            <SelectItem value='80'>80%</SelectItem>
+                            <SelectItem value='85'>85%</SelectItem>
+                            <SelectItem value='90'>90%</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className='grid gap-4 mt-2'>
+                      <label className='text-sm font-medium text-gray-700'>
+                        Rubric Details <span className='text-red-500'> *</span>
+                      </label>
+                      <div className='space-y-4 max-h-[200px] overflow-y-auto pr-2'>
+                        {newReport.rubricDetails.map((rubric, index) => (
+                          <div key={index} className='flex items-center gap-2'>
+                            <div className='relative w-[400px]'>
+                              <Input
+                                value={
+                                  isGroupView &&
+                                  index === newReport.rubricDetails.length - 1
+                                    ? 'Participation'
+                                    : rubric.name
+                                }
+                                onChange={(e) =>
+                                  updateRubricDetail(
+                                    index,
+                                    'name',
+                                    e.target.value,
+                                  )
+                                }
+                                placeholder={`Criteria ${index + 1} name`}
+                                className={`bg-gray-50 border-gray-200 ${
+                                  validationErrors.rubrics?.[index]
+                                    ? 'border-red-500'
+                                    : ''
+                                } ${
+                                  isGroupView &&
+                                  index === newReport.rubricDetails.length - 1
+                                    ? 'bg-gray-100 cursor-not-allowed'
+                                    : ''
+                                }`}
+                                disabled={
+                                  isGroupView &&
+                                  index === newReport.rubricDetails.length - 1
+                                }
+                              />
+                              {validationErrors.rubrics?.[index] && (
+                                <p className='text-sm text-red-500'>
+                                  {validationErrors.rubrics[index]}
+                                </p>
+                              )}
+                              <p className='flex justify-end text-xs text-gray-500 ml-auto'>
+                                {rubric.name.length}/15
+                              </p>
+                            </div>
+                            <div className='relative w-[200px] -mt-4'>
+                              <div className='flex items-center gap-2'>
+                                <Slider
+                                  value={[rubric.weight]}
+                                  onValueChange={(value: number[]) =>
+                                    updateRubricDetail(
+                                      index,
+                                      'weight',
+                                      value[0],
+                                    )
+                                  }
+                                  max={100}
+                                  step={1}
+                                  className='w-[100px]'
+                                />
+                                <Input
+                                  value={rubric.weight}
+                                  onChange={(e) =>
+                                    updateRubricDetail(
+                                      index,
+                                      'weight',
+                                      parseInt(e.target.value),
+                                    )
+                                  }
+                                  type='number'
+                                  min={0}
+                                  max={100}
+                                  className='w-[60px] bg-gray-50 border-gray-200'
+                                />
+                                <span className='text-sm text-gray-500'>%</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className='flex justify-end mt-2'>
+                        <p className='text-sm font-medium'>
+                          Total Weight:{' '}
+                          <span
+                            className={
+                              newReport.rubricDetails.reduce(
+                                (sum, r) => sum + r.weight,
+                                0,
+                              ) === 100
+                                ? 'text-green-600'
+                                : 'text-red-500'
+                            }
+                          >
+                            {newReport.rubricDetails.reduce(
+                              (sum, r) => sum + r.weight,
+                              0,
+                            )}
+                            %
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <DialogFooter className='gap-2 sm:gap-2'>
+                    <Button
+                      variant='outline'
+                      onClick={() => {
+                        if (isEditingCriteria) {
+                          setIsEditingCriteria(false);
+                          setEditingReport(null);
+                          setNewReport({
+                            name: '',
+                            rubrics: '2',
+                            scoringRange: '5',
+                            passingScore: '75',
+                            rubricDetails: [
+                              { name: '', weight: 50 },
+                              { name: '', weight: 50 },
+                            ],
+                          });
+                          setValidationErrors({});
+                        } else {
+                          handleDialogClose();
+                        }
+                      }}
+                      className='border-gray-200'
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={
+                        isEditingCriteria ? handleSaveEdit : handleCreateReport
+                      }
+                      disabled={
+                        !newReport.name ||
+                        !newReport.rubrics ||
+                        newReport.rubricDetails.reduce(
+                          (sum, r) => sum + r.weight,
+                          0,
+                        ) !== 100 ||
+                        newReport.rubricDetails.some((r) => !r.name.trim()) ||
+                        newReport.rubricDetails.some((r, i) =>
+                          newReport.rubricDetails.some(
+                            (other, j) =>
+                              i !== j &&
+                              r.name.toLowerCase() === other.name.toLowerCase(),
+                          ),
+                        )
+                      }
+                      className='bg-[#124A69] hover:bg-[#0d3a56]'
+                    >
+                      {isEditingCriteria
+                        ? 'Save Changes'
+                        : isRecitationCriteria
+                        ? 'Create New Recitation'
+                        : 'Create New Report'}
+                    </Button>
+                  </DialogFooter>
+                </div>
+              </TabsContent>
+            </Tabs>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Confirmation Dialog */}
+      <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <DialogContent className='sm:max-w-[425px]'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              Reset Grades
+            </DialogTitle>
+            <DialogDescription className='text-gray-500'>
+              Are you sure you want to reset all grades? This action cannot be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className='gap-2 sm:gap-2'>
+            <Button
+              variant='outline'
+              onClick={() => setShowResetDialog(false)}
+              className='border-gray-200'
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleResetGrades}
+              className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+            >
+              Reset Grades
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Export Warning Dialog */}
+      <Dialog open={showExportWarning} onOpenChange={setShowExportWarning}>
+        <DialogContent className='sm:max-w-[425px]'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              Warning: Unscored Students
+            </DialogTitle>
+            <DialogDescription className='text-gray-500'>
+              There are students who have not been scored yet. Do you want to
+              proceed with the export?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className='gap-2 sm:gap-2'>
+            <Button
+              variant='outline'
+              onClick={() => setShowExportWarning(false)}
+              className='border-gray-200'
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmExportWithWarning}
+              className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+            >
+              Proceed with Export
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Export Preview Dialog */}
+      <ExportReporting
+        showExportPreview={showExportPreview}
+        setShowExportPreview={setShowExportPreview}
+        exportData={exportData}
+        selectedDate={selectedDate}
+        courseCode={courseCode}
+        courseSection={courseSection}
+        rubricDetails={rubricDetails}
+      />
+
+      {/* Reset Confirmation Modal */}
+      <Dialog
+        open={showResetConfirmation}
+        onOpenChange={setShowResetConfirmation}
+      >
+        <DialogContent className='sm:max-w-[425px]'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              Reset Grades
+            </DialogTitle>
+            <DialogDescription className='text-gray-500'>
+              Are you sure you want to reset all grades? This action cannot be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className='gap-2 sm:gap-2 mt-4'>
+            <Button
+              variant='outline'
+              onClick={() => setShowResetConfirmation(false)}
+              className='border-gray-200'
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                setPreviousScores(scores);
+                setScores({});
+                students.forEach((student) => {
+                  // Reset each rubric score individually
+                  rubricDetails.forEach((_, index) => {
+                    handleScoreChange(student.id, index, 0);
+                  });
+                });
+                setShowResetConfirmation(false);
+                toast.success('Grades reset successfully', {
+                  duration: 5000,
+                  style: {
+                    background: '#fff',
+                    color: '#124A69',
+                    border: '1px solid #e5e7eb',
+                  },
+                });
+              }}
+              className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+            >
+              Reset Grades
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Unsaved Changes Dialog */}
+      <Dialog
+        open={showUnsavedChangesDialog}
+        onOpenChange={setShowUnsavedChangesDialog}
+      >
+        <DialogContent className='sm:max-w-[425px]'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              Unsaved Changes
+            </DialogTitle>
+            <DialogDescription className='text-gray-500'>
+              You have unsaved changes. Are you sure you want to leave? Your
+              changes will be lost.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className='gap-2 sm:gap-2'>
+            <Button
+              variant='outline'
+              onClick={() => {
+                setShowUnsavedChangesDialog(false);
+                setPendingNavigation(null);
+              }}
+              className='border-gray-200'
+            >
+              Stay
+            </Button>
+            <Button
+              onClick={handleNavigation}
+              className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+            >
+              Leave
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent className='sm:max-w-[450px]'>
@@ -3319,7 +3095,7 @@ export function GradingTable({
                   htmlFor='rubrics'
                   className='text-sm font-medium text-gray-700'
                 >
-                  Number of Rubrics <span className='text-red-500'> *</span>
+                  Number of Criteria <span className='text-red-500'> *</span>
                 </label>
                 <Select
                   value={newReport.rubrics}
@@ -3329,9 +3105,9 @@ export function GradingTable({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value='2'>2 Rubrics</SelectItem>
-                    <SelectItem value='3'>3 Rubrics</SelectItem>
-                    <SelectItem value='4'>4 Rubrics</SelectItem>
+                    <SelectItem value='2'>2 Criteria</SelectItem>
+                    <SelectItem value='3'>3 Criteria</SelectItem>
+                    <SelectItem value='4'>4 Criteria</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -3561,14 +3337,25 @@ export function GradingTable({
               variant='outline'
               onClick={() => setShowSaveEditConfirmation(false)}
               className='border-gray-200'
+              disabled={isSavingEdit}
             >
               Cancel
             </Button>
             <Button
               onClick={handleConfirmSaveEdit}
-              className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+              className='bg-[#124A69] hover:bg-[#0d3a56] text-white relative overflow-hidden'
+              disabled={isSavingEdit}
             >
-              Save Changes
+              {isSavingEdit ? (
+                <>
+                  <span className='absolute inset-0 flex items-center justify-center bg-[#124A69]'>
+                    <Loader2 className='h-4 w-4 animate-spin text-white' />
+                  </span>
+                  <span className='opacity-0'>Save Changes</span>
+                </>
+              ) : (
+                'Save Changes'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

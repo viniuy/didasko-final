@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { Role, WorkType, Permission } from '@prisma/client';
 import * as XLSX from 'xlsx';
-import { toast } from 'react-hot-toast';
 
 interface ImportResult {
   success: boolean;
@@ -190,6 +189,18 @@ export async function POST(request: Request) {
             return;
           }
 
+          // Check for duplicate email
+          if (existingEmails.has(email)) {
+            console.log(`Row ${rowNumber}: Email already exists: ${email}`);
+            result.errors.push({
+              row: rowNumber,
+              email,
+              message: 'Email already exists in the system',
+            });
+            result.skipped++;
+            return;
+          }
+
           try {
             // Format the name
             const formattedName = `${lastName} ${firstName}${
@@ -245,9 +256,6 @@ export async function POST(request: Request) {
               email,
               row: rowNumber,
             });
-
-            // Show a toast for each successful import
-            toast.success(`Imported user: ${formattedName}`);
           } catch (error) {
             console.error(`Error creating user at row ${rowNumber}:`, error);
             result.errors.push({
@@ -264,19 +272,39 @@ export async function POST(request: Request) {
       );
     }
 
-    result.success = result.imported > 0;
+    result.success = result.imported > 0 || result.skipped > 0;
     console.log('Import process completed:', result);
 
-    return NextResponse.json(result, { status: 200 });
+    // Always return a 200 status with the result
+    return NextResponse.json({
+      success: true,
+      imported: result.imported,
+      skipped: result.skipped,
+      errors: result.errors,
+      importedUsers: result.importedUsers,
+      total: result.total,
+    });
   } catch (error) {
     console.error('Error in import process:', error);
     return NextResponse.json(
       {
-        success: false,
-        error: 'Failed to import users',
-        details: error instanceof Error ? error.message : 'Unknown error',
+        success: true,
+        imported: 0,
+        skipped: 0,
+        errors: [
+          {
+            row: 0,
+            email: 'N/A',
+            message:
+              error instanceof Error
+                ? error.message
+                : 'Failed to process import',
+          },
+        ],
+        importedUsers: [],
+        total: 0,
       },
-      { status: 500 },
+      { status: 200 },
     );
   }
 }

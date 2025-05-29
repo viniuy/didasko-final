@@ -172,6 +172,13 @@ export function AdminDataTable({
   const [previewData, setPreviewData] = useState<CsvRow[]>([]);
   const [showExportPreview, setShowExportPreview] = useState(false);
   const [showImportPreview, setShowImportPreview] = useState(false);
+  const [showImportStatus, setShowImportStatus] = useState(false);
+  const [importStatus, setImportStatus] = useState<{
+    imported: number;
+    skipped: number;
+    errors: Array<{ email: string; message: string }>;
+    total: number;
+  } | null>(null);
   const [importTemplate, setImportTemplate] = useState<CsvRow[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isValidFile, setIsValidFile] = useState(false);
@@ -595,6 +602,8 @@ export function AdminDataTable({
         [''],
         ['Date:', new Date().toLocaleDateString()],
         [''],
+        ['Note: All email addresses must be from @alabang.sti.edu.ph domain'],
+        [''],
         // Column headers
         [
           'Last Name',
@@ -613,7 +622,7 @@ export function AdminDataTable({
         'Doe',
         'John',
         'M',
-        'john.doe@example.com',
+        'john.doe@alabang.sti.edu.ph',
         'IT Department',
         'Full Time',
         'Faculty',
@@ -644,6 +653,7 @@ export function AdminDataTable({
       // Merge cells for title
       ws['!merges'] = [
         { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }, // Merge first row across all columns
+        { s: { r: 4, c: 0 }, e: { r: 4, c: 7 } }, // Merge note row across all columns
       ];
 
       const wb = XLSX.utils.book_new();
@@ -799,6 +809,11 @@ export function AdminDataTable({
     });
   };
 
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@alabang\.sti\.edu\.ph$/;
+    return emailRegex.test(email);
+  };
+
   const handleFilePreview = async (file: File) => {
     try {
       const data = await readFile(file);
@@ -880,34 +895,83 @@ export function AdminDataTable({
   };
 
   const handleImport = async () => {
-    try {
-      const usersToImport = previewData.map((row) => ({
-        lastName: row['Last Name'],
-        firstName: row['First Name'],
-        middleInitial: row['Middle Initial'],
-        email: row['Email'],
-        department: row['Department'],
-        workType: row['Work Type'] as WorkType,
-        role: row['Role'] as Role,
-        permission: row['Permission'] as Permission,
-      }));
+    if (!selectedFile) return;
 
-      const response = await axiosInstance.post('/users/import', {
-        users: usersToImport,
+    try {
+      setShowImportStatus(true);
+      setImportProgress({
+        current: 0,
+        total: 1,
+        status: 'Validating emails...',
       });
 
-      if (response.status === 200) {
-        toast.success('Users imported successfully');
-        setPreviewData([]);
-        setShowImportPreview(false);
-        if (onUserAdded) {
-          onUserAdded();
-        }
-      } else {
-        throw new Error('Failed to import users');
+      // Read and validate the file first
+      const data = await readFile(selectedFile);
+      const invalidEmails = data.filter((row) => !validateEmail(row.Email));
+
+      if (invalidEmails.length > 0) {
+        setImportProgress({
+          current: 0,
+          total: 1,
+          status: 'Validation failed',
+          error: `Found ${invalidEmails.length} invalid email(s). All emails must be from @alabang.sti.edu.ph domain.`,
+          hasError: true,
+        });
+        return;
+      }
+
+      setImportProgress({
+        current: 0,
+        total: 1,
+        status: 'Uploading file...',
+      });
+
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+
+      const response = await axiosInstance.post('/users/import', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      const { imported, skipped, errors, importedUsers } = response.data;
+
+      // Set import status for the modal
+      setImportStatus({
+        imported,
+        skipped,
+        errors,
+        total: imported + skipped,
+      });
+
+      // Show success message with import statistics
+      let message = `Successfully imported ${imported} users`;
+      if (skipped > 0) {
+        message += ` (${skipped} skipped)`;
+      }
+
+      toast.success(message);
+
+      // Clear the progress
+      setImportProgress(null);
+
+      // Refresh the table data
+      await refreshTableData();
+
+      if (onUserAdded) {
+        onUserAdded();
       }
     } catch (error) {
       console.error('Error importing users:', error);
+      setImportProgress({
+        current: 0,
+        total: 1,
+        status: 'Import failed',
+        error:
+          error instanceof Error ? error.message : 'Failed to import users',
+        hasError: true,
+      });
       toast.error(
         error instanceof Error ? error.message : 'Failed to import users',
       );
@@ -931,18 +995,14 @@ export function AdminDataTable({
         <div className='flex items-center gap-2'>
           <Button
             variant='outline'
-            size='icon'
             onClick={() => setShowImportPreview(true)}
             title='Import Users'
           >
+            Import
             <Upload className='h-4 w-4' />
           </Button>
-          <Button
-            variant='outline'
-            size='icon'
-            onClick={handleExport}
-            title='Export Users'
-          >
+          <Button variant='outline' onClick={handleExport} title='Export Users'>
+            Export
             <Download className='h-4 w-4' />
           </Button>
           <UserSheet mode='add' onSuccess={onUserAdded} />
@@ -1264,7 +1324,7 @@ export function AdminDataTable({
         </DialogContent>
       </Dialog>
       <Dialog open={showImportPreview} onOpenChange={setShowImportPreview}>
-        <DialogContent className='max-w-[800px] p-6'>
+        <DialogContent className='max-w-[98vw] min-w-[1100px] p-6'>
           <DialogHeader>
             <DialogTitle className='text-xl font-semibold text-[#124A69]'>
               Import Users
@@ -1303,7 +1363,7 @@ export function AdminDataTable({
             </div>
 
             {previewData.length > 0 ? (
-              <div className='border rounded-lg overflow-hidden max-w-[460px]'>
+              <div className='border rounded-lg overflow-hidden max-w-[2100px]'>
                 <div className='bg-gray-50 p-4 border-b'>
                   <h3 className='font-medium text-gray-700'>
                     Preview Import Data
@@ -1384,107 +1444,6 @@ export function AdminDataTable({
               </div>
             )}
 
-            {importProgress && (
-              <div
-                className={`space-y-2 p-4 border rounded-lg ${
-                  importProgress.hasError
-                    ? 'bg-red-50 border-red-200'
-                    : importProgress.error?.includes('already exist')
-                    ? 'bg-amber-50 border-amber-200'
-                    : 'bg-gray-50'
-                }`}
-              >
-                <div className='flex items-center gap-2'>
-                  {importProgress.hasError ? (
-                    <svg
-                      xmlns='http://www.w3.org/2000/svg'
-                      width='16'
-                      height='16'
-                      viewBox='0 0 24 24'
-                      fill='none'
-                      stroke='currentColor'
-                      strokeWidth='2'
-                      strokeLinecap='round'
-                      strokeLinejoin='round'
-                      className='text-red-500'
-                    >
-                      <circle cx='12' cy='12' r='10'></circle>
-                      <line x1='12' y1='8' x2='12' y2='12'></line>
-                      <line x1='12' y1='16' x2='12.01' y2='16'></line>
-                    </svg>
-                  ) : importProgress.error?.includes('already exist') ? (
-                    <svg
-                      xmlns='http://www.w3.org/2000/svg'
-                      width='16'
-                      height='16'
-                      viewBox='0 0 24 24'
-                      fill='none'
-                      stroke='currentColor'
-                      strokeWidth='2'
-                      strokeLinecap='round'
-                      strokeLinejoin='round'
-                      className='text-amber-500'
-                    >
-                      <circle cx='12' cy='12' r='10'></circle>
-                      <line x1='12' y1='8' x2='12' y2='12'></line>
-                      <line x1='12' y1='16' x2='12.01' y2='16'></line>
-                    </svg>
-                  ) : (
-                    <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-[#124A69]' />
-                  )}
-                  <p
-                    className={`text-sm ${
-                      importProgress.hasError
-                        ? 'text-red-600 font-medium'
-                        : importProgress.error?.includes('already exist')
-                        ? 'text-amber-600 font-medium'
-                        : 'text-gray-600'
-                    }`}
-                  >
-                    {importProgress.status}
-                  </p>
-                </div>
-
-                {importProgress.error && (
-                  <div
-                    className={`mt-2 text-sm p-2 rounded border ${
-                      importProgress.hasError
-                        ? 'text-red-600 bg-red-50 border-red-100'
-                        : 'text-amber-600 bg-amber-50 border-amber-100'
-                    }`}
-                  >
-                    {importProgress.error}
-                  </div>
-                )}
-
-                {importProgress.total > 0 && !importProgress.hasError && (
-                  <div className='w-full bg-gray-200 rounded-full h-2.5'>
-                    <div
-                      className='bg-[#124A69] h-2.5 rounded-full transition-all duration-300'
-                      style={{
-                        width: `${
-                          (importProgress.current / importProgress.total) * 100
-                        }%`,
-                      }}
-                    />
-                  </div>
-                )}
-
-                {(importProgress.hasError || importProgress.error) && (
-                  <div className='flex justify-end mt-2'>
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      onClick={() => setImportProgress(null)}
-                      className='text-xs'
-                    >
-                      Dismiss
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
-
             <div className='flex justify-end gap-4'>
               <Button
                 variant='outline'
@@ -1512,10 +1471,183 @@ export function AdminDataTable({
                 onClick={handleImport}
                 disabled={!selectedFile || !isValidFile || !!importProgress}
               >
-                {importProgress ? 'Importing...' : 'Import Users'}
+                Import Users
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showImportStatus} onOpenChange={setShowImportStatus}>
+        <DialogContent className='max-w-[98vw] min-w-[1100px] p-6'>
+          <DialogHeader>
+            <DialogTitle className='text-xl font-semibold text-[#124A69]'>
+              Import Status
+            </DialogTitle>
+            <DialogDescription>
+              {importProgress
+                ? 'Import in progress...'
+                : 'Summary of the import process'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {importProgress ? (
+            <div className='mt-6 space-y-6'>
+              <div className='flex items-center gap-4 p-4 bg-gray-50 rounded-lg border'>
+                {importProgress.hasError ? (
+                  <svg
+                    xmlns='http://www.w3.org/2000/svg'
+                    width='24'
+                    height='24'
+                    viewBox='0 0 24 24'
+                    fill='none'
+                    stroke='currentColor'
+                    strokeWidth='2'
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    className='text-red-500'
+                  >
+                    <circle cx='12' cy='12' r='10'></circle>
+                    <line x1='12' y1='8' x2='12' y2='12'></line>
+                    <line x1='12' y1='16' x2='12.01' y2='16'></line>
+                  </svg>
+                ) : (
+                  <div className='animate-spin rounded-full h-6 w-6 border-b-2 border-[#124A69]' />
+                )}
+                <div className='flex-1'>
+                  <p className='text-sm font-medium text-gray-700'>
+                    {importProgress.status}
+                  </p>
+                  {importProgress.error && (
+                    <p className='mt-2 text-sm text-red-600'>
+                      {importProgress.error}
+                    </p>
+                  )}
+                  {importProgress.total > 0 && !importProgress.hasError && (
+                    <div className='mt-2 w-full bg-gray-200 rounded-full h-2.5'>
+                      <div
+                        className='bg-[#124A69] h-2.5 rounded-full transition-all duration-300'
+                        style={{
+                          width: `${
+                            (importProgress.current / importProgress.total) *
+                            100
+                          }%`,
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+              {importProgress.hasError && (
+                <div className='flex justify-end'>
+                  <Button
+                    variant='outline'
+                    onClick={() => {
+                      setShowImportStatus(false);
+                      setImportProgress(null);
+                    }}
+                  >
+                    Close
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : (
+            importStatus && (
+              <div className='mt-6 space-y-6'>
+                <div className='grid grid-cols-3 gap-4'>
+                  <div className='bg-green-50 p-4 rounded-lg border border-green-200'>
+                    <h3 className='text-sm font-medium text-green-800'>
+                      Successfully Imported
+                    </h3>
+                    <p className='text-2xl font-semibold text-green-600'>
+                      {importStatus.imported}
+                    </p>
+                  </div>
+                  <div className='bg-amber-50 p-4 rounded-lg border border-amber-200'>
+                    <h3 className='text-sm font-medium text-amber-800'>
+                      Skipped
+                    </h3>
+                    <p className='text-2xl font-semibold text-amber-600'>
+                      {importStatus.skipped}
+                    </p>
+                  </div>
+                  <div className='bg-red-50 p-4 rounded-lg border border-red-200'>
+                    <h3 className='text-sm font-medium text-red-800'>Errors</h3>
+                    <p className='text-2xl font-semibold text-red-600'>
+                      {importStatus.errors.length}
+                    </p>
+                  </div>
+                </div>
+
+                {importStatus.errors.length > 0 && (
+                  <div className='border rounded-lg overflow-hidden max-w-[2100px]'>
+                    <div className='bg-gray-50 p-4 border-b'>
+                      <h3 className='font-medium text-gray-700'>
+                        Import Errors
+                      </h3>
+                      <p className='text-sm text-gray-500'>
+                        {importStatus.errors.length} users could not be imported
+                      </p>
+                    </div>
+                    <div className='max-h-[300px] overflow-auto'>
+                      <table className='w-full border-collapse'>
+                        <thead className='bg-gray-50 sticky top-0'>
+                          <tr>
+                            <th className='px-4 py-2 text-left text-sm font-medium text-gray-500'>
+                              Email
+                            </th>
+                            <th className='px-4 py-2 text-left text-sm font-medium text-gray-500'>
+                              Error Message
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importStatus.errors.map((error, index) => (
+                            <tr
+                              key={index}
+                              className='border-t hover:bg-gray-50'
+                            >
+                              <td className='px-4 py-2 text-sm text-gray-900'>
+                                {error.email}
+                              </td>
+                              <td className='px-4 py-2 text-sm text-red-600'>
+                                {error.message}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                <div className='flex justify-end gap-4'>
+                  <Button
+                    variant='outline'
+                    onClick={() => {
+                      setShowImportStatus(false);
+                      setShowImportPreview(false);
+                      setSelectedFile(null);
+                      setPreviewData([]);
+                      setIsValidFile(false);
+                      setImportProgress(null);
+                    }}
+                  >
+                    Close
+                  </Button>
+                  <Button
+                    className='bg-[#124A69] hover:bg-[#0D3A54] text-white'
+                    onClick={() => {
+                      setShowImportStatus(false);
+                      setShowImportPreview(true);
+                    }}
+                  >
+                    Import More Users
+                  </Button>
+                </div>
+              </div>
+            )
+          )}
         </DialogContent>
       </Dialog>
     </div>

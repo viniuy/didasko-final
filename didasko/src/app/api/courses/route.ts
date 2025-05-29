@@ -87,6 +87,10 @@ export async function GET(request: Request) {
           ...student,
           middleInitial: student.middleInitial || undefined,
         })),
+        schedules: course.schedules?.map((schedule) => ({
+          ...schedule,
+          day: new Date(schedule.day),
+        })),
       })),
       pagination: {
         total: courses.length,
@@ -155,6 +159,10 @@ export async function POST(request: Request) {
         semester,
         section,
         facultyId,
+        slug: `${code}-${section}-${semester}`
+          .toLowerCase()
+          .replace(/\s+/g, '-'),
+        academicYear: new Date().getFullYear().toString(),
       },
       include: {
         faculty: {
