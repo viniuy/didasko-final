@@ -164,51 +164,81 @@ export default function WeeklySchedule({ teacherInfo }: WeeklyScheduleProps) {
           MY WEEKLY SCHEDULE
         </h2>
       </div>
-      <div className='grid grid-cols-7 gap-4 p-4'>
-        {days.map((day) => (
-          <div
-            key={day}
-            className={`${day === currentDay ? 'bg-blue-50 rounded-lg' : ''}`}
-          >
-            <div className='text-center font-semibold mb-4 text-[#124A69] text-sm'>
-              {day}
+      {schedules.length === 0 ? (
+        <div className='p-8 flex items-center justify-center min-h-[400px]'>
+          <div className='text-center space-y-4'>
+            <div className='text-6xl text-[#124A69] opacity-20'>
+              <svg
+                xmlns='http://www.w3.org/2000/svg'
+                fill='none'
+                viewBox='0 0 24 24'
+                strokeWidth={1.5}
+                stroke='currentColor'
+                className='w-24 h-24 mx-auto'
+              >
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  d='M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5'
+                />
+              </svg>
             </div>
-            <div className='space-y-2'>
-              {getSchedulesForDay(day).map((schedule) => (
-                <div key={schedule.id} className='group perspective'>
-                  <div className='preserve-3d'>
-                    {/* Front of card */}
-                    <div className='backface-hidden'>
-                      <div className='bg-[#FAEDCB] rounded-lg p-2 text-[#124A69] shadow-sm text-center h-[80px] flex flex-col justify-center'>
-                        <div className='font-bold text-sm'>
-                          {schedule.course.title}
-                        </div>
-                        <div className='text-xs mt-1'>
-                          {formatTime(schedule.fromTime)} -{' '}
-                          {formatTime(schedule.toTime)}
+            <h3 className='text-xl font-semibold text-[#124A69]'>
+              No Schedule Found
+            </h3>
+            <p className='text-gray-500 max-w-md mx-auto'>
+              You don't have any scheduled classes for this week. Check back
+              later for updates.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className='grid grid-cols-7 gap-4 p-4'>
+          {days.map((day) => (
+            <div
+              key={day}
+              className={`${day === currentDay ? 'bg-blue-50 rounded-lg' : ''}`}
+            >
+              <div className='text-center font-semibold mb-4 text-[#124A69] text-sm'>
+                {day}
+              </div>
+              <div className='space-y-2'>
+                {getSchedulesForDay(day).map((schedule) => (
+                  <div key={schedule.id} className='group perspective'>
+                    <div className='preserve-3d'>
+                      {/* Front of card */}
+                      <div className='backface-hidden'>
+                        <div className='bg-[#FAEDCB] rounded-lg p-2 text-[#124A69] shadow-sm text-center h-[80px] flex flex-col justify-center'>
+                          <div className='font-bold text-sm'>
+                            {schedule.course.title}
+                          </div>
+                          <div className='text-xs mt-1'>
+                            {formatTime(schedule.fromTime)} -{' '}
+                            {formatTime(schedule.toTime)}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    {/* Back of card */}
-                    <div className='backface-hidden rotate-y-180'>
-                      <div className='bg-[#124A69] rounded-lg p-2 text-white shadow-sm text-center h-[80px] flex flex-col justify-center'>
-                        <div className='text-xs space-y-1'>
-                          <div className='font-semibold'>
-                            {schedule.course.code}
+                      {/* Back of card */}
+                      <div className='backface-hidden rotate-y-180'>
+                        <div className='bg-[#124A69] rounded-lg p-2 text-white shadow-sm text-center h-[80px] flex flex-col justify-center'>
+                          <div className='text-xs space-y-1'>
+                            <div className='font-semibold'>
+                              {schedule.course.code}
+                            </div>
+                            <div>Section: {schedule.course.section}</div>
+                            <div>{schedule.course.room}</div>
+                            <div>{schedule.course.semester}</div>
                           </div>
-                          <div>Section: {schedule.course.section}</div>
-                          <div>{schedule.course.room}</div>
-                          <div>{schedule.course.semester}</div>
                         </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

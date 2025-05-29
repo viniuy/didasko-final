@@ -2,6 +2,14 @@
 import React, { useEffect, useState } from 'react';
 import { Role, WorkType } from '@prisma/client';
 import { UserCircle2 } from 'lucide-react';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationPrevious,
+  PaginationNext,
+} from '@/components/ui/pagination';
 
 interface Course {
   id: string;
@@ -32,7 +40,7 @@ interface FacultyMember {
 
 interface FacultyListProps {
   search: string;
-  sortOption: string;
+  sortOption: string[];
   currentPage: number;
   itemsPerPage: number;
   onDepartmentClick: (department: string) => void;
@@ -91,20 +99,19 @@ const FacultyList: React.FC<FacultyListProps> = ({
       faculty.name.toLowerCase().includes(search.toLowerCase()),
     )
     .filter((faculty) =>
-      sortOption ? faculty.department === sortOption : true,
+      sortOption.length > 0 ? sortOption.includes(faculty.department) : true,
     );
 
-  const startIndex = (currentPage - 1) * Math.min(itemsPerPage, 8);
-  const endIndex = startIndex + Math.min(itemsPerPage, 8);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
   const currentFaculty = filteredFaculty.slice(startIndex, endIndex);
   const totalItems = filteredFaculty.length;
-  const totalPages = Math.ceil(totalItems / Math.min(itemsPerPage, 8));
-  const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1);
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
 
   return (
-    <div className='flex flex-col space-y-4 min-h-[600px]'>
+    <div className='flex flex-col gap-8 min-h-[600px]'>
       {filteredFaculty.length === 0 ? (
-        <div className='flex flex-col items-center justify-center h-96 text-gray-500'>
+        <div className='flex flex-col items-center justify-center h-96 text-gray-500 min-h-[610px] max-h-[610px]'>
           <UserCircle2 size={72} className='mb-6 text-gray-400' />
           <p className='text-2xl font-medium mb-2'>No teachers found</p>
           <p className='text-base text-gray-400'>
@@ -115,7 +122,7 @@ const FacultyList: React.FC<FacultyListProps> = ({
         </div>
       ) : (
         <>
-          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 min-h-[630px] grid-auto-rows-[minmax(0,auto)]'>
+          <div className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 items-start justify-center min-h-[610px] max-h-[610px]'>
             {currentFaculty.map((faculty) => (
               <div
                 key={faculty.id}
@@ -154,67 +161,51 @@ const FacultyList: React.FC<FacultyListProps> = ({
               </div>
             ))}
           </div>
-          <div className='flex items-center justify-between'>
-            <span className='text-sm text-gray-500'>
-              Showing {startIndex + 1}-{Math.min(endIndex, totalItems)} out of{' '}
-              {totalItems} faculty members
-            </span>
-            <div className='flex items-center gap-1'>
-              <button
-                onClick={() => onPageChange(currentPage - 1)}
-                disabled={currentPage === 1}
-                className='p-1 text-gray-600 hover:text-gray-900 disabled:text-gray-400'
-              >
-                <svg
-                  xmlns='http://www.w3.org/2000/svg'
-                  className='h-5 w-5'
-                  viewBox='0 0 20 20'
-                  fill='currentColor'
-                >
-                  <path
-                    fillRule='evenodd'
-                    d='M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z'
-                    clipRule='evenodd'
-                  />
-                </svg>
-              </button>
-
-              {pageNumbers.map((number) => (
-                <button
-                  key={number}
-                  onClick={() => onPageChange(number)}
-                  className={`w-8 h-8 text-sm rounded-lg ${
-                    currentPage === number
-                      ? 'bg-[#124A69] text-white'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  {number}
-                </button>
-              ))}
-
-              <button
-                onClick={() => onPageChange(currentPage + 1)}
-                disabled={currentPage === totalPages}
-                className='p-1 text-gray-600 hover:text-gray-900 disabled:text-gray-400'
-              >
-                <svg
-                  xmlns='http://www.w3.org/2000/svg'
-                  className='h-5 w-5'
-                  viewBox='0 0 20 20'
-                  fill='currentColor'
-                >
-                  <path
-                    fillRule='evenodd'
-                    d='M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z'
-                    clipRule='evenodd'
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
         </>
       )}
+      <div className='flex items-center justify-end w-full mt-4 -mb-3 gap-4'>
+        <span className='text-sm text-gray-600 w-1700'>
+          {startIndex + 1}-{Math.min(endIndex, totalItems)} of {totalItems}{' '}
+          faculty members
+        </span>
+        <Pagination>
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious
+                onClick={() => onPageChange(currentPage - 1)}
+                className={
+                  currentPage === 1 ? 'pointer-events-none opacity-50' : ''
+                }
+              />
+            </PaginationItem>
+            {[...Array(totalPages)].map((_, i) => (
+              <PaginationItem key={i}>
+                <PaginationLink
+                  isActive={currentPage === i + 1}
+                  onClick={() => onPageChange(i + 1)}
+                  className={
+                    currentPage === i + 1
+                      ? 'bg-[#124A69] text-white hover:bg-[#0d3a56]'
+                      : ''
+                  }
+                >
+                  {i + 1}
+                </PaginationLink>
+              </PaginationItem>
+            ))}
+            <PaginationItem>
+              <PaginationNext
+                onClick={() => onPageChange(currentPage + 1)}
+                className={
+                  currentPage === totalPages
+                    ? 'pointer-events-none opacity-50'
+                    : ''
+                }
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
+      </div>
     </div>
   );
 };

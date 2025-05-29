@@ -23,7 +23,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Textarea } from './ui/textarea';
 import { format, isSameDay, isBefore, isAfter } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
@@ -62,6 +62,7 @@ import {
 export default function UpcomingEvents() {
   const { data: session, status } = useSession();
   const userRole = session?.user?.role as Role | undefined;
+  const todayRef = useRef<HTMLDivElement>(null);
 
   const [eventList, setEventList] = useState<GroupedEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -193,6 +194,13 @@ export default function UpcomingEvents() {
 
     fetchEvents();
   }, []);
+
+  // Add new useEffect for scrolling to today's events
+  useEffect(() => {
+    if (!isLoading && todayRef.current) {
+      todayRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [isLoading]);
 
   function validateDateTime(
     date: Date | null,
@@ -687,9 +695,7 @@ export default function UpcomingEvents() {
   return (
     <div className='h-full flex flex-col'>
       <div className='flex justify-between items-center mb-1'>
-        <h2 className='text-lg font-semibold text-[#FAEDCB]'>
-          Upcoming Events
-        </h2>
+        <h2 className='text-lg font-semibold text-[#FAEDCB]'>Events</h2>
         {canManageEvents && (
           <Button
             variant='ghost'
@@ -754,96 +760,99 @@ export default function UpcomingEvents() {
               ))}
             </>
           ) : eventList.length > 0 ? (
-            eventList.map((event, eventIndex) => (
-              <div key={eventIndex}>
-                <div className='flex items-center gap-2 text-[#124A69] mb-1'>
-                  <p className='text-xs'>
-                    {format(event.date, 'MMMM d, yyyy')} (
-                    {format(event.date, 'EEEE')})
-                  </p>
-                </div>
-                {event.items.map((item) => {
-                  const isPastEvent = isBefore(
-                    event.date,
-                    new Date(new Date().setHours(0, 0, 0, 0)),
-                  );
-                  return (
-                    <Card
-                      key={item.id}
-                      className={cn(
-                        'border-l-[8px] mb-1 hover:shadow-md transition-shadow',
-                        isPastEvent
-                          ? 'border-gray-400 bg-gray-50'
-                          : 'border-[#124A69]',
-                      )}
-                    >
-                      <CardContent className='p-2 relative'>
-                        {canManageEvents && (
-                          <div className='absolute right-1 -top-5 flex gap-0.5'>
-                            <Button
-                              variant='ghost'
-                              className='h-5 w-5 p-0 hover:bg-transparent'
-                              onClick={() => handleOpenEdit(item)}
-                            >
-                              <Edit
-                                className='h-3 w-3'
-                                color={isPastEvent ? '#6b7280' : '#124a69'}
-                              />
-                            </Button>
-                            <Button
-                              variant='ghost'
-                              className='h-5 w-5 p-0 hover:bg-transparent'
-                              onClick={() => handleDeleteClick(item.id)}
-                            >
-                              <Trash
-                                className='h-3 w-3'
-                                color={isPastEvent ? '#6b7280' : '#124a69'}
-                              />
-                            </Button>
-                          </div>
+            eventList.map((event, eventIndex) => {
+              const isToday = isSameDay(event.date, new Date());
+              return (
+                <div key={eventIndex} ref={isToday ? todayRef : null}>
+                  <div className='flex items-center gap-2 text-[#124A69] mb-1'>
+                    <p className='text-xs'>
+                      {format(event.date, 'MMMM d, yyyy')} (
+                      {format(event.date, 'EEEE')})
+                    </p>
+                  </div>
+                  {event.items.map((item) => {
+                    const isPastEvent = isBefore(
+                      event.date,
+                      new Date(new Date().setHours(0, 0, 0, 0)),
+                    );
+                    return (
+                      <Card
+                        key={item.id}
+                        className={cn(
+                          'border-l-[8px] mb-1 hover:shadow-md transition-shadow',
+                          isPastEvent
+                            ? 'border-gray-400 bg-gray-50'
+                            : 'border-[#124A69]',
                         )}
-                        <div className='-mt-4 -mb-4'>
-                          <div
-                            className={cn(
-                              'font-medium text-xs mb-0.5',
-                              isPastEvent ? 'text-gray-500' : 'text-[#124A69]',
-                            )}
-                          >
-                            {item.title}
+                      >
+                        <CardContent className='p-2 relative'>
+                          {canManageEvents && (
+                            <div className='absolute right-1 -top-5 flex gap-0.5'>
+                              <Button
+                                variant='ghost'
+                                className='h-5 w-5 p-0 hover:bg-transparent'
+                                onClick={() => handleOpenEdit(item)}
+                              >
+                                <Edit
+                                  className='h-3 w-3'
+                                  color={isPastEvent ? '#6b7280' : '#124a69'}
+                                />
+                              </Button>
+                              <Button
+                                variant='ghost'
+                                className='h-5 w-5 p-0 hover:bg-transparent'
+                                onClick={() => handleDeleteClick(item.id)}
+                              >
+                                <Trash
+                                  className='h-3 w-3'
+                                  color={isPastEvent ? '#6b7280' : '#124a69'}
+                                />
+                              </Button>
+                            </div>
+                          )}
+                          <div className='-mt-4 -mb-4'>
+                            <div
+                              className={cn(
+                                'font-medium text-xs mb-0.5',
+                                isPastEvent
+                                  ? 'text-gray-500'
+                                  : 'text-[#124A69]',
+                              )}
+                            >
+                              {item.title}
+                            </div>
+                            <div
+                              className={cn(
+                                'text-[11px]',
+                                isPastEvent ? 'text-gray-400' : 'text-gray-600',
+                              )}
+                            >
+                              {item.description}
+                            </div>
+                            <div
+                              className={cn(
+                                'flex items-center text-[11px]',
+                                isPastEvent ? 'text-gray-400' : 'text-gray-500',
+                              )}
+                            >
+                              <Clock className='w-3 h-3 mr-0.5' />
+                              {item.fromTime && item.toTime
+                                ? `${formatTimeTo12Hour(
+                                    item.fromTime,
+                                  )} - ${formatTimeTo12Hour(item.toTime)}`
+                                : 'All day'}
+                            </div>
                           </div>
-                          <div
-                            className={cn(
-                              'text-[11px]',
-                              isPastEvent ? 'text-gray-400' : 'text-gray-600',
-                            )}
-                          >
-                            {item.description}
-                          </div>
-                          <div
-                            className={cn(
-                              'flex items-center text-[11px]',
-                              isPastEvent ? 'text-gray-400' : 'text-gray-500',
-                            )}
-                          >
-                            <Clock className='w-3 h-3 mr-0.5' />
-                            {item.fromTime && item.toTime
-                              ? `${formatTimeTo12Hour(
-                                  item.fromTime,
-                                )} - ${formatTimeTo12Hour(item.toTime)}`
-                              : 'All day'}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            ))
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              );
+            })
           ) : (
             <div className='flex items-center justify-center h-full min-h-120'>
-              <p className='text-gray-500 text-xs text-center'>
-                No upcoming events.
-              </p>
+              <p className='text-gray-500 text-xs text-center'>No events.</p>
             </div>
           )}
         </div>

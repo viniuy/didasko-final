@@ -10,7 +10,12 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { format, addDays } from 'date-fns';
-import { Calendar as CalendarIcon, Search, Loader2 } from 'lucide-react';
+import {
+  Calendar as CalendarIcon,
+  Search,
+  Loader2,
+  ChevronDown,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import axios from 'axios';
 import { DateRange } from 'react-day-picker';
@@ -53,6 +58,11 @@ interface QuizTableProps {
   courseSection: string;
   selectedDate: Date | undefined;
   onDateSelect?: (date: Date | undefined) => void;
+  search: string;
+  sortOption: string[];
+  currentPage: number;
+  itemsPerPage: number;
+  onPageChange: (page: number) => void;
 }
 
 interface QuizScore {
@@ -86,16 +96,17 @@ export function QuizTable({
   courseSection,
   selectedDate,
   onDateSelect,
+  search,
+  sortOption,
+  currentPage,
+  itemsPerPage,
+  onPageChange,
 }: QuizTableProps) {
   const { data: session } = useSession();
   const [scores, setScores] = useState<Record<string, QuizScore>>({});
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState<string>('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [studentsPerPage] = useState(10);
-  const [totalPages, setTotalPages] = useState(1);
   const [totalStudents, setTotalStudents] = useState(0);
   const [attendanceStats, setAttendanceStats] =
     useState<AttendanceStats | null>(null);
@@ -116,15 +127,6 @@ export function QuizTable({
   const [quizzes, setQuizzes] = useState<any[]>([]);
   const [modalTab, setModalTab] = useState('existing');
   const datePickerButtonRef = useRef<HTMLButtonElement>(null);
-  const [gradeFilter, setGradeFilter] = useState<{
-    passed: boolean;
-    failed: boolean;
-    noGrades: boolean;
-  }>({
-    passed: false,
-    failed: false,
-    noGrades: false,
-  });
   const [previousScores, setPreviousScores] = useState<Record<
     string,
     QuizScore
@@ -142,6 +144,25 @@ export function QuizTable({
   const [saving, setSaving] = useState(false);
   const [showResetConfirmation, setShowResetConfirmation] = useState(false);
   const [showUndoButton, setShowUndoButton] = useState(false);
+  const [sections, setSections] = useState<string[]>([]);
+
+  // Fetch sections when component mounts
+  useEffect(() => {
+    const fetchSections = async () => {
+      try {
+        const response = await fetch(`/api/courses/${course_slug}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch course sections');
+        }
+        const data = await response.json();
+        setSections([data.section]); // Add more sections if needed
+      } catch (err) {
+        console.error('Error fetching sections:', err);
+      }
+    };
+
+    fetchSections();
+  }, [course_slug]);
 
   // Fetch quizzes for the course when modal opens
   useEffect(() => {
@@ -241,87 +262,25 @@ export function QuizTable({
     });
   };
 
-  // Function to handle filter changes
-  const handleFilterChange = (key: keyof typeof gradeFilter) => {
-    const newFilter = {
-      ...gradeFilter,
-      [key]: !gradeFilter[key],
-    };
+  // Update the filtering logic
+  const filteredStudents = students
+    .filter((student) => {
+      const fullName = `${student.firstName} ${student.lastName}`.toLowerCase();
+      return fullName.includes(search.toLowerCase());
+    })
+    .filter((student) =>
+      sortOption.length > 0
+        ? student.coursesEnrolled?.some((course) =>
+            sortOption.includes(course.section),
+          )
+        : true,
+    );
 
-    // If all options are checked, set all to true
-    if (Object.values(newFilter).every(Boolean)) {
-      setGradeFilter({
-        passed: true,
-        failed: true,
-        noGrades: true,
-      });
-    } else {
-      setGradeFilter(newFilter);
-    }
-  };
-
-  // Function to check if a student matches the current filters
-  const studentMatchesFilter = (student: Student) => {
-    // If no filters are checked, show all students
-    if (!gradeFilter.passed && !gradeFilter.failed && !gradeFilter.noGrades) {
-      return true;
-    }
-
-    const studentScore = scores[student.id];
-    const total = studentScore?.totalGrade || 0;
-    const hasGrades = studentScore?.quizScore > 0;
-
-    if (gradeFilter.passed && hasGrades && total >= passingRate) return true;
-    if (gradeFilter.failed && hasGrades && total < passingRate) return true;
-    if (gradeFilter.noGrades && !hasGrades) return true;
-    return false;
-  };
-
-  // Update getPaginatedStudents to include filter
-  const getPaginatedStudents = (students: Student[]) => {
-    if (!Array.isArray(students)) {
-      return {
-        paginatedStudents: [],
-        totalPages: 0,
-        totalStudents: 0,
-      };
-    }
-
-    const filteredStudents = students.filter((student) => {
-      const name = `${student.lastName || ''} ${student.firstName || ''} ${
-        student.middleInitial || ''
-      }`.toLowerCase();
-      const nameMatch = name.includes(searchQuery.toLowerCase());
-      return nameMatch && studentMatchesFilter(student);
-    });
-
-    const startIndex = (currentPage - 1) * studentsPerPage;
-    const endIndex = startIndex + studentsPerPage;
-    return {
-      paginatedStudents: filteredStudents.slice(startIndex, endIndex),
-      totalPages: Math.ceil(filteredStudents.length / studentsPerPage),
-      totalStudents: filteredStudents.length,
-    };
-  };
-
-  // Update pagination state
-  useEffect(() => {
-    if (!Array.isArray(students)) {
-      setTotalPages(0);
-      setTotalStudents(0);
-      return;
-    }
-
-    const filteredStudents = students.filter((student) => {
-      const name = `${student.lastName || ''} ${student.firstName || ''} ${
-        student.middleInitial || ''
-      }`.toLowerCase();
-      return name.includes(searchQuery.toLowerCase());
-    });
-
-    setTotalPages(Math.ceil(filteredStudents.length / studentsPerPage));
-    setTotalStudents(filteredStudents.length);
-  }, [students, searchQuery, studentsPerPage]);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentStudents = filteredStudents.slice(startIndex, endIndex);
+  const totalItems = filteredStudents.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
 
   // When a quiz is selected or created, set selectedQuiz and close modal
   const handleSelectQuiz = (quiz: any) => {
@@ -534,97 +493,55 @@ export function QuizTable({
               </span>
               <span className='text-sm text-gray-500'>{courseSection}</span>
             </div>
-            <div className='relative'>
-              <Search className='absolute left-2 top-2.5 h-4 w-4 text-gray-500' />
+            <div className='flex items-center gap-2'>
               <Input
                 placeholder='Search students...'
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                value={search}
+                onChange={(e) => onPageChange(1)}
                 className='pl-8 w-[200px]'
               />
-            </div>
-            <div className='flex items-center gap-2'>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant='outline'
-                    className='w-[140px] h-9 rounded-full border-gray-200 bg-[#F5F6FA] justify-between'
+                    size='sm'
+                    className='flex items-center gap-1'
                   >
-                    <span>Filter</span>
-                    <svg
-                      className='h-4 w-4 text-gray-500'
-                      fill='none'
-                      stroke='currentColor'
-                      strokeWidth='2'
-                      viewBox='0 0 24 24'
-                    >
-                      <path d='M19 9l-7 7-7-7' />
-                    </svg>
+                    Filter by Section
+                    <ChevronDown size={16} />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className='w-[200px] p-4'>
-                  <div className='space-y-3'>
-                    <div className='flex items-center space-x-2'>
-                      <Checkbox
-                        id='passed'
-                        checked={gradeFilter.passed}
-                        onCheckedChange={() => handleFilterChange('passed')}
-                      />
-                      <label
-                        htmlFor='passed'
-                        className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+                <PopoverContent className='w-48 p-2'>
+                  <div className='space-y-2'>
+                    {sections.map((section) => (
+                      <div
+                        key={section}
+                        className='flex items-center space-x-2'
                       >
-                        Passed
-                      </label>
-                    </div>
-                    <div className='flex items-center space-x-2'>
-                      <Checkbox
-                        id='failed'
-                        checked={gradeFilter.failed}
-                        onCheckedChange={() => handleFilterChange('failed')}
-                      />
-                      <label
-                        htmlFor='failed'
-                        className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
-                      >
-                        Failed
-                      </label>
-                    </div>
-                    <div className='flex items-center space-x-2'>
-                      <Checkbox
-                        id='noGrades'
-                        checked={gradeFilter.noGrades}
-                        onCheckedChange={() => handleFilterChange('noGrades')}
-                      />
-                      <label
-                        htmlFor='noGrades'
-                        className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
-                      >
-                        No Grades
-                      </label>
-                    </div>
+                        <Checkbox
+                          id={section}
+                          checked={sortOption.includes(section)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              onPageChange(1);
+                              sortOption.push(section);
+                            } else {
+                              onPageChange(1);
+                              sortOption.splice(sortOption.indexOf(section), 1);
+                            }
+                          }}
+                        />
+                        <label
+                          htmlFor={section}
+                          className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+                        >
+                          {section}
+                        </label>
+                      </div>
+                    ))}
                   </div>
                 </PopoverContent>
               </Popover>
-              {Object.entries(gradeFilter).some(([_, value]) => !value) && (
-                <div className='flex items-center gap-1.5'>
-                  {gradeFilter.passed && (
-                    <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700'>
-                      Passed
-                    </span>
-                  )}
-                  {gradeFilter.failed && (
-                    <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700'>
-                      Failed
-                    </span>
-                  )}
-                  {gradeFilter.noGrades && (
-                    <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700'>
-                      No Grades
-                    </span>
-                  )}
-                </div>
-              )}
             </div>
           </div>
 
@@ -746,9 +663,7 @@ export function QuizTable({
                 </tr>
               ) : (
                 (() => {
-                  const { paginatedStudents } = getPaginatedStudents(students);
-
-                  if (paginatedStudents.length === 0) {
+                  if (currentStudents.length === 0) {
                     return (
                       <tr>
                         <td
@@ -761,7 +676,7 @@ export function QuizTable({
                     );
                   }
 
-                  return paginatedStudents.map((student, idx) => {
+                  return currentStudents.map((student, idx) => {
                     const studentScore = scores[student.id] || {
                       studentId: student.id,
                       quizScore: 0,
@@ -967,11 +882,10 @@ export function QuizTable({
         <div className='flex flex-col sm:flex-row items-center justify-between gap-4 px-4 py-3 border-t bg-white'>
           <div className='flex items-center gap-2'>
             <p className='text-sm text-gray-500 whitespace-nowrap'>
-              {totalStudents > 0 ? (
+              {totalItems > 0 ? (
                 <>
-                  {currentPage * studentsPerPage - (studentsPerPage - 1)}-
-                  {Math.min(currentPage * studentsPerPage, totalStudents)} of{' '}
-                  {totalStudents} students
+                  {startIndex + 1}-{Math.min(endIndex, totalItems)} of{' '}
+                  {totalItems} students
                 </>
               ) : (
                 'No students found'
@@ -985,13 +899,9 @@ export function QuizTable({
               <PaginationContent>
                 <PaginationItem>
                   <PaginationPrevious
-                    onClick={() =>
-                      setCurrentPage((prev) => Math.max(prev - 1, 1))
-                    }
+                    onClick={() => onPageChange(currentPage - 1)}
                     className={
-                      currentPage === 1
-                        ? 'pointer-events-none opacity-50'
-                        : 'hover:bg-gray-100'
+                      currentPage === 1 ? 'pointer-events-none opacity-50' : ''
                     }
                   />
                 </PaginationItem>
@@ -999,12 +909,12 @@ export function QuizTable({
                   <PaginationItem key={i}>
                     <PaginationLink
                       isActive={currentPage === i + 1}
-                      onClick={() => setCurrentPage(i + 1)}
-                      className={`${
+                      onClick={() => onPageChange(i + 1)}
+                      className={
                         currentPage === i + 1
                           ? 'bg-[#124A69] text-white hover:bg-[#0d3a56]'
-                          : 'hover:bg-gray-100'
-                      }`}
+                          : ''
+                      }
                     >
                       {i + 1}
                     </PaginationLink>
@@ -1012,13 +922,11 @@ export function QuizTable({
                 ))}
                 <PaginationItem>
                   <PaginationNext
-                    onClick={() =>
-                      setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-                    }
+                    onClick={() => onPageChange(currentPage + 1)}
                     className={
                       currentPage === totalPages
                         ? 'pointer-events-none opacity-50'
-                        : 'hover:bg-gray-100'
+                        : ''
                     }
                   />
                 </PaginationItem>

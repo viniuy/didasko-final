@@ -132,7 +132,7 @@ export default function FacultyDetails({
             <div className='text-2xl font-bold text-[#124A69]'>
               {stats.totalClasses}
             </div>
-            <div className='text-sm text-gray-600'>CLASSES</div>
+            <div className='text-sm text-gray-600'>SECTIONS</div>
           </div>
 
           <div className='bg-[#F8F9FA] rounded-lg p-4 text-center'>
@@ -142,7 +142,7 @@ export default function FacultyDetails({
             <div className='text-2xl font-bold text-[#124A69]'>
               {stats.totalCourses}
             </div>
-            <div className='text-sm text-gray-600'>TOTAL COURSES</div>
+            <div className='text-sm text-gray-600'>SUBJECTS</div>
           </div>
         </div>
       </div>

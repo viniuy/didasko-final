@@ -11,6 +11,7 @@ import {
   X,
   Upload,
   Camera,
+  Filter,
 } from 'lucide-react';
 import {
   Pagination,
@@ -60,6 +61,12 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from '@/components/ui/alert-dialog';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 
 interface Student {
   id: string;
@@ -1832,6 +1839,7 @@ export function GradebookTable({
   const [showImageDialog, setShowImageDialog] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const itemsPerPage = 10;
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const handleImageClick = (student: Student) => {
     setSelectedStudent(student);
@@ -2043,21 +2051,16 @@ export function GradebookTable({
     )}`;
   };
 
+  // Filter students by search and passed/failed
   const filteredStudents = students.filter((student) => {
-    const name = `${student.lastName || ''} ${student.firstName || ''} ${
-      student.middleInitial || ''
+    const name = `${student.lastName}, ${student.firstName}${
+      student.middleInitial ? ` ${student.middleInitial}.` : ''
     }`.toLowerCase();
     const matchesSearch = name.includes(searchQuery.toLowerCase());
-
-    // If no filters are checked, show all students
-    if (!gradeFilter.passed && !gradeFilter.failed) {
-      return matchesSearch;
-    }
-
-    const matchesFilter =
-      (gradeFilter.passed && student.remarks === 'PASSED') ||
-      (gradeFilter.failed && student.remarks === 'FAILED');
-    return matchesSearch && matchesFilter;
+    const matchesPassed = gradeFilter.passed && student.remarks === 'PASSED';
+    const matchesFailed = gradeFilter.failed && student.remarks === 'FAILED';
+    const noFilter = !gradeFilter.passed && !gradeFilter.failed;
+    return matchesSearch && (noFilter || matchesPassed || matchesFailed);
   });
 
   const totalPages = Math.ceil(filteredStudents.length / itemsPerPage);
@@ -2248,75 +2251,32 @@ export function GradebookTable({
                   className='pl-8 w-[200px]'
                   disabled={!hasSelectedConfig}
                 />
+                {searchQuery && (
+                  <button
+                    type='button'
+                    onClick={() => setSearchQuery('')}
+                    className='absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600'
+                    tabIndex={-1}
+                  >
+                    &#10005;
+                  </button>
+                )}
               </div>
             </div>
             <div className='flex items-center gap-2'>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant='outline'
-                    className='w-[140px] h-9 rounded-full border-gray-200 bg-[#F5F6FA] justify-between'
-                    disabled={!hasSelectedConfig}
-                  >
-                    <span>Filter</span>
-                    <svg
-                      className='h-4 w-4 text-gray-500'
-                      fill='none'
-                      stroke='currentColor'
-                      strokeWidth='2'
-                      viewBox='0 0 24 24'
-                    >
-                      <path d='M19 9l-7 7-7-7' />
-                    </svg>
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className='w-[200px] p-4'>
-                  <div className='space-y-3'>
-                    <div className='flex items-center space-x-2'>
-                      <Checkbox
-                        id='passed'
-                        checked={gradeFilter.passed}
-                        onCheckedChange={() => handleFilterChange('passed')}
-                        disabled={!hasSelectedConfig}
-                      />
-                      <label
-                        htmlFor='passed'
-                        className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
-                      >
-                        Passed
-                      </label>
-                    </div>
-                    <div className='flex items-center space-x-2'>
-                      <Checkbox
-                        id='failed'
-                        checked={gradeFilter.failed}
-                        onCheckedChange={() => handleFilterChange('failed')}
-                        disabled={!hasSelectedConfig}
-                      />
-                      <label
-                        htmlFor='failed'
-                        className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
-                      >
-                        Failed
-                      </label>
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-              {Object.entries(gradeFilter).some(([_, value]) => !value) && (
-                <div className='flex items-center gap-1.5'>
-                  {gradeFilter.passed && (
-                    <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700'>
-                      Passed
-                    </span>
-                  )}
-                  {gradeFilter.failed && (
-                    <span className='inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700'>
-                      Failed
-                    </span>
-                  )}
-                </div>
-              )}
+              <Button
+                variant='outline'
+                className='rounded-full relative flex items-center gap-2 px-3 bg-white text-[#124A69] hover:bg-gray-100 border border-gray-200'
+                onClick={() => setIsFilterOpen(true)}
+              >
+                <Filter className='h-4 w-4' />
+                <span>Filter</span>
+                {(gradeFilter.passed || gradeFilter.failed) && (
+                  <span className='absolute -top-1 -right-1 bg-[#124A69] text-white text-xs rounded-full w-5 h-5 flex items-center justify-center'>
+                    {Number(gradeFilter.passed) + Number(gradeFilter.failed)}
+                  </span>
+                )}
+              </Button>
             </div>
           </div>
           <div className='flex items-center gap-1'>
@@ -2532,6 +2492,78 @@ export function GradebookTable({
         onAddImage={handleAddImage}
         onRemoveImage={handleRemoveImage}
       />
+
+      {/* Filter and Search Bar */}
+      <div className='flex items-center justify-between mb-4'>
+        <div className='flex items-center gap-4'>
+          <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+            <SheetContent side='right' className='w-[340px] sm:w-[400px] p-0'>
+              <div className='p-6 border-b'>
+                <SheetHeader>
+                  <SheetTitle className='text-xl font-semibold'>
+                    Filter Options
+                  </SheetTitle>
+                </SheetHeader>
+              </div>
+              <div className='p-6 space-y-6'>
+                <div className='space-y-4'>
+                  <label className='text-sm font-medium text-gray-700'>
+                    Remarks
+                  </label>
+                  <div className='space-y-3 border rounded-lg p-4 bg-white'>
+                    <label className='flex items-center gap-2 cursor-pointer'>
+                      <input
+                        type='checkbox'
+                        checked={gradeFilter.passed}
+                        onChange={() =>
+                          setGradeFilter((prev) => ({
+                            ...prev,
+                            passed: !prev.passed,
+                          }))
+                        }
+                        className='rounded border-gray-300 text-[#124A69] focus:ring-[#124A69]'
+                      />
+                      <span className='text-sm text-gray-700'>Passed</span>
+                    </label>
+                    <label className='flex items-center gap-2 cursor-pointer'>
+                      <input
+                        type='checkbox'
+                        checked={gradeFilter.failed}
+                        onChange={() =>
+                          setGradeFilter((prev) => ({
+                            ...prev,
+                            failed: !prev.failed,
+                          }))
+                        }
+                        className='rounded border-gray-300 text-[#124A69] focus:ring-[#124A69]'
+                      />
+                      <span className='text-sm text-gray-700'>Failed</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div className='flex items-center gap-4 p-6 border-t mt-auto'>
+                <Button
+                  variant='outline'
+                  className='flex-1 rounded-lg'
+                  onClick={() => {
+                    setGradeFilter({ passed: false, failed: false });
+                    setIsFilterOpen(false);
+                  }}
+                >
+                  Clear
+                </Button>
+                <Button
+                  className='flex-1 rounded-lg bg-[#124A69] hover:bg-[#0D3A54] text-white'
+                  onClick={() => setIsFilterOpen(false)}
+                >
+                  Apply
+                </Button>
+              </div>
+            </SheetContent>
+          </Sheet>
+        </div>
+      </div>
     </div>
   );
 }
