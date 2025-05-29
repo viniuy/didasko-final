@@ -18,11 +18,15 @@ export default function RecitationGrading() {
             <Header />
             <div className='flex-1 p-4'>
               <div className='mb-8'>
-                <h2 className='text-2xl font-bold mb-4'>1st Semester</h2>
+                <h2 className='pl-2 pb-1 text-lg sm:text-xl font-bold text-muted-foreground'>
+                  1st Semester
+                </h2>
                 <SemesterCourses semester='1st Semester' type='recitation' />
               </div>
               <div>
-                <h2 className='text-2xl font-bold mb-4'>2nd Semester</h2>
+                <h2 className='pl-2 pb-1 text-lg sm:text-xl font-bold text-muted-foreground'>
+                  2nd Semester
+                </h2>
                 <SemesterCourses semester='2nd Semester' type='recitation' />
               </div>
             </div>

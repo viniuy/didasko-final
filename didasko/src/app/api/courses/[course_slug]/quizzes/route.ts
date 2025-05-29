@@ -46,7 +46,8 @@ export async function POST(
   }
 
   try {
-    const { course_slug } = context.params;
+    const params = await Promise.resolve(context.params);
+    const { course_slug } = params;
     const body = await req.json();
     const {
       name,

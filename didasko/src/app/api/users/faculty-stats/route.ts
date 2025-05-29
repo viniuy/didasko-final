@@ -23,10 +23,13 @@ export async function GET() {
     });
 
     // Calculate totals
-    const totalStudents = courses.reduce(
-      (acc, course) => acc + course.students.length,
-      0,
-    );
+    const uniqueStudentIds = new Set();
+    courses.forEach((course) => {
+      course.students.forEach((student) => {
+        uniqueStudentIds.add(student.id);
+      });
+    });
+    const totalStudents = uniqueStudentIds.size;
     const totalCourses = courses.length;
     const totalClasses = courses.reduce(
       (acc, course) => acc + course.schedules.length,

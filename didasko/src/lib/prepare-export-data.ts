@@ -92,27 +92,12 @@ export function prepareExportData({
     [`${courseCode} - ${courseSection} QUIZ REPORT`],
     [''],
     [`Quiz: ${selectedQuiz.name} (${formattedDate})`],
-    [`Max Score: ${selectedQuiz.maxScore} | Passing Rate: ${selectedQuiz.passingRate}%`],
-    [''],
-    [`Attendance Range: ${formattedStartDate} to ${formattedEndDate}`],
-    ['Attendance Summary:'],
     [
-      `Present: ${attendanceCounts.present}`,
-      `Late: ${attendanceCounts.late}`,
-      `Excused: ${attendanceCounts.excused}`,
-      `Absent: ${attendanceCounts.absent}`,
-      `No Attendance: ${attendanceCounts.noAttendance}`,
+      `Max Score: ${selectedQuiz.maxScore} | Passing Rate: ${selectedQuiz.passingRate}%`,
     ],
     [''],
     // Column headers
-    [
-      'Student Name',
-      'Quiz Score',
-      'Attendance',
-      'Plus Points',
-      'Total Grade',
-      'Remarks',
-    ],
+    ['Student Name', 'Quiz Score', 'Plus Points', 'Total Grade', 'Remarks'],
   ];
 
   // Create student data rows
@@ -126,33 +111,11 @@ export function prepareExportData({
       remarks: '',
     };
 
-    const studentStat = attendanceStats?.studentStats.find(
-      (stat) => stat.studentId === student.id,
-    );
-
-    const totalRecords =
-      (studentStat?.present || 0) +
-      (studentStat?.late || 0) +
-      (studentStat?.absent || 0) +
-      (studentStat?.excused || 0);
-    const missingRecords = (attendanceStats?.totalClasses || 0) - totalRecords;
-
-    const attendanceText = [
-      studentStat?.present ? `Present: ${studentStat.present}` : null,
-      studentStat?.late ? `Late: ${studentStat.late}` : null,
-      studentStat?.excused ? `Excused: ${studentStat.excused}` : null,
-      studentStat?.absent ? `Absent: ${studentStat.absent}` : null,
-      missingRecords > 0 ? `No Attendance: ${missingRecords}` : null,
-    ]
-      .filter(Boolean)
-      .join(' | ');
-
     return [
       `${student.lastName}, ${student.firstName}${
         student.middleInitial ? ` ${student.middleInitial}.` : ''
       }`,
       studentScore.quizScore.toString(),
-      attendanceText || 'No attendance records',
       studentScore.plusPoints.toString(),
       `${studentScore.totalGrade.toFixed(1)}%`,
       studentScore.totalGrade >= passingRate ? 'PASSED' : 'FAILED',

@@ -1669,101 +1669,59 @@ const StudentProfileDialog = ({
             </DialogTitle>
           </DialogHeader>
           <div className='flex flex-col items-center gap-4 py-4'>
-            <div className='relative w-48 h-48'>
+            <div className='relative'>
               {tempImage ? (
                 <img
                   src={tempImage}
                   alt={`${student?.firstName} ${student?.lastName}`}
-                  className='w-48 h-48 rounded-full object-cover transition-opacity duration-200'
+                  className='w-48 h-48 rounded-full object-cover'
                 />
               ) : student?.image ? (
-                <>
-                  <img
-                    src={student.image}
-                    alt={`${student.firstName} ${student.lastName}`}
-                    className='w-48 h-48 rounded-full object-cover transition-opacity duration-200'
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.style.display = 'none';
-                      target.nextElementSibling?.classList.remove('hidden');
-                    }}
-                  />
-                  <div className='hidden absolute inset-0 w-48 h-48 rounded-full bg-gray-200 flex items-center justify-center'>
-                    <div className='text-center'>
-                      <svg
-                        width='48'
-                        height='48'
-                        fill='none'
-                        stroke='currentColor'
-                        strokeWidth='2'
-                        viewBox='0 0 24 24'
-                        className='text-gray-400 mx-auto mb-2'
-                      >
-                        <circle cx='12' cy='8' r='4' />
-                        <path d='M6 20c0-2.2 3.6-4 6-4s6 1.8 6 4' />
-                      </svg>
-                      <p className='text-sm text-gray-500'>
-                        Failed to load image
-                      </p>
-                    </div>
-                  </div>
-                </>
+                <img
+                  src={student.image}
+                  alt={`${student.firstName} ${student.lastName}`}
+                  className='w-48 h-48 rounded-full object-cover'
+                />
               ) : (
-                <div className='w-48 h-48 rounded-full bg-gray-200 flex items-center justify-center'>
-                  <div className='text-center'>
-                    <svg
-                      width='48'
-                      height='48'
-                      fill='none'
-                      stroke='currentColor'
-                      strokeWidth='2'
-                      viewBox='0 0 24 24'
-                      className='text-gray-400 mx-auto mb-2'
-                    >
-                      <circle cx='12' cy='8' r='4' />
-                      <path d='M6 20c0-2.2 3.6-4 6-4s6 1.8 6 4' />
-                    </svg>
-                    <p className='text-sm text-gray-500'>No profile picture</p>
-                  </div>
-                </div>
+                <span className='inline-flex w-48 h-48 rounded-full bg-gray-200 text-gray-400 items-center justify-center'>
+                  <svg
+                    width='80'
+                    height='80'
+                    fill='none'
+                    stroke='currentColor'
+                    strokeWidth='2'
+                    viewBox='0 0 24 24'
+                  >
+                    <circle cx='12' cy='8' r='4' />
+                    <path d='M6 20c0-2.2 3.6-4 6-4s6 1.8 6 4' />
+                  </svg>
+                </span>
+              )}
+            </div>
+            <div className='flex gap-2'>
+              <Button
+                variant='outline'
+                onClick={() => fileInputRef.current?.click()}
+                className='flex items-center gap-2 bg-[#124A69] text-white hover:bg-[#0D3A54] hover:text-white border-none'
+              >
+                <Camera className='h-4 w-4' />
+                {student?.image ? 'Change Picture' : 'Add Picture'}
+              </Button>
+              {student?.image && (
+                <Button
+                  variant='outline'
+                  onClick={() => {
+                    setImageToRemove(student);
+                    onOpenChange(false);
+                  }}
+                  className='flex items-center gap-2 text-red-500 hover:text-red-600 hover:bg-red-50'
+                >
+                  <X className='h-4 w-4' />
+                  Remove Picture
+                </Button>
               )}
             </div>
           </div>
-          <DialogFooter
-            className={cn(
-              'px-6 py-4 border-t mt-4 flex gap-3',
-              !student?.image && 'justify-center',
-            )}
-          >
-            <input
-              type='file'
-              ref={fileInputRef}
-              className='hidden'
-              accept='image/*'
-              onChange={handleFileChange}
-            />
-            <Button
-              variant='default'
-              onClick={() => fileInputRef.current?.click()}
-              className='flex items-center gap-2 bg-[#124A69] text-white hover:bg-[#0D3A56] hover:text-white border-none'
-            >
-              <Camera className='h-4 w-4' />
-              {student?.image ? 'Change Picture' : 'Add Picture'}
-            </Button>
-            {student?.image && onRemoveImage && (
-              <Button
-                variant='outline'
-                onClick={() => {
-                  setImageToRemove(student);
-                  onOpenChange(false);
-                }}
-                className='flex items-center gap-2 text-red-600 border-red-200 hover:text-red-700 hover:bg-red-50'
-              >
-                <X className='h-4 w-4' />
-                Remove Picture
-              </Button>
-            )}
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 

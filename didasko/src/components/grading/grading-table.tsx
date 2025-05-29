@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import {
   Dialog,
@@ -31,6 +31,8 @@ import {
   Loader2,
   Search,
   Filter,
+  Camera,
+  X,
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import axiosInstance from '@/lib/axios';
@@ -118,6 +120,167 @@ interface GradingScore {
   reportingScore?: number | null;
   recitationScore?: number | null;
 }
+
+interface StudentProfileDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  student: Student | null;
+  onAddImage: (index: number, file: File) => void;
+  onRemoveImage: (student: Student) => void;
+  students: Student[];
+}
+
+const StudentProfileDialog = ({
+  open,
+  onOpenChange,
+  student,
+  onAddImage,
+  onRemoveImage,
+  students,
+}: StudentProfileDialogProps) => {
+  const [tempImage, setTempImage] = useState<string | null>(null);
+  const [showRemoveDialog, setShowRemoveDialog] = useState(false);
+
+  if (!student) return null;
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setTempImage(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+
+    // Find the student's index
+    const studentIndex = students.findIndex(
+      (s: Student) => s.id === student.id,
+    );
+    if (studentIndex !== -1) {
+      onAddImage(studentIndex, file);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setShowRemoveDialog(true);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className='sm:max-w-[425px]'>
+        <DialogHeader>
+          <DialogTitle className='text-[#124A69] text-xl font-bold'>
+            {student.firstName} {student.lastName}'s Profile Picture
+          </DialogTitle>
+        </DialogHeader>
+        <div className='flex flex-col items-center gap-4 py-4'>
+          <div className='relative'>
+            {tempImage ? (
+              <img
+                src={tempImage}
+                alt={`${student.firstName} ${student.lastName}`}
+                className='w-48 h-48 rounded-full object-cover'
+              />
+            ) : student.image ? (
+              <img
+                src={student.image}
+                alt={`${student.firstName} ${student.lastName}`}
+                className='w-48 h-48 rounded-full object-cover'
+              />
+            ) : (
+              <div className='w-48 h-48 rounded-full bg-gray-200 flex items-center justify-center'>
+                <span className='text-gray-400 text-4xl'>
+                  {student.firstName[0]}
+                  {student.lastName[0]}
+                </span>
+              </div>
+            )}
+          </div>
+          <div className='flex gap-2'>
+            <input
+              type='file'
+              id='profile-picture'
+              accept='image/*'
+              onChange={handleFileChange}
+              className='hidden'
+            />
+            <Button
+              variant='outline'
+              onClick={() => {
+                const input = document.getElementById('profile-picture');
+                if (input) input.click();
+              }}
+              className='flex items-center gap-2 bg-[#124A69] text-white hover:bg-[#0D3A54] hover:text-white border-none'
+            >
+              <Camera className='h-4 w-4' />
+              {student.image ? 'Change Picture' : 'Add Picture'}
+            </Button>
+            {student.image && (
+              <Button
+                variant='outline'
+                onClick={handleRemoveImage}
+                className='flex items-center gap-2 text-red-500 hover:text-red-600 hover:bg-red-50'
+              >
+                <X className='h-4 w-4' />
+                Remove Picture
+              </Button>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+
+      {/* Remove Image Confirmation Dialog */}
+      <AlertDialog
+        open={showRemoveDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowRemoveDialog(false);
+            setTimeout(() => {
+              document.body.style.removeProperty('pointer-events');
+            }, 0);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Profile Picture</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove the profile picture? This action
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setShowRemoveDialog(false);
+                setTimeout(() => {
+                  document.body.style.removeProperty('pointer-events');
+                }, 0);
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                onRemoveImage(student);
+                setShowRemoveDialog(false);
+              }}
+              className='bg-[#124A69] hover:bg-[#0D3A54] text-white'
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Dialog>
+  );
+};
 
 export function GradingTable({
   courseId,
@@ -216,6 +379,8 @@ export function GradingTable({
     [key: number]: boolean;
   }>({});
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [showImageDialog, setShowImageDialog] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
 
   // Function to handle dialog close
   const handleDialogClose = () => {
@@ -1846,17 +2011,19 @@ export function GradingTable({
         },
       );
 
-      // Update the student's image in the list
-      setStudents((prev) =>
-        prev.map((s) =>
-          s.id === student.id ? { ...s, image: response.data.imageUrl } : s,
-        ),
-      );
-
-      toast.success('Profile picture updated successfully');
+      if (response.data) {
+        // Update the student's image in the local state
+        setStudents((prevStudents) =>
+          prevStudents.map((s) =>
+            s.id === student.id ? { ...s, image: response.data.imageUrl } : s,
+          ),
+        );
+        toast.success('Profile picture updated successfully');
+      }
     } catch (error) {
       console.error('Error uploading image:', error);
-      toast.error('Failed to upload image');
+      toast.error('Failed to upload profile picture');
+      throw error;
     }
   };
 
@@ -1966,6 +2133,31 @@ export function GradingTable({
         toast.error('Failed to remove profile picture');
       }
     }
+  };
+
+  const handleRemoveImage = async (student: Student) => {
+    try {
+      await axiosInstance.delete(
+        `/courses/${courseSlug}/students/${student.id}/image`,
+      );
+
+      // Update the student's image in the local state
+      setStudents((prevStudents) =>
+        prevStudents.map((s) =>
+          s.id === student.id ? { ...s, image: undefined } : s,
+        ),
+      );
+      toast.success('Profile picture removed successfully');
+    } catch (error) {
+      console.error('Error removing image:', error);
+      toast.error('Failed to remove profile picture');
+      throw error;
+    }
+  };
+
+  const handleImageClick = (student: Student) => {
+    setSelectedStudent(student);
+    setShowImageDialog(true);
   };
 
   return (
@@ -3432,6 +3624,16 @@ export function GradingTable({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Add the StudentProfileDialog */}
+      <StudentProfileDialog
+        open={showImageDialog}
+        onOpenChange={setShowImageDialog}
+        student={selectedStudent}
+        onAddImage={handleImageUpload}
+        onRemoveImage={handleRemoveImage}
+        students={students}
+      />
     </div>
   );
 }
