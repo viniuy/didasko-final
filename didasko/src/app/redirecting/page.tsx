@@ -77,9 +77,6 @@ export default function RedirectingPage() {
       <p className='text-lg text-gray-600 animate-float-delayed'>
         Please sit tight while we are getting things ready for you...
       </p>
-      <div className='animate-pulse text-gray-500'>
-        Redirecting based on your role...
-      </div>
     </div>
   );
 }

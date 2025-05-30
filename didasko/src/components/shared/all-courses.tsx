@@ -222,7 +222,7 @@ export default function AllCourses({ type }: AllCoursesProps) {
 
   return (
     <Card className='p-4 shadow-md rounded-lg'>
-      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
+      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[600px] overflow-hidden'>
         {currentCourses.map((course) => (
           <CourseCard key={course.id} course={course} type={type} />
         ))}
@@ -231,8 +231,8 @@ export default function AllCourses({ type }: AllCoursesProps) {
       {courses.length > itemsPerPage && (
         <div className='flex justify-between items-center px-2 -mt-4'>
           <p className='text-sm text-gray-500 w-100'>
-            {currentPage * itemsPerPage - (itemsPerPage - 1)}-
-            {Math.min(currentPage * itemsPerPage, courses.length)} out of{' '}
+            Showing {currentPage * itemsPerPage - (itemsPerPage - 1)}-
+            {Math.min(currentPage * itemsPerPage, courses.length)} of{' '}
             {courses.length} classes
           </p>
           <Pagination className='flex justify-end'>

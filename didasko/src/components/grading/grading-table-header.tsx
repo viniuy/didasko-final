@@ -22,7 +22,9 @@ const GradingTableHeader: React.FC<GradingTableHeaderProps> = ({
       {rubricDetails.map((rubric, i) => (
         <th
           key={rubric.name + i}
-          className='border-b font-bold text-[#124A69] text-center px-4 py-3 w-[120px]'
+          className={`border-b font-bold text-[#124A69] text-center px-4 py-3 w-[120px] ${
+            rubricDetails.length === 4 ? 'text-sm' : ''
+          }`}
         >
           {rubric.name}
           <div className='text-xs text-gray-500 font-normal'>

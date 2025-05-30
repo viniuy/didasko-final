@@ -1,9 +1,10 @@
 'use client';
 
-import { User, BookOpen, GraduationCap } from 'lucide-react';
+import { User, BookOpen, GraduationCap, Users } from 'lucide-react';
 import { Card, CardContent, CardDescription } from '@/components/ui/card';
 import { useEffect, useState } from 'react';
 import axiosInstance from '@/lib/axios';
+import { useSession } from 'next-auth/react';
 
 interface StatCardProps {
   icon: React.ReactNode;
@@ -42,24 +43,63 @@ async function getFacultyStats() {
   }
 }
 
+async function getFacultyCount() {
+  try {
+    const response = await axiosInstance.get('/users/faculty-count');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching faculty count:', error);
+    return { fullTime: 0, partTime: 0 };
+  }
+}
+
 export default function Dashboard() {
+  const { data: session } = useSession();
   const [stats, setStats] = useState({
     totalStudents: 0,
     totalCourses: 0,
     totalClasses: 0,
+    fullTime: 0,
+    partTime: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const fetchStats = async () => {
       setIsLoading(true);
-      const data = await getFacultyStats();
-      setStats(data);
+      if (session?.user?.role === 'ACADEMIC_HEAD') {
+        const data = await getFacultyCount();
+        setStats((prev) => ({ ...prev, ...data }));
+      } else {
+        const data = await getFacultyStats();
+        setStats((prev) => ({ ...prev, ...data }));
+      }
       setIsLoading(false);
     };
 
     fetchStats();
-  }, []);
+  }, [session?.user?.role]);
+
+  if (session?.user?.role === 'ACADEMIC_HEAD') {
+    return (
+      <div className='pt-2 px-5'>
+        <div className='grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4'>
+          <StatCard
+            icon={<Users size={24} />}
+            count={stats.fullTime}
+            label='FACULTY FULL-TIME'
+            isLoading={isLoading}
+          />
+          <StatCard
+            icon={<Users size={24} />}
+            count={stats.partTime}
+            label='FACULTY PART-TIME'
+            isLoading={isLoading}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className='pt-2 px-5'>

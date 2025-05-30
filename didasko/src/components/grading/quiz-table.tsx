@@ -15,6 +15,8 @@ import {
   Search,
   Loader2,
   Filter,
+  Camera,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import axios from 'axios';
@@ -36,6 +38,16 @@ import {
   DialogDescription,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Sheet,
   SheetContent,
@@ -89,6 +101,15 @@ interface AttendanceStats {
     excused: number;
   }[];
   uniqueDates: string[];
+}
+
+interface StudentProfileDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  student: Student | null;
+  onAddImage: (index: number, file: File) => void;
+  onRemoveImage: (student: Student) => void;
+  students: Student[];
 }
 
 export function QuizTable({
@@ -162,6 +183,11 @@ export function QuizTable({
   const [editDateRange, setEditDateRange] = useState<DateRange | undefined>();
   const [editing, setEditing] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [showImageDialog, setShowImageDialog] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const [imageToRemove, setImageToRemove] = useState<Student | null>(null);
+  const [tempImage, setTempImage] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Fetch quizzes for the course when modal opens
   useEffect(() => {
@@ -654,6 +680,256 @@ export function QuizTable({
     setShowSetupModal(true);
   };
 
+  const handleImageUpload = async (index: number, file: File) => {
+    try {
+      const student = students[index];
+      if (!student) return;
+
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const response = await axios.post(
+        `/api/courses/${course_slug}/students/${student.id}/image`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        },
+      );
+
+      if (response.data) {
+        // Update the student's image in the local state
+        setStudents((prevStudents) =>
+          prevStudents.map((s) =>
+            s.id === student.id ? { ...s, image: response.data.imageUrl } : s,
+          ),
+        );
+        toast.success('Profile picture updated successfully');
+      }
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast.error('Failed to upload profile picture');
+      throw error;
+    }
+  };
+
+  const handleRemoveImage = async (student: Student) => {
+    try {
+      await axios.delete(
+        `/api/courses/${course_slug}/students/${student.id}/image`,
+      );
+
+      // Update the student's image in the local state
+      setStudents((prevStudents) =>
+        prevStudents.map((s) =>
+          s.id === student.id ? { ...s, image: undefined } : s,
+        ),
+      );
+      toast.success('Profile picture removed successfully');
+    } catch (error) {
+      console.error('Error removing image:', error);
+      toast.error('Failed to remove profile picture');
+      throw error;
+    }
+  };
+
+  const handleImageClick = (student: Student) => {
+    setSelectedStudent(student);
+    setShowImageDialog(true);
+  };
+
+  const StudentProfileDialog = ({
+    open,
+    onOpenChange,
+    student,
+    onAddImage,
+    onRemoveImage,
+    students,
+  }: StudentProfileDialogProps) => {
+    const [tempImage, setTempImage] = useState<string | null>(null);
+    const [showRemoveDialog, setShowRemoveDialog] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
+
+    if (!student) return null;
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please select an image file');
+        return;
+      }
+
+      setIsUploading(true);
+      try {
+        const reader = new FileReader();
+        reader.onload = () => {
+          setTempImage(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+
+        // Find the student's index
+        const studentIndex = students.findIndex(
+          (s: Student) => s.id === student.id,
+        );
+        if (studentIndex !== -1) {
+          await onAddImage(studentIndex, file);
+          // Close the dialog after successful upload
+          onOpenChange(false);
+        }
+      } catch (error) {
+        console.error('Error uploading image:', error);
+        toast.error('Failed to upload image');
+      } finally {
+        setIsUploading(false);
+      }
+    };
+
+    const handleRemoveImage = () => {
+      setShowRemoveDialog(true);
+    };
+
+    const handleConfirmRemove = async () => {
+      try {
+        await onRemoveImage(student);
+        setShowRemoveDialog(false);
+        setTempImage(null);
+      } catch (error) {
+        console.error('Error removing image:', error);
+        toast.error('Failed to remove profile picture');
+      }
+    };
+
+    return (
+      <Dialog
+        open={open}
+        onOpenChange={(newOpen) => {
+          if (!newOpen) {
+            setTempImage(null);
+            setShowRemoveDialog(false);
+          }
+          onOpenChange(newOpen);
+        }}
+      >
+        <DialogContent className='sm:max-w-[425px]'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              {student.firstName}'s Profile Picture
+            </DialogTitle>
+          </DialogHeader>
+          <div className='flex flex-col items-center gap-4 py-4'>
+            <div className='relative'>
+              {isUploading ? (
+                <div className='w-48 h-48 rounded-full bg-gray-100 flex items-center justify-center'>
+                  <Loader2 className='h-8 w-8 animate-spin text-[#124A69]' />
+                </div>
+              ) : tempImage ? (
+                <img
+                  src={tempImage}
+                  alt={`${student.firstName} ${student.lastName}`}
+                  className='w-48 h-48 rounded-full object-cover'
+                />
+              ) : student.image ? (
+                <img
+                  src={student.image}
+                  alt={`${student.firstName} ${student.lastName}`}
+                  className='w-48 h-48 rounded-full object-cover'
+                />
+              ) : (
+                <div className='w-48 h-48 rounded-full bg-gray-200 flex items-center justify-center'>
+                  <span className='text-gray-400 text-4xl'>
+                    {student.firstName[0]}
+                    {student.lastName[0]}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className='flex gap-2'>
+              <input
+                type='file'
+                id='profile-picture'
+                accept='image/*'
+                onChange={handleFileChange}
+                className='hidden'
+                disabled={isUploading}
+              />
+              <Button
+                variant='outline'
+                onClick={() => {
+                  const input = document.getElementById('profile-picture');
+                  if (input) input.click();
+                }}
+                className='flex items-center gap-2 bg-[#124A69] text-white hover:bg-[#0D3A54] hover:text-white border-none'
+                disabled={isUploading}
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className='h-4 w-4 animate-spin' />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Camera className='h-4 w-4' />
+                    {student.image ? 'Change Picture' : 'Add Picture'}
+                  </>
+                )}
+              </Button>
+              {student.image && !isUploading && (
+                <Button
+                  variant='outline'
+                  onClick={handleRemoveImage}
+                  className='flex items-center gap-2 text-red-500 hover:text-red-600 hover:bg-red-50'
+                  disabled={isUploading}
+                >
+                  <X className='h-4 w-4' />
+                  Remove Picture
+                </Button>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+
+        {/* Remove Image Confirmation Dialog */}
+        <AlertDialog
+          open={showRemoveDialog}
+          onOpenChange={(newOpen) => {
+            if (!newOpen) {
+              setShowRemoveDialog(false);
+            }
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className='text-[#124A69] text-xl font-bold'>
+                Remove Profile Picture
+              </AlertDialogTitle>
+              <AlertDialogDescription className='text-gray-500'>
+                Are you sure you want to remove the profile picture? This action
+                cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className='gap-2 sm:gap-2'>
+              <AlertDialogCancel
+                onClick={() => setShowRemoveDialog(false)}
+                className='border-gray-200'
+              >
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleConfirmRemove}
+                className='bg-[#124A69] hover:bg-[#0D3A54] text-white'
+              >
+                Remove
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </Dialog>
+    );
+  };
+
   return (
     <div className='min-h-screen w-full p-0'>
       <Toaster
@@ -1003,27 +1279,32 @@ export function QuizTable({
                         >
                           <td className='sticky left-0 z-10 bg-inherit px-4 py-2'>
                             <div className='flex items-center gap-3'>
-                              {student.image ? (
-                                <img
-                                  src={student.image}
-                                  alt=''
-                                  className='w-8 h-8 rounded-full object-cover'
-                                />
-                              ) : (
-                                <span className='inline-flex w-8 h-8 rounded-full bg-gray-200 text-gray-400 items-center justify-center'>
-                                  <svg
-                                    width='20'
-                                    height='20'
-                                    fill='none'
-                                    stroke='currentColor'
-                                    strokeWidth='2'
-                                    viewBox='0 0 24 24'
-                                  >
-                                    <circle cx='12' cy='8' r='4' />
-                                    <path d='M6 20c0-2.2 3.6-4 6-4s6 1.8 6 4' />
-                                  </svg>
-                                </span>
-                              )}
+                              <div
+                                className='cursor-pointer'
+                                onClick={() => handleImageClick(student)}
+                              >
+                                {student.image ? (
+                                  <img
+                                    src={student.image}
+                                    alt=''
+                                    className='w-8 h-8 rounded-full object-cover'
+                                  />
+                                ) : (
+                                  <span className='inline-flex w-8 h-8 rounded-full bg-gray-200 text-gray-400 items-center justify-center'>
+                                    <svg
+                                      width='20'
+                                      height='20'
+                                      fill='none'
+                                      stroke='currentColor'
+                                      strokeWidth='2'
+                                      viewBox='0 0 24 24'
+                                    >
+                                      <circle cx='12' cy='8' r='4' />
+                                      <path d='M6 20c0-2.2 3.6-4 6-4s6 1.8 6 4' />
+                                    </svg>
+                                  </span>
+                                )}
+                              </div>
                               <span>{`${student.lastName}, ${
                                 student.firstName
                               }${
@@ -1879,6 +2160,16 @@ export function QuizTable({
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Add the StudentProfileDialog */}
+        <StudentProfileDialog
+          open={showImageDialog}
+          onOpenChange={setShowImageDialog}
+          student={selectedStudent}
+          onAddImage={handleImageUpload}
+          onRemoveImage={handleRemoveImage}
+          students={students}
+        />
       </div>
     </div>
   );

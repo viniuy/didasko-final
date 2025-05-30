@@ -143,10 +143,11 @@ const StudentProfileDialog = ({
 }: StudentProfileDialogProps) => {
   const [tempImage, setTempImage] = useState<string | null>(null);
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   if (!student) return null;
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -155,18 +156,26 @@ const StudentProfileDialog = ({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setTempImage(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    setIsUploading(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setTempImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
 
-    // Find the student's index
-    const studentIndex = students.findIndex(
-      (s: Student) => s.id === student.id,
-    );
-    if (studentIndex !== -1) {
-      onAddImage(studentIndex, file);
+      // Find the student's index
+      const studentIndex = students.findIndex(
+        (s: Student) => s.id === student.id,
+      );
+      if (studentIndex !== -1) {
+        await onAddImage(studentIndex, file);
+      }
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast.error('Failed to upload image');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -174,8 +183,28 @@ const StudentProfileDialog = ({
     setShowRemoveDialog(true);
   };
 
+  const handleConfirmRemove = async () => {
+    try {
+      await onRemoveImage(student);
+      setShowRemoveDialog(false);
+      setTempImage(null);
+    } catch (error) {
+      console.error('Error removing image:', error);
+      toast.error('Failed to remove profile picture');
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(newOpen) => {
+        if (!newOpen) {
+          setTempImage(null);
+          setShowRemoveDialog(false);
+        }
+        onOpenChange(newOpen);
+      }}
+    >
       <DialogContent className='sm:max-w-[425px]'>
         <DialogHeader>
           <DialogTitle className='text-[#124A69] text-xl font-bold'>
@@ -184,7 +213,11 @@ const StudentProfileDialog = ({
         </DialogHeader>
         <div className='flex flex-col items-center gap-4 py-4'>
           <div className='relative'>
-            {tempImage ? (
+            {isUploading ? (
+              <div className='w-48 h-48 rounded-full bg-gray-100 flex items-center justify-center'>
+                <Loader2 className='h-8 w-8 animate-spin text-[#124A69]' />
+              </div>
+            ) : tempImage ? (
               <img
                 src={tempImage}
                 alt={`${student.firstName} ${student.lastName}`}
@@ -212,6 +245,7 @@ const StudentProfileDialog = ({
               accept='image/*'
               onChange={handleFileChange}
               className='hidden'
+              disabled={isUploading}
             />
             <Button
               variant='outline'
@@ -220,15 +254,26 @@ const StudentProfileDialog = ({
                 if (input) input.click();
               }}
               className='flex items-center gap-2 bg-[#124A69] text-white hover:bg-[#0D3A54] hover:text-white border-none'
+              disabled={isUploading}
             >
-              <Camera className='h-4 w-4' />
-              {student.image ? 'Change Picture' : 'Add Picture'}
+              {isUploading ? (
+                <>
+                  <Loader2 className='h-4 w-4 animate-spin' />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <Camera className='h-4 w-4' />
+                  {student.image ? 'Change Picture' : 'Add Picture'}
+                </>
+              )}
             </Button>
-            {student.image && (
+            {student.image && !isUploading && (
               <Button
                 variant='outline'
                 onClick={handleRemoveImage}
                 className='flex items-center gap-2 text-red-500 hover:text-red-600 hover:bg-red-50'
+                disabled={isUploading}
               >
                 <X className='h-4 w-4' />
                 Remove Picture
@@ -241,39 +286,31 @@ const StudentProfileDialog = ({
       {/* Remove Image Confirmation Dialog */}
       <AlertDialog
         open={showRemoveDialog}
-        onOpenChange={(open) => {
-          if (!open) {
+        onOpenChange={(newOpen) => {
+          if (!newOpen) {
             setShowRemoveDialog(false);
-            setTimeout(() => {
-              document.body.style.removeProperty('pointer-events');
-            }, 0);
           }
         }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove Profile Picture</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle className='text-[#124A69] text-xl font-bold'>
+              Remove Profile Picture
+            </AlertDialogTitle>
+            <AlertDialogDescription className='text-gray-500'>
               Are you sure you want to remove the profile picture? This action
               cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
+          <AlertDialogFooter className='gap-2 sm:gap-2'>
             <AlertDialogCancel
-              onClick={() => {
-                setShowRemoveDialog(false);
-                setTimeout(() => {
-                  document.body.style.removeProperty('pointer-events');
-                }, 0);
-              }}
+              onClick={() => setShowRemoveDialog(false)}
+              className='border-gray-200'
             >
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
-                onRemoveImage(student);
-                setShowRemoveDialog(false);
-              }}
+              onClick={handleConfirmRemove}
               className='bg-[#124A69] hover:bg-[#0D3A54] text-white'
             >
               Remove
@@ -876,14 +913,20 @@ export function GradingTable({
         weights[i]++;
       }
 
+      // Create the group rubrics (all except the last one)
+      const groupRubrics = Array(count - 1)
+        .fill(null)
+        .map((_, index) => ({
+          name:
+            currentRubrics[index]?.name === 'Participation'
+              ? ''
+              : currentRubrics[index]?.name || '',
+          weight: weights[index],
+          isGroupRubric: true,
+        }));
+
       const newRubricDetails = [
-        ...Array(count - 1)
-          .fill(null)
-          .map((_, index) => ({
-            name: currentRubrics[index]?.name || '',
-            weight: weights[index],
-            isGroupRubric: true,
-          })),
+        ...groupRubrics,
         {
           name: 'Participation',
           weight: 20,
@@ -1614,8 +1657,8 @@ export function GradingTable({
             </div>
           </td>
           {rubricDetails.map((rubric, rubricIdx) => {
-            // If this is one of the first two rubrics (should be grouped)
-            if (rubricIdx < 2) {
+            // If this is not the last rubric (should be grouped)
+            if (rubricIdx < rubricDetails.length - 1) {
               // Only render for the first student row
               if (idx === 0) {
                 // Get the value from the first student
@@ -1680,7 +1723,7 @@ export function GradingTable({
                 return null;
               }
             } else {
-              // Individual rubric (Participation)
+              // Last rubric (Participation)
               const value = studentScore.scores[rubricIdx] || '';
               let cellBg = '';
               if (value) {
@@ -1749,14 +1792,24 @@ export function GradingTable({
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (hasChanges()) {
+        const message =
+          'You have unsaved changes. Are you sure you want to leave?';
         e.preventDefault();
-        e.returnValue = '';
-        return '';
+        e.returnValue = message;
+        return message;
       }
     };
 
+    // Add event listener for beforeunload
     window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+
+    // Add event listener for unload
+    window.addEventListener('unload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('unload', handleBeforeUnload);
+    };
   }, [hasChanges]);
 
   // Add useEffect for handling navigation
@@ -1772,8 +1825,9 @@ export function GradingTable({
     };
 
     // Handle browser back/forward navigation
-    const handlePopState = () => {
+    const handlePopState = (e: PopStateEvent) => {
       if (hasChanges()) {
+        e.preventDefault();
         setPendingNavigation(pathname);
         setShowUnsavedChangesDialog(true);
         // Push the current state back to prevent navigation
@@ -1781,12 +1835,22 @@ export function GradingTable({
       }
     };
 
+    // Handle form submissions
+    const handleSubmit = (e: Event) => {
+      if (hasChanges()) {
+        e.preventDefault();
+        setShowUnsavedChangesDialog(true);
+      }
+    };
+
     document.addEventListener('click', handleClick);
     window.addEventListener('popstate', handlePopState);
+    document.addEventListener('submit', handleSubmit);
 
     return () => {
       document.removeEventListener('click', handleClick);
       window.removeEventListener('popstate', handlePopState);
+      document.removeEventListener('submit', handleSubmit);
     };
   }, [hasChanges, pathname]);
 
@@ -2228,6 +2292,74 @@ export function GradingTable({
             Number(gradeFilter.noGrades)
           }
         />
+
+        {/* Add Filter Sheet */}
+        <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+          <SheetContent side='right' className='w-[340px] sm:w-[400px] p-0'>
+            <div className='p-6 border-b'>
+              <SheetHeader>
+                <SheetTitle className='text-xl font-semibold'>
+                  Filter Options
+                </SheetTitle>
+              </SheetHeader>
+            </div>
+            <div className='p-6 space-y-6'>
+              <div className='space-y-4'>
+                <label className='text-sm font-medium text-gray-700'>
+                  Remarks
+                </label>
+                <div className='space-y-3 border rounded-lg p-4 bg-white'>
+                  <label className='flex items-center gap-2 cursor-pointer'>
+                    <Checkbox
+                      checked={gradeFilter.passed}
+                      onCheckedChange={() => handleFilterChange('passed')}
+                      className='rounded border-gray-300 text-[#124A69] focus:ring-[#124A69]'
+                    />
+                    <span className='text-sm text-gray-700'>Passed</span>
+                  </label>
+                  <label className='flex items-center gap-2 cursor-pointer'>
+                    <Checkbox
+                      checked={gradeFilter.failed}
+                      onCheckedChange={() => handleFilterChange('failed')}
+                      className='rounded border-gray-300 text-[#124A69] focus:ring-[#124A69]'
+                    />
+                    <span className='text-sm text-gray-700'>Failed</span>
+                  </label>
+                  <label className='flex items-center gap-2 cursor-pointer'>
+                    <Checkbox
+                      checked={gradeFilter.noGrades}
+                      onCheckedChange={() => handleFilterChange('noGrades')}
+                      className='rounded border-gray-300 text-[#124A69] focus:ring-[#124A69]'
+                    />
+                    <span className='text-sm text-gray-700'>No Grades</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div className='flex items-center gap-4 p-6 border-t mt-auto'>
+              <Button
+                variant='outline'
+                className='flex-1 rounded-lg'
+                onClick={() => {
+                  setGradeFilter({
+                    passed: false,
+                    failed: false,
+                    noGrades: false,
+                  });
+                  setIsFilterOpen(false);
+                }}
+              >
+                Clear
+              </Button>
+              <Button
+                className='flex-1 rounded-lg bg-[#124A69] hover:bg-[#0D3A54] text-white'
+                onClick={() => setIsFilterOpen(false)}
+              >
+                Apply
+              </Button>
+            </div>
+          </SheetContent>
+        </Sheet>
 
         {activeReport && (
           <div className='space-y-4 p-0 rounded-lg shadow-md'>
@@ -3010,7 +3142,12 @@ export function GradingTable({
       {/* Unsaved Changes Dialog */}
       <Dialog
         open={showUnsavedChangesDialog}
-        onOpenChange={setShowUnsavedChangesDialog}
+        onOpenChange={(newOpen) => {
+          if (!newOpen) {
+            setShowUnsavedChangesDialog(false);
+            setPendingNavigation(null);
+          }
+        }}
       >
         <DialogContent className='sm:max-w-[425px]'>
           <DialogHeader>
@@ -3035,7 +3172,7 @@ export function GradingTable({
             </Button>
             <Button
               onClick={handleNavigation}
-              className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+              className='bg-[#124A69] hover:bg-[#0D3A54] text-white'
             >
               Leave
             </Button>
@@ -3320,7 +3457,11 @@ export function GradingTable({
       {/* Save Edit Confirmation Dialog */}
       <Dialog
         open={showSaveEditConfirmation}
-        onOpenChange={setShowSaveEditConfirmation}
+        onOpenChange={(newOpen) => {
+          if (!newOpen) {
+            setShowSaveEditConfirmation(false);
+          }
+        }}
       >
         <DialogContent className='sm:max-w-[425px]'>
           <DialogHeader>
@@ -3343,7 +3484,7 @@ export function GradingTable({
             </Button>
             <Button
               onClick={handleConfirmSaveEdit}
-              className='bg-[#124A69] hover:bg-[#0d3a56] text-white relative overflow-hidden'
+              className='bg-[#124A69] hover:bg-[#0D3A54] text-white relative overflow-hidden'
               disabled={isSavingEdit}
             >
               {isSavingEdit ? (
@@ -3364,7 +3505,12 @@ export function GradingTable({
       {/* Rubric Change Warning Dialog */}
       <Dialog
         open={showRubricChangeWarning}
-        onOpenChange={setShowRubricChangeWarning}
+        onOpenChange={(newOpen) => {
+          if (!newOpen) {
+            setShowRubricChangeWarning(false);
+            setPendingRubricCount(null);
+          }
+        }}
       >
         <DialogContent className='sm:max-w-[425px]'>
           <DialogHeader>
@@ -3392,7 +3538,7 @@ export function GradingTable({
                 await handleSaveGrades();
                 await handleConfirmRubricChange();
               }}
-              className='bg-[#124A69] hover:bg-[#0d3a56] text-white'
+              className='bg-[#124A69] hover:bg-[#0D3A54] text-white'
             >
               Save and Continue
             </Button>
@@ -3400,27 +3546,42 @@ export function GradingTable({
         </DialogContent>
       </Dialog>
 
-      {/* Add AlertDialog for image removal confirmation */}
-      <AlertDialog
+      {/* Image Removal Confirmation Dialog */}
+      <Dialog
         open={!!imageToRemove}
-        onOpenChange={() => setImageToRemove(null)}
+        onOpenChange={(newOpen) => {
+          if (!newOpen) {
+            setImageToRemove(null);
+          }
+        }}
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove Profile Picture</AlertDialogTitle>
-            <AlertDialogDescription>
+        <DialogContent className='sm:max-w-[425px]'>
+          <DialogHeader>
+            <DialogTitle className='text-[#124A69] text-xl font-bold'>
+              Remove Profile Picture
+            </DialogTitle>
+            <DialogDescription className='text-gray-500'>
               Are you sure you want to remove this profile picture? This action
               cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmAndRemoveImage}>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className='gap-2 sm:gap-2'>
+            <Button
+              variant='outline'
+              onClick={() => setImageToRemove(null)}
+              className='border-gray-200'
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmAndRemoveImage}
+              className='bg-[#124A69] hover:bg-[#0D3A54] text-white'
+            >
               Remove
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add the StudentProfileDialog */}
       <StudentProfileDialog

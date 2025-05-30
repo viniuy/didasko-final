@@ -138,7 +138,7 @@ export function GroupCard({
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              className='bg-red-500 hover:bg-red-600 text-white'
+              className='bg-[#124A69] hover:bg-gray-600 text-white'
               disabled={isDeleting}
             >
               {isDeleting ? 'Deleting...' : 'Disband Group'}
