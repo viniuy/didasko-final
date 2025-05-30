@@ -42,7 +42,7 @@ const faculty: FacultyMap = {
   },
   jonathan: {
     name: 'Jonathan Francis Corpuz',
-    email: 'corpuz.12313@alabang.sti.edu.ph',
+    email: 'corpuz.301620@alabang.sti.edu.ph',
     department: 'IT Department',
     workType: WorkType.FULL_TIME,
     role: Role.FACULTY,
