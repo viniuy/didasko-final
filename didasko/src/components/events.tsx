@@ -938,7 +938,7 @@ export default function UpcomingEvents() {
               );
             })
           ) : (
-            <div className='flex items-center justify-center h-full min-h-120'>
+            <div className='flex items-center justify-center h-[350px]'>
               <p className='text-gray-500 text-xs text-center'>No events.</p>
             </div>
           )}

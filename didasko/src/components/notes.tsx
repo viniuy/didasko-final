@@ -57,6 +57,7 @@ export default function Notes() {
 
   const [openDelete, setOpenDelete] = useState(false);
   const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
+  const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
 
   const [openEdit, setOpenEdit] = useState(false);
   const [editData, setEditData] = useState<Note>({
@@ -239,6 +240,7 @@ export default function Notes() {
         return;
       }
 
+      setDeletingNoteId(noteToDelete);
       const loadingToast = toast.loading('Deleting note...');
 
       const response = await axiosInstance.delete(`/notes/${noteToDelete}`);
@@ -256,7 +258,10 @@ export default function Notes() {
         });
       }
     } catch (error) {
+      console.error('Error deleting note:', error);
       toast.error('An error occurred while deleting the note');
+    } finally {
+      setDeletingNoteId(null);
     }
   }
 
@@ -322,6 +327,7 @@ export default function Notes() {
                     variant='ghost'
                     className='h-5 w-5 p-0 hover:bg-transparent'
                     onClick={() => handleEditClick(note)}
+                    disabled={deletingNoteId === note.id}
                   >
                     <Edit className='h-3 w-3' color='#124a69' />
                   </Button>
@@ -329,8 +335,13 @@ export default function Notes() {
                     variant='ghost'
                     className='h-5 w-5 p-0 hover:bg-transparent'
                     onClick={() => handleDeleteClick(note.id)}
+                    disabled={deletingNoteId === note.id}
                   >
-                    <Trash className='h-3 w-3' color='#124a69' />
+                    {deletingNoteId === note.id ? (
+                      <div className='animate-spin rounded-full h-3 w-3 border-b-2 border-[#124A69]' />
+                    ) : (
+                      <Trash className='h-3 w-3' color='#124a69' />
+                    )}
                   </Button>
                 </div>
                 <div className='-mt-4 -mb-4'>

@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
+import toast, { Toaster } from 'react-hot-toast';
 import {
   Plus,
   MoreHorizontal,
@@ -28,6 +28,9 @@ import {
   Search,
   Download,
   Upload,
+  ChevronUp,
+  ChevronDown,
+  ArrowUpDown,
 } from 'lucide-react';
 import { UserSheet } from './user-sheet';
 import { editUser, deleteUser } from '@/lib/actions/users';
@@ -66,6 +69,24 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from '@/components/ui/pagination';
+import {
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  SortingState,
+  useReactTable,
+  ColumnFiltersState,
+  VisibilityState,
+  getFilteredRowModel,
+  getPaginationRowModel,
+} from '@tanstack/react-table';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 
 interface User {
   id: string;
@@ -75,6 +96,7 @@ interface User {
   workType: WorkType;
   role: Role;
   permission: Permission;
+  [key: string]: string | WorkType | Role | Permission; // Add index signature
 }
 
 interface AdminDataTableProps {
@@ -96,6 +118,9 @@ interface CsvRow {
   Permission: string;
   [key: string]: string; // Add index signature for string keys
 }
+
+type SortField = 'email' | 'department' | 'workType' | null;
+type SortDirection = 'asc' | 'desc' | null;
 
 // Function to format name with comma and middle initial
 const formatName = (fullName: string) => {
@@ -232,6 +257,10 @@ export function AdminDataTable({
   const [isPermissionUpdating, setIsPermissionUpdating] = useState<{
     [key: string]: boolean;
   }>({});
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [rowSelection, setRowSelection] = useState({});
 
   const refreshTableData = async () => {
     try {
@@ -286,20 +315,40 @@ export function AdminDataTable({
     }
   }, [initialUsers]);
 
-  // Filter users based on search query
-  const filteredUsers = useMemo(() => {
-    if (!searchQuery.trim()) return tableData;
+  const handleSort = (field: string) => {
+    if (sorting[0]?.id === field) {
+      // Toggle direction if clicking the same field
+      setSorting([{ id: field, desc: !sorting[0].desc }]);
+    } else {
+      // Set new field and default to ascending
+      setSorting([{ id: field, desc: false }]);
+    }
+  };
 
-    const query = searchQuery.toLowerCase();
-    return tableData.filter(
+  const filteredUsers = useMemo(() => {
+    let filtered = tableData.filter(
       (user: User) =>
-        user.name.toLowerCase().includes(query) ||
-        user.email.toLowerCase().includes(query) ||
-        user.department.toLowerCase().includes(query) ||
-        user.workType.toLowerCase().includes(query) ||
-        user.role.toLowerCase().includes(query),
+        user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.department.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.workType.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.role.toLowerCase().includes(searchQuery.toLowerCase()),
     );
-  }, [tableData, searchQuery]);
+
+    // Apply sorting if a sort field is selected
+    if (sorting.length > 0) {
+      const { id, desc } = sorting[0];
+      filtered.sort((a, b) => {
+        const aValue = String(a[id] || '').toLowerCase();
+        const bValue = String(b[id] || '').toLowerCase();
+        return desc
+          ? bValue.localeCompare(aValue)
+          : aValue.localeCompare(bValue);
+      });
+    }
+
+    return filtered;
+  }, [tableData, searchQuery, sorting]);
 
   // Calculate pagination
   const totalPages = Math.max(
@@ -342,6 +391,7 @@ export function AdminDataTable({
             .join(' ')}`,
           {
             duration: 3000,
+            position: 'top-center',
             style: {
               background: '#fff',
               color: '#124A69',
@@ -362,6 +412,7 @@ export function AdminDataTable({
         error instanceof Error ? error.message : 'Failed to update role',
         {
           duration: 3000,
+          position: 'top-right',
           style: {
             background: '#fff',
             color: '#dc2626',
@@ -396,6 +447,7 @@ export function AdminDataTable({
 
         toast.success(`Permission ${newPermission.toLowerCase()}`, {
           duration: 3000,
+          position: 'top-center',
           style: {
             background: '#fff',
             color: '#124A69',
@@ -415,6 +467,7 @@ export function AdminDataTable({
         error instanceof Error ? error.message : 'Failed to update permission',
         {
           duration: 3000,
+          position: 'top-right',
           style: {
             background: '#fff',
             color: '#dc2626',
@@ -451,6 +504,7 @@ export function AdminDataTable({
         console.log('User updated successfully:', { userId });
         toast.success('User updated successfully', {
           duration: 3000,
+          position: 'top-right',
           style: {
             background: '#fff',
             color: '#124A69',
@@ -1186,12 +1240,38 @@ export function AdminDataTable({
       if (errors && errors.length > 0) {
         toast.error(`Import finished with ${errors.length} errors.`);
       } else if (skipped && skipped > 0) {
-        toast.warning(`Import finished. ${skipped} users skipped.`);
+        toast('Import finished. ' + skipped + ' users skipped.', {
+          icon: '⚠️',
+          duration: 3000,
+          position: 'top-right',
+          style: {
+            background: '#fff',
+            color: '#124A69',
+            border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
+          },
+        });
       } else if (imported && imported > 0) {
         toast.success(`Successfully imported ${imported} users.`);
       } else {
         // Handle case where response is success but no users were imported/skipped/errored (e.g., empty file after header)
-        toast.info('Import process finished with no users imported.');
+        toast('Import process finished with no users imported.', {
+          icon: 'ℹ️',
+          duration: 3000,
+          position: 'top-right',
+          style: {
+            background: '#fff',
+            color: '#124A69',
+            border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
+          },
+        });
       }
 
       // Clear the progress after process is complete/failed
@@ -1257,6 +1337,249 @@ export function AdminDataTable({
     }
   };
 
+  const columns = useMemo<ColumnDef<User>[]>(
+    () => [
+      {
+        id: 'select',
+        header: ({ table }) => (
+          <Checkbox
+            checked={
+              table.getIsAllPageRowsSelected() ||
+              (table.getIsSomePageRowsSelected() && 'indeterminate')
+            }
+            onCheckedChange={(value) =>
+              table.toggleAllPageRowsSelected(!!value)
+            }
+            aria-label='Select all'
+          />
+        ),
+        cell: ({ row }) => (
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(value) => row.toggleSelected(!!value)}
+            aria-label='Select row'
+          />
+        ),
+        enableSorting: false,
+        enableHiding: false,
+      },
+      {
+        accessorKey: 'name',
+        header: 'Name',
+        cell: ({ row }) => (
+          <div className='flex items-center gap-2'>
+            <Avatar>
+              <AvatarFallback>{getInitials(row.original.name)}</AvatarFallback>
+            </Avatar>
+            <div>{formatNameDisplay(row.original.name)}</div>
+          </div>
+        ),
+      },
+      {
+        accessorKey: 'email',
+        header: ({ column }) => {
+          return (
+            <Button
+              variant='ghost'
+              onClick={() =>
+                column.toggleSorting(column.getIsSorted() === 'asc')
+              }
+            >
+              Email
+              <ArrowUpDown className='ml-2 h-4 w-4' />
+            </Button>
+          );
+        },
+      },
+      {
+        accessorKey: 'department',
+        header: ({ column }) => {
+          return (
+            <Button
+              variant='ghost'
+              onClick={() =>
+                column.toggleSorting(column.getIsSorted() === 'asc')
+              }
+            >
+              Department
+              <ArrowUpDown className='ml-2 h-4 w-4' />
+            </Button>
+          );
+        },
+      },
+      {
+        accessorKey: 'workType',
+        header: ({ column }) => {
+          return (
+            <Button
+              variant='ghost'
+              onClick={() =>
+                column.toggleSorting(column.getIsSorted() === 'asc')
+              }
+            >
+              Work Type
+              <ArrowUpDown className='ml-2 h-4 w-4' />
+            </Button>
+          );
+        },
+        cell: ({ row }) =>
+          row.original.workType
+            .split('_')
+            .map(
+              (word) =>
+                word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
+            )
+            .join(' '),
+      },
+      {
+        accessorKey: 'role',
+        header: 'Role',
+        cell: ({ row }) => (
+          <Select
+            value={row.original.role}
+            onValueChange={(value: Role) =>
+              handleRoleChange(row.original.id, value)
+            }
+            disabled={isRoleUpdating[row.original.id]}
+          >
+            <SelectTrigger className='w-[180px]'>
+              <SelectValue placeholder='Select role'>
+                {isRoleUpdating[row.original.id] ? (
+                  <div className='flex items-center gap-2'>
+                    <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-[#124A69]' />
+                    <span>Updating...</span>
+                  </div>
+                ) : (
+                  row.original.role
+                    .split('_')
+                    .map(
+                      (word) =>
+                        word.charAt(0).toUpperCase() +
+                        word.slice(1).toLowerCase(),
+                    )
+                    .join(' ')
+                )}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='ADMIN'>Admin</SelectItem>
+              <SelectItem value='FACULTY'>Faculty</SelectItem>
+              <SelectItem value='ACADEMIC_HEAD'>Academic Head</SelectItem>
+            </SelectContent>
+          </Select>
+        ),
+      },
+      {
+        accessorKey: 'permission',
+        header: 'Permission',
+        cell: ({ row }) => (
+          <Select
+            value={row.original.permission}
+            onValueChange={(value: Permission) =>
+              handlePermissionChange(row.original.id, value)
+            }
+            disabled={isPermissionUpdating[row.original.id]}
+          >
+            <SelectTrigger className='w-[130px]'>
+              <SelectValue placeholder='Select permission'>
+                {isPermissionUpdating[row.original.id] ? (
+                  <div className='flex items-center gap-2'>
+                    <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-[#124A69]' />
+                    <span>Updating...</span>
+                  </div>
+                ) : (
+                  <div className='flex items-center gap-2'>
+                    <div
+                      className={`h-2 w-2 rounded-full ${
+                        row.original.permission === 'GRANTED'
+                          ? 'bg-green-500'
+                          : 'bg-red-500'
+                      }`}
+                    />
+                    <span>
+                      {row.original.permission === 'GRANTED'
+                        ? 'Granted'
+                        : 'Denied'}
+                    </span>
+                  </div>
+                )}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='GRANTED'>
+                <div className='flex items-center gap-2'>
+                  <div className='h-2 w-2 rounded-full bg-green-500' />
+                  <span>Granted</span>
+                </div>
+              </SelectItem>
+              <SelectItem value='DENIED'>
+                <div className='flex items-center gap-2'>
+                  <div className='h-2 w-2 rounded-full bg-red-500' />
+                  <span>Denied</span>
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        ),
+      },
+      {
+        id: 'actions',
+        enableHiding: false,
+        cell: ({ row }) => (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant='ghost' className='h-8 w-8 p-0'>
+                <span className='sr-only'>Open menu</span>
+                <MoreHorizontal className='h-4 w-4' />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end'>
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              <DropdownMenuItem
+                className='flex items-center gap-2'
+                onClick={() => setEditingUser(row.original)}
+              >
+                <Pencil className='h-4 w-4' />
+                Edit User
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className='flex items-center gap-2 text-red-600'
+                onClick={() => {
+                  setUserToDelete(row.original);
+                  setIsDeleteDialogOpen(true);
+                }}
+              >
+                <Trash2 className='h-4 w-4' />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ),
+      },
+    ],
+    [isRoleUpdating, isPermissionUpdating],
+  );
+
+  const table = useReactTable({
+    data: filteredUsers,
+    columns,
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    onColumnVisibilityChange: setColumnVisibility,
+    onRowSelectionChange: setRowSelection,
+    state: {
+      sorting,
+      columnFilters,
+      columnVisibility,
+      rowSelection,
+    },
+  });
+
   return (
     <div className='space-y-4'>
       <div className='flex items-center justify-between'>
@@ -1265,11 +1588,41 @@ export function AdminDataTable({
             <Search className='absolute left-2 top-2.5 h-4 w-4 text-muted-foreground' />
             <Input
               placeholder='Search users...'
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={
+                (table.getColumn('email')?.getFilterValue() as string) ?? ''
+              }
+              onChange={(event) =>
+                table.getColumn('email')?.setFilterValue(event.target.value)
+              }
               className='pl-8'
             />
           </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant='outline' className='ml-auto'>
+                Columns <ChevronDown className='ml-2 h-4 w-4' />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end'>
+              {table
+                .getAllColumns()
+                .filter((column) => column.getCanHide())
+                .map((column) => {
+                  return (
+                    <DropdownMenuCheckboxItem
+                      key={column.id}
+                      className='capitalize'
+                      checked={column.getIsVisible()}
+                      onCheckedChange={(value) =>
+                        column.toggleVisibility(!!value)
+                      }
+                    >
+                      {column.id}
+                    </DropdownMenuCheckboxItem>
+                  );
+                })}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
         <div className='flex items-center gap-2'>
           <Button
@@ -1292,20 +1645,25 @@ export function AdminDataTable({
         <div className='flex-1 rounded-md border'>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead className='w-[250px]'>Name</TableHead>
-                <TableHead className='w-[250px]'>Email</TableHead>
-                <TableHead className='w-[150px]'>Department</TableHead>
-                <TableHead className='w-[120px]'>Work Type</TableHead>
-                <TableHead className='w-[120px]'>Role</TableHead>
-                <TableHead className='w-[120px]'>Permission</TableHead>
-                <TableHead className='w-[70px]'>Actions</TableHead>
-              </TableRow>
+              {table.getHeaderGroups().map((headerGroup) => (
+                <TableRow key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <TableHead key={header.id}>
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(
+                            header.column.columnDef.header,
+                            header.getContext(),
+                          )}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              ))}
             </TableHeader>
             <TableBody>
               {isRefreshing ? (
                 <TableRow>
-                  <TableCell colSpan={7} className='h-24'>
+                  <TableCell colSpan={columns.length} className='h-24'>
                     <div className='flex justify-center items-center'>
                       <div className='animate-spin rounded-full h-6 w-6 border-b-2 border-[#124A69]' />
                     </div>
@@ -1313,159 +1671,28 @@ export function AdminDataTable({
                 </TableRow>
               ) : (
                 <>
-                  {currentUsers.map((user) => {
-                    const isEdited = editedUsers[user.id];
-                    const currentRole = isEdited?.role || user.role;
-                    const currentPermission =
-                      isEdited?.permission || user.permission;
-
-                    return (
+                  {table.getRowModel().rows?.length ? (
+                    table.getRowModel().rows.map((row) => (
                       <TableRow
-                        key={user.id}
-                        className={isEdited ? 'bg-yellow-50' : ''}
+                        key={row.id}
+                        data-state={row.getIsSelected() && 'selected'}
                       >
-                        <TableCell className='font-medium'>
-                          <div className='flex items-center gap-2'>
-                            <Avatar>
-                              <AvatarFallback>
-                                {getInitials(user.name)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>{formatNameDisplay(user.name)}</div>
-                          </div>
-                        </TableCell>
-                        <TableCell>{user.email}</TableCell>
-                        <TableCell>{user.department}</TableCell>
-                        <TableCell>
-                          {user.workType
-                            .split('_')
-                            .map(
-                              (word) =>
-                                word.charAt(0).toUpperCase() +
-                                word.slice(1).toLowerCase(),
-                            )
-                            .join(' ')}
-                        </TableCell>
-                        <TableCell>
-                          <Select
-                            value={currentRole}
-                            onValueChange={(value: Role) =>
-                              handleRoleChange(user.id, value)
-                            }
-                            disabled={isRoleUpdating[user.id]}
-                          >
-                            <SelectTrigger className='w-[130px]'>
-                              <SelectValue placeholder='Select role'>
-                                {isRoleUpdating[user.id] ? (
-                                  <div className='flex items-center gap-2'>
-                                    <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-[#124A69]' />
-                                    <span>Updating...</span>
-                                  </div>
-                                ) : (
-                                  currentRole
-                                    .split('_')
-                                    .map(
-                                      (word) =>
-                                        word.charAt(0).toUpperCase() +
-                                        word.slice(1).toLowerCase(),
-                                    )
-                                    .join(' ')
-                                )}
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value='ADMIN'>Admin</SelectItem>
-                              <SelectItem value='FACULTY'>Faculty</SelectItem>
-                              <SelectItem value='ACADEMIC_HEAD'>
-                                Academic Head
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          <Select
-                            value={currentPermission}
-                            onValueChange={(value: Permission) =>
-                              handlePermissionChange(user.id, value)
-                            }
-                            disabled={isPermissionUpdating[user.id]}
-                          >
-                            <SelectTrigger className='w-[130px]'>
-                              <SelectValue placeholder='Select permission'>
-                                {isPermissionUpdating[user.id] ? (
-                                  <div className='flex items-center gap-2'>
-                                    <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-[#124A69]' />
-                                    <span>Updating...</span>
-                                  </div>
-                                ) : (
-                                  <div className='flex items-center gap-2'>
-                                    <div
-                                      className={`h-2 w-2 rounded-full ${
-                                        currentPermission === 'GRANTED'
-                                          ? 'bg-green-500'
-                                          : 'bg-red-500'
-                                      }`}
-                                    />
-                                    <span>
-                                      {currentPermission === 'GRANTED'
-                                        ? 'Granted'
-                                        : 'Denied'}
-                                    </span>
-                                  </div>
-                                )}
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value='GRANTED'>
-                                <div className='flex items-center gap-2'>
-                                  <div className='h-2 w-2 rounded-full bg-green-500' />
-                                  <span>Granted</span>
-                                </div>
-                              </SelectItem>
-                              <SelectItem value='DENIED'>
-                                <div className='flex items-center gap-2'>
-                                  <div className='h-2 w-2 rounded-full bg-red-500' />
-                                  <span>Denied</span>
-                                </div>
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant='ghost' className='h-8 w-8 p-0'>
-                                <span className='sr-only'>Open menu</span>
-                                <MoreHorizontal className='h-4 w-4' />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align='end'>
-                              <DropdownMenuItem
-                                className='flex items-center gap-2'
-                                onClick={() => setEditingUser(user)}
-                              >
-                                <Pencil className='h-4 w-4' />
-                                Edit User
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className='flex items-center gap-2 text-red-600'
-                                onClick={() => {
-                                  setUserToDelete(user);
-                                  setIsDeleteDialogOpen(true);
-                                }}
-                              >
-                                <Trash2 className='h-4 w-4' />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
+                        {row.getVisibleCells().map((cell) => (
+                          <TableCell key={cell.id}>
+                            {flexRender(
+                              cell.column.columnDef.cell,
+                              cell.getContext(),
+                            )}
+                          </TableCell>
+                        ))}
                       </TableRow>
-                    );
-                  })}
-                  {filteredUsers.length === 0 && (
+                    ))
+                  ) : (
                     <TableRow>
-                      <TableCell colSpan={7} className='h-24 text-center'>
+                      <TableCell
+                        colSpan={columns.length}
+                        className='h-24 text-center'
+                      >
                         No users found.
                       </TableCell>
                     </TableRow>
@@ -1476,58 +1703,30 @@ export function AdminDataTable({
           </Table>
         </div>
 
-        {filteredUsers.length > 0 && (
-          <div className='sticky bottom-0 bg-white border-t mt-4 py-4'>
-            <div className='flex justify-between items-center px-2'>
-              <p className='text-sm text-gray-500 w-full'>
-                {currentPage * itemsPerPage - (itemsPerPage - 1)}-
-                {Math.min(currentPage * itemsPerPage, filteredUsers.length)} of{' '}
-                {filteredUsers.length} users
-              </p>
-              <Pagination className='flex justify-end'>
-                <PaginationContent>
-                  <PaginationItem>
-                    <PaginationPrevious
-                      onClick={() =>
-                        setCurrentPage((prev) => Math.max(prev - 1, 1))
-                      }
-                      className={
-                        currentPage === 1
-                          ? 'pointer-events-none opacity-50'
-                          : ''
-                      }
-                    />
-                  </PaginationItem>
-                  {[...Array(totalPages)].map((_, i) => (
-                    <PaginationItem key={i}>
-                      <PaginationLink
-                        isActive={currentPage === i + 1}
-                        onClick={() => setCurrentPage(i + 1)}
-                        className={
-                          currentPage === i + 1 ? 'bg-[#124A69] text-white' : ''
-                        }
-                      >
-                        {i + 1}
-                      </PaginationLink>
-                    </PaginationItem>
-                  ))}
-                  <PaginationItem>
-                    <PaginationNext
-                      onClick={() =>
-                        setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-                      }
-                      className={
-                        currentPage === totalPages
-                          ? 'pointer-events-none opacity-50'
-                          : ''
-                      }
-                    />
-                  </PaginationItem>
-                </PaginationContent>
-              </Pagination>
-            </div>
+        <div className='flex items-center justify-end space-x-2 py-4'>
+          <div className='text-muted-foreground flex-1 text-sm'>
+            {table.getFilteredSelectedRowModel().rows.length} of{' '}
+            {table.getFilteredRowModel().rows.length} row(s) selected.
           </div>
-        )}
+          <div className='space-x-2'>
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+            >
+              Previous
+            </Button>
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
       </div>
 
       {editingUser && (
@@ -2044,6 +2243,49 @@ export function AdminDataTable({
           )}
         </DialogContent>
       </Dialog>
+      <Toaster
+        toastOptions={{
+          className: '',
+          style: {
+            background: '#fff',
+            color: '#124A69',
+            border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
+          },
+          success: {
+            style: {
+              background: '#fff',
+              color: '#124A69',
+              border: '1px solid #e5e7eb',
+            },
+            iconTheme: {
+              primary: '#124A69',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            style: {
+              background: '#fff',
+              color: '#dc2626',
+              border: '1px solid #e5e7eb',
+            },
+            iconTheme: {
+              primary: '#dc2626',
+              secondary: '#fff',
+            },
+          },
+          loading: {
+            style: {
+              background: '#fff',
+              color: '#124A69',
+              border: '1px solid #e5e7eb',
+            },
+          },
+        }}
+      />
     </div>
   );
 }

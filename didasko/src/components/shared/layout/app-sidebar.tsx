@@ -49,11 +49,11 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { useEffect, useState } from 'react';
+import { toast } from 'react-hot-toast';
 
 const adminItems = [
   { title: 'Home', url: '/dashboard/admin', icon: Home },
   { title: 'Courses', url: '/courses', icon: BookOpen },
-  { title: 'Accounts', url: '/accounts', icon: Settings },
 ];
 
 const academicHeadItems = [
@@ -190,14 +190,24 @@ export function AppSidebar() {
 
   const handleLogout = async () => {
     try {
-      // Sign out from NextAuth without automatic redirect
+      const loadingToast = toast.loading('Logging out...');
+
+      // First, clean up our session
+      await fetch('/api/auth/session', {
+        method: 'DELETE',
+      });
+
+      // Then sign out from NextAuth
       await signOut({
         redirect: false,
       });
-      // Manually redirect to home page
+
+      // Finally, redirect to home page
       router.push('/');
+      toast.dismiss(loadingToast);
     } catch (error) {
       console.error('Logout error:', error);
+      toast.error('Failed to logout');
       // If NextAuth signOut fails, still try to redirect manually
       router.push('/');
     }

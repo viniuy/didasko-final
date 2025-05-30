@@ -72,163 +72,153 @@ export async function POST(request: Request) {
     );
     console.log(`Found ${existingEmails.size} existing users`);
 
-    // Process rows in batches of 10
-    const BATCH_SIZE = 10;
-    for (let i = 0; i < data.length; i += BATCH_SIZE) {
-      const batch = data.slice(i, i + BATCH_SIZE);
-      console.log(
-        `Processing batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(
-          data.length / BATCH_SIZE,
-        )}`,
-      );
+    // Process all rows concurrently (remove batch limit)
+    await Promise.all(
+      data.map(async (row: any, index: number) => {
+        const rowNumber = index + 1; // Row number in the file
 
-      await Promise.all(
-        batch.map(async (row: any, index: number) => {
-          const rowNumber = i + index + 1;
+        // Log progress
+        console.log(`Processing row ${rowNumber} of ${data.length}`);
 
-          // Log progress
-          console.log(`Processing row ${rowNumber} of ${data.length}`);
+        const email = row['Email']?.toLowerCase().trim();
+        const lastName = row['Last Name']?.trim();
+        const firstName = row['First Name']?.trim();
+        const department = row['Department']?.trim();
+        const workType = row['Work Type']?.trim();
+        const role = row['Role']?.trim();
+        const permission = row['Permission']?.trim();
 
-          const email = row['Email']?.toLowerCase().trim();
-          const lastName = row['Last Name']?.trim();
-          const firstName = row['First Name']?.trim();
-          const department = row['Department']?.trim();
-          const workType = row['Work Type']?.trim();
-          const role = row['Role']?.trim();
-          const permission = row['Permission']?.trim();
+        // Validate required fields
+        if (
+          !email ||
+          !lastName ||
+          !firstName ||
+          !department ||
+          !workType ||
+          !role ||
+          !permission
+        ) {
+          console.log(`Row ${rowNumber}: Missing required fields`, {
+            email,
+            lastName,
+            firstName,
+            department,
+            workType,
+            role,
+            permission,
+          });
+          result.errors.push({
+            row: rowNumber,
+            email: email || 'N/A',
+            message: 'Missing required fields',
+          });
+          result.skipped++;
+          result.detailedFeedback.push({
+            row: rowNumber,
+            email: email || 'N/A',
+            status: 'skipped',
+            message: 'Missing required fields',
+          });
+          return;
+        }
 
-          // Validate required fields
-          if (
-            !email ||
-            !lastName ||
-            !firstName ||
-            !department ||
-            !workType ||
-            !role ||
-            !permission
-          ) {
-            console.log(`Row ${rowNumber}: Missing required fields`, {
-              email,
-              lastName,
-              firstName,
-              department,
-              workType,
-              role,
-              permission,
-            });
-            result.errors.push({
-              row: rowNumber,
-              email: email || 'N/A',
-              message: 'Missing required fields',
-            });
-            result.skipped++;
-            result.detailedFeedback.push({
-              row: rowNumber,
-              email: email || 'N/A',
-              status: 'skipped',
-              message: 'Missing required fields',
-            });
-            return;
+        // Check for duplicate email
+        if (existingEmails.has(email)) {
+          console.log(`Row ${rowNumber}: Email already exists: ${email}`);
+          result.errors.push({
+            row: rowNumber,
+            email,
+            message: 'Email already exists in the system',
+          });
+          result.skipped++;
+          result.detailedFeedback.push({
+            row: rowNumber,
+            email: email || '',
+            status: 'skipped',
+            message: 'Email already exists',
+          });
+          return;
+        }
+
+        try {
+          // Format the name
+          const formattedName = `${lastName} ${firstName}${
+            row['Middle Initial'] ? ` ${row['Middle Initial']}` : ''
+          }`;
+
+          // Convert work type to enum
+          const workTypeEnum = workType
+            .toUpperCase()
+            .replace(/\s+/g, '_') as WorkType;
+          if (!Object.values(WorkType).includes(workTypeEnum)) {
+            throw new Error(`Invalid work type: ${workType}`);
           }
 
-          // Check for duplicate email
-          if (existingEmails.has(email)) {
-            console.log(`Row ${rowNumber}: Email already exists: ${email}`);
-            result.errors.push({
-              row: rowNumber,
-              email,
-              message: 'Email already exists in the system',
-            });
-            result.skipped++;
-            result.detailedFeedback.push({
-              row: rowNumber,
-              email: email || '',
-              status: 'skipped',
-              message: 'Email already exists',
-            });
-            return;
+          // Convert role to enum
+          const roleEnum = role.toUpperCase().replace(/\s+/g, '_') as Role;
+          if (!Object.values(Role).includes(roleEnum)) {
+            throw new Error(`Invalid role: ${role}`);
           }
 
-          try {
-            // Format the name
-            const formattedName = `${lastName} ${firstName}${
-              row['Middle Initial'] ? ` ${row['Middle Initial']}` : ''
-            }`;
+          // Convert permission to enum
+          const permissionEnum = permission.toUpperCase() as Permission;
+          if (!Object.values(Permission).includes(permissionEnum)) {
+            throw new Error(`Invalid permission: ${permission}`);
+          }
 
-            // Convert work type to enum
-            const workTypeEnum = workType
-              .toUpperCase()
-              .replace(/\s+/g, '_') as WorkType;
-            if (!Object.values(WorkType).includes(workTypeEnum)) {
-              throw new Error(`Invalid work type: ${workType}`);
-            }
+          console.log(`Creating user with data:`, {
+            name: formattedName,
+            email,
+            department,
+            workType: workTypeEnum,
+            role: roleEnum,
+            permission: permissionEnum,
+          });
 
-            // Convert role to enum
-            const roleEnum = role.toUpperCase().replace(/\s+/g, '_') as Role;
-            if (!Object.values(Role).includes(roleEnum)) {
-              throw new Error(`Invalid role: ${role}`);
-            }
-
-            // Convert permission to enum
-            const permissionEnum = permission.toUpperCase() as Permission;
-            if (!Object.values(Permission).includes(permissionEnum)) {
-              throw new Error(`Invalid permission: ${permission}`);
-            }
-
-            console.log(`Creating user with data:`, {
+          // Create user in database
+          const user = await prisma.user.create({
+            data: {
               name: formattedName,
               email,
               department,
               workType: workTypeEnum,
               role: roleEnum,
               permission: permissionEnum,
-            });
+            },
+          });
 
-            // Create user in database
-            const user = await prisma.user.create({
-              data: {
-                name: formattedName,
-                email,
-                department,
-                workType: workTypeEnum,
-                role: roleEnum,
-                permission: permissionEnum,
-              },
-            });
-
-            console.log(`User created successfully: ${user.id}`);
-            existingEmails.add(email);
-            result.imported++;
-            result.importedUsers.push({
-              name: formattedName,
-              email,
-              row: rowNumber,
-            });
-            result.detailedFeedback.push({
-              row: rowNumber,
-              email,
-              status: 'imported',
-            });
-          } catch (error) {
-            console.error(`Error creating user at row ${rowNumber}:`, error);
-            const errorMessage =
-              error instanceof Error ? error.message : 'Failed to create user';
-            result.errors.push({
-              row: rowNumber,
-              email,
-              message: errorMessage,
-            });
-            result.skipped++;
-            result.detailedFeedback.push({
-              row: rowNumber,
-              email,
-              status: 'error',
-              message: errorMessage,
-            });
-          }
-        }),
-      );
-    }
+          console.log(`User created successfully: ${user.id}`);
+          existingEmails.add(email);
+          result.imported++;
+          result.importedUsers.push({
+            name: formattedName,
+            email,
+            row: rowNumber,
+          });
+          result.detailedFeedback.push({
+            row: rowNumber,
+            email,
+            status: 'imported',
+          });
+        } catch (error) {
+          console.error(`Error creating user at row ${rowNumber}:`, error);
+          const errorMessage =
+            error instanceof Error ? error.message : 'Failed to create user';
+          result.errors.push({
+            row: rowNumber,
+            email,
+            message: errorMessage,
+          });
+          result.skipped++;
+          result.detailedFeedback.push({
+            row: rowNumber,
+            email,
+            status: 'error',
+            message: errorMessage,
+          });
+        }
+      }),
+    );
 
     result.success =
       result.imported > 0 || result.skipped > 0 || result.errors.length > 0;

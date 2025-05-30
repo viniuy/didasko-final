@@ -64,7 +64,7 @@ export function RoleSelect({ userId, currentRole }: RoleSelectProps) {
   return (
     <>
       <Select value={currentValue} onValueChange={handleSelectChange}>
-        <SelectTrigger className='w-[180px]'>
+        <SelectTrigger className='w-[200px]'>
           <SelectValue placeholder='Select role' />
         </SelectTrigger>
         <SelectContent>
