@@ -52,11 +52,13 @@ const FacultyList: React.FC<FacultyListProps> = ({
   search,
   sortOption,
   currentPage,
-  itemsPerPage,
+  itemsPerPage: rawItemsPerPage,
   onDepartmentClick,
   onTeacherClick,
   onPageChange,
 }) => {
+  // Ensure itemsPerPage is capped at 10
+  const itemsPerPage = Math.min(rawItemsPerPage, 10);
   const [faculty, setFaculty] = useState<FacultyMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

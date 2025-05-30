@@ -99,6 +99,47 @@ export default function Notes() {
     };
   }, [noteList.length]);
 
+  // Function to show alert notifications
+  const showAlert = (
+    title: string,
+    description: string,
+    variant: 'success' | 'error' = 'success',
+  ) => {
+    if (variant === 'success') {
+      toast.success(description, {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+          boxShadow:
+            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+          borderRadius: '0.5rem',
+          padding: '1rem',
+        },
+        iconTheme: {
+          primary: '#124A69',
+          secondary: '#fff',
+        },
+      });
+    } else {
+      toast.error(description, {
+        style: {
+          background: '#fff',
+          color: '#dc2626',
+          border: '1px solid #e5e7eb',
+          boxShadow:
+            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+          borderRadius: '0.5rem',
+          padding: '1rem',
+        },
+        iconTheme: {
+          primary: '#dc2626',
+          secondary: '#fff',
+        },
+      });
+    }
+  };
+
   async function fetchNotes() {
     try {
       setIsLoading(true);
@@ -111,7 +152,7 @@ export default function Notes() {
         setNoteList([]);
       }
     } catch (error) {
-      toast.error('Failed to fetch notes');
+      showAlert('Error', 'Failed to fetch notes', 'error');
       setNoteList([]);
     } finally {
       setIsLoading(false);
@@ -196,12 +237,12 @@ export default function Notes() {
 
   const saveNewNote = async () => {
     if (!newNote.title.trim()) {
-      toast.error('Title is required');
+      showAlert('Error', 'Title is required', 'error');
       return;
     }
 
     if (!session?.user?.id) {
-      toast.error('User ID not found. Please sign in again.');
+      showAlert('Error', 'User ID not found. Please sign in again.', 'error');
       return;
     }
 
@@ -223,9 +264,9 @@ export default function Notes() {
     );
 
     if (result.success) {
-      toast.success('Note added successfully');
+      showAlert('Success', 'Note added successfully', 'success');
     } else {
-      toast.error(result.error || 'Failed to add note');
+      showAlert('Error', result.error || 'Failed to add note', 'error');
     }
   };
 
@@ -241,7 +282,17 @@ export default function Notes() {
       }
 
       setDeletingNoteId(noteToDelete);
-      const loadingToast = toast.loading('Deleting note...');
+      const loadingToast = toast.loading('Deleting note...', {
+        style: {
+          background: '#fff',
+          color: '#124A69',
+          border: '1px solid #e5e7eb',
+          boxShadow:
+            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+          borderRadius: '0.5rem',
+          padding: '1rem',
+        },
+      });
 
       const response = await axiosInstance.delete(`/notes/${noteToDelete}`);
 
@@ -251,15 +302,41 @@ export default function Notes() {
         refreshNotes();
         toast.success('Note deleted successfully', {
           id: loadingToast,
+          style: {
+            background: '#fff',
+            color: '#124A69',
+            border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
+          },
+          iconTheme: {
+            primary: '#124A69',
+            secondary: '#fff',
+          },
         });
       } else {
         toast.error('Failed to delete note', {
           id: loadingToast,
+          style: {
+            background: '#fff',
+            color: '#dc2626',
+            border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
+          },
+          iconTheme: {
+            primary: '#dc2626',
+            secondary: '#fff',
+          },
         });
       }
     } catch (error) {
       console.error('Error deleting note:', error);
-      toast.error('An error occurred while deleting the note');
+      showAlert('Error', 'An error occurred while deleting the note', 'error');
     } finally {
       setDeletingNoteId(null);
     }
@@ -272,12 +349,12 @@ export default function Notes() {
 
   const saveEdit = async () => {
     if (!editData.title.trim()) {
-      toast.error('Title is required');
+      showAlert('Error', 'Title is required', 'error');
       return;
     }
 
     if (!session?.user?.id) {
-      toast.error('User ID not found. Please sign in again.');
+      showAlert('Error', 'User ID not found. Please sign in again.', 'error');
       return;
     }
 
@@ -295,9 +372,9 @@ export default function Notes() {
     );
 
     if (result.success) {
-      toast.success('Note updated successfully');
+      showAlert('Success', 'Note updated successfully', 'success');
     } else {
-      toast.error(result.error || 'Failed to update note');
+      showAlert('Error', result.error || 'Failed to update note', 'error');
     }
   };
 

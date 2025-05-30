@@ -53,7 +53,7 @@ export async function addEvent({
   userRole: Role;
 }) {
   try {
-    if (userRole !== Role.ADMIN && userRole !== Role.ACADEMIC_HEAD) {
+    if (userRole !== Role.ACADEMIC_HEAD) {
       return { success: false, error: 'Unauthorized' };
     }
 
@@ -119,7 +119,7 @@ export async function updateEvent({
   userRole: Role;
 }) {
   try {
-    if (userRole !== Role.ADMIN && userRole !== Role.ACADEMIC_HEAD) {
+    if (userRole !== Role.ACADEMIC_HEAD) {
       return { success: false, error: 'Unauthorized' };
     }
 
@@ -164,7 +164,7 @@ export async function deleteEvent({
   userRole: Role;
 }) {
   try {
-    if (userRole !== Role.ADMIN && userRole !== Role.ACADEMIC_HEAD) {
+    if (userRole !== Role.ACADEMIC_HEAD) {
       return { success: false, error: 'Unauthorized' };
     }
 

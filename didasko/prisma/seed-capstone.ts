@@ -84,54 +84,21 @@ async function assignCoursesToFaculty(userId: string) {
     });
   }
 
-  // Get IT CAPSTONE course
-  const capstoneCourse = await prisma.course.findFirst({
-    where: {
-      code: 'ITCAPSTONE',
-      semester: '1st Semester',
-      section: 'BSIT-111',
-    },
-  });
-
-  if (!capstoneCourse) {
-    throw new Error('IT CAPSTONE course not found');
-  }
-
-  // Get MIS course
-  const misCourse = await prisma.course.findFirst({
-    where: {
-      code: 'MIS',
-      semester: '2nd Semester',
-      section: 'BSIT-213',
-    },
-  });
-
-  if (!misCourse) {
-    throw new Error('MIS course not found');
-  }
-
-  // Enroll all students only in CAPSTONE and MIS
+  // Enroll all students in all courses
   for (const student of allStudents) {
-    await prisma.course.update({
-      where: { id: capstoneCourse.id },
-      data: {
-        students: {
-          connect: { id: student.id },
+    for (const course of allCourses) {
+      await prisma.course.update({
+        where: { id: course.id },
+        data: {
+          students: {
+            connect: { id: student.id },
+          },
         },
-      },
-    });
-
-    await prisma.course.update({
-      where: { id: misCourse.id },
-      data: {
-        students: {
-          connect: { id: student.id },
-        },
-      },
-    });
+      });
+    }
   }
 
-  return { capstoneCourse, misCourse, allCourses };
+  return { allCourses };
 }
 
 async function main() {
@@ -166,9 +133,7 @@ async function main() {
         console.log(
           `Successfully set up Vincent Dizon as faculty for all ${allCourses.length} courses`,
         );
-        console.log(
-          'All students have been enrolled in IT CAPSTONE and MIS courses',
-        );
+        console.log('All students have been enrolled in all courses');
         console.log('\n🎓 Good luck on your defense! 🎓');
       }
     } else if (faculty[facultyName]) {
@@ -183,9 +148,7 @@ async function main() {
       console.log(
         `Successfully set up ${selectedFaculty.name} as faculty for all ${allCourses.length} courses`,
       );
-      console.log(
-        'All students have been enrolled in IT CAPSTONE and MIS courses',
-      );
+      console.log('All students have been enrolled in all courses');
     } else {
       console.error(
         'Please provide a valid faculty name: vincent, arley, denys, jonathan, or all',

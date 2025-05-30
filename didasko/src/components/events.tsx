@@ -28,6 +28,7 @@ import { Textarea } from './ui/textarea';
 import { format, isSameDay, isBefore, isAfter } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
+import dynamic from 'next/dynamic';
 import { useSession } from 'next-auth/react';
 import { Role } from '@/lib/types';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -58,6 +59,12 @@ import {
   handleSaveNewEvent,
   handleUpdateEvent,
 } from '@/lib/event-handlers';
+
+// Dynamically import Toaster with no SSR
+const DynamicToaster = dynamic(
+  () => import('react-hot-toast').then((mod) => mod.Toaster),
+  { ssr: false },
+);
 
 export default function UpcomingEvents() {
   const { data: session, status } = useSession();
@@ -133,37 +140,9 @@ export default function UpcomingEvents() {
     variant: 'success' | 'error' = 'success',
   ) => {
     if (variant === 'success') {
-      toast.success(description, {
-        style: {
-          background: '#fff',
-          color: '#124A69',
-          border: '1px solid #e5e7eb',
-          boxShadow:
-            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-          borderRadius: '0.5rem',
-          padding: '1rem',
-        },
-        iconTheme: {
-          primary: '#124A69',
-          secondary: '#fff',
-        },
-      });
+      toast.success(description);
     } else {
-      toast.error(description, {
-        style: {
-          background: '#fff',
-          color: '#dc2626',
-          border: '1px solid #e5e7eb',
-          boxShadow:
-            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-          borderRadius: '0.5rem',
-          padding: '1rem',
-        },
-        iconTheme: {
-          primary: '#dc2626',
-          secondary: '#fff',
-        },
-      });
+      toast.error(description);
     }
   };
 
@@ -172,21 +151,7 @@ export default function UpcomingEvents() {
     const { events, error } = await getEvents();
 
     if (error) {
-      toast.error(error, {
-        style: {
-          background: '#fff',
-          color: '#dc2626',
-          border: '1px solid #e5e7eb',
-          boxShadow:
-            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-          borderRadius: '0.5rem',
-          padding: '1rem',
-        },
-        iconTheme: {
-          primary: '#dc2626',
-          secondary: '#fff',
-        },
-      });
+      toast.error(error);
       return false;
     }
 
@@ -369,7 +334,7 @@ export default function UpcomingEvents() {
     );
   };
 
-  // Modify handleOpenAdd to use the new modal
+  // Function to handle opening the add modal
   function handleOpenAdd() {
     if (hasUnsavedChanges) {
       setPendingAction('open');
@@ -404,8 +369,112 @@ export default function UpcomingEvents() {
     setHasUnsavedChanges(hasChanges(newEvent));
   }, [newEvent]);
 
+  // Function to handle edit click
+  function handleEditClick(event: EventItem) {
+    setEditData({
+      id: event.id,
+      title: event.title,
+      description: event.description || '',
+      date: event.date,
+      fromTime: event.fromTime || '',
+      toTime: event.toTime || '',
+      dates: [],
+    });
+    setOpenEdit(true);
+  }
+
+  // Function to handle delete click
+  function handleDeleteClick(eventId: string) {
+    setEventToDelete(eventId);
+    setOpenDelete(true);
+  }
+
+  // Function to handle opening edit modal
+  function handleOpenEdit(event: EventItem) {
+    setEditData({
+      id: event.id,
+      title: event.title,
+      description: event.description || '',
+      date: event.date,
+      fromTime: event.fromTime || '',
+      toTime: event.toTime || '',
+      dates: [],
+    });
+    setOpenEdit(true);
+    setAlert({ show: false, title: '', description: '', variant: 'success' });
+    setHasAttemptedSave(false);
+  }
+
+  // Function to handle delete confirmation
+  async function confirmDelete() {
+    if (!eventToDelete) return;
+
+    if (!canManageEvents) {
+      toast.error('Only Academic Head can manage events');
+      return;
+    }
+
+    const result = await handleDeleteEvent({
+      eventId: eventToDelete,
+      userRole,
+      onSuccess: (message) => toast.success(message),
+      onError: (error) => toast.error(error),
+    });
+
+    if (result?.success) {
+      await refreshEvents();
+      setOpenDelete(false);
+      setEventToDelete(null);
+    }
+  }
+
+  // Function to handle edit save
+  async function saveEdit() {
+    if (isSaving) return;
+
+    if (!canManageEvents) {
+      toast.error('Only Academic Head can manage events');
+      return;
+    }
+
+    if (!validateDateTime(editData.date, editData.fromTime, editData.toTime)) {
+      return;
+    }
+
+    // Check for conflicts, excluding the current event being edited
+    if (
+      editData.date &&
+      editData.id &&
+      checkEventConflict(
+        editData.date,
+        editData.fromTime,
+        editData.toTime,
+        editData.id,
+        editData.title,
+      )
+    ) {
+      setAlert({
+        show: true,
+        title: 'Error',
+        description:
+          'There is already an event with the same title scheduled for this date and time.',
+        variant: 'error',
+      });
+      return;
+    }
+
+    setEventsToSave({ type: 'edit', data: editData });
+    setOpenConfirmSave(true);
+  }
+
+  // Function to save new event
   async function saveNewEvent() {
     if (isSaving) return;
+
+    if (!canManageEvents) {
+      toast.error('Only Academic Head can manage events');
+      return;
+    }
 
     if (!validateDateTime(newEvent.date, newEvent.fromTime, newEvent.toTime)) {
       return;
@@ -436,7 +505,7 @@ export default function UpcomingEvents() {
     setOpenConfirmSave(true);
   }
 
-  // Modify confirmSave to clear the form after successful save
+  // Function to confirm save
   async function confirmSave() {
     if (!eventsToSave) return;
     setIsSaving(true);
@@ -454,21 +523,7 @@ export default function UpcomingEvents() {
             newEvent: eventsToSave.data as NewEvent,
             userRole,
             onSuccess: (message) => {
-              toast.success('Event created successfully', {
-                style: {
-                  background: '#fff',
-                  color: '#124A69',
-                  border: '1px solid #e5e7eb',
-                  boxShadow:
-                    '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-                  borderRadius: '0.5rem',
-                  padding: '1rem',
-                },
-                iconTheme: {
-                  primary: '#124A69',
-                  secondary: '#fff',
-                },
-              });
+              toast.success('Event created successfully');
               refreshEvents();
               setIsSaving(false);
               setOpenAdd(false);
@@ -491,21 +546,7 @@ export default function UpcomingEvents() {
             editData: eventsToSave.data as EditData,
             userRole,
             onSuccess: (message) => {
-              toast.success('Event updated successfully', {
-                style: {
-                  background: '#fff',
-                  color: '#124A69',
-                  border: '1px solid #e5e7eb',
-                  boxShadow:
-                    '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-                  borderRadius: '0.5rem',
-                  padding: '1rem',
-                },
-                iconTheme: {
-                  primary: '#124A69',
-                  secondary: '#fff',
-                },
-              });
+              toast.success('Event updated successfully');
               refreshEvents();
               setIsSaving(false);
               setOpenEdit(false);
@@ -535,142 +576,6 @@ export default function UpcomingEvents() {
     }, 500);
 
     setSaveTimeout(timeout);
-  }
-
-  function handleDeleteClick(eventId: string) {
-    if (!canManageEvents) {
-      toast.error('Only Admin and Academic Head can delete events', {
-        style: {
-          background: '#fff',
-          color: '#dc2626',
-          border: '1px solid #e5e7eb',
-          boxShadow:
-            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-          borderRadius: '0.5rem',
-          padding: '1rem',
-        },
-        iconTheme: {
-          primary: '#dc2626',
-          secondary: '#fff',
-        },
-      });
-      return;
-    }
-
-    setEventToDelete(eventId);
-    setOpenDelete(true);
-  }
-
-  async function confirmDelete() {
-    if (!eventToDelete) return;
-
-    const result = await handleDeleteEvent({
-      eventId: eventToDelete,
-      userRole,
-      onSuccess: (message) =>
-        toast.success(message, {
-          style: {
-            background: '#fff',
-            color: '#124A69',
-            border: '1px solid #e5e7eb',
-            boxShadow:
-              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-            borderRadius: '0.5rem',
-            padding: '1rem',
-          },
-          iconTheme: {
-            primary: '#124A69',
-            secondary: '#fff',
-          },
-        }),
-      onError: (error) =>
-        toast.error(error, {
-          style: {
-            background: '#fff',
-            color: '#dc2626',
-            border: '1px solid #e5e7eb',
-            boxShadow:
-              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-            borderRadius: '0.5rem',
-            padding: '1rem',
-          },
-          iconTheme: {
-            primary: '#dc2626',
-            secondary: '#fff',
-          },
-        }),
-    });
-
-    if (result?.success) {
-      await refreshEvents();
-      setOpenDelete(false);
-      setEventToDelete(null);
-    }
-  }
-
-  function handleEditClick(event: EventItem) {
-    if (!canManageEvents) {
-      toast.error('Only Admin and Academic Head can edit events', {
-        style: {
-          background: '#fff',
-          color: '#dc2626',
-          border: '1px solid #e5e7eb',
-          boxShadow:
-            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-          borderRadius: '0.5rem',
-          padding: '1rem',
-        },
-        iconTheme: {
-          primary: '#dc2626',
-          secondary: '#fff',
-        },
-      });
-      return;
-    }
-
-    setEditData({
-      id: event.id,
-      title: event.title,
-      description: event.description || '',
-      date: event.date,
-      fromTime: event.fromTime || '',
-      toTime: event.toTime || '',
-      dates: [],
-    });
-    setOpenEdit(true);
-  }
-
-  async function saveEdit() {
-    if (isSaving) return;
-
-    if (!validateDateTime(editData.date, editData.fromTime, editData.toTime)) {
-      return;
-    }
-
-    // Check for conflicts, excluding the current event being edited
-    if (
-      editData.date &&
-      editData.id &&
-      checkEventConflict(
-        editData.date,
-        editData.fromTime,
-        editData.toTime,
-        editData.id,
-        editData.title,
-      )
-    ) {
-      setAlert({
-        show: true,
-        title: 'Error',
-        description:
-          'There is already an event with the same title scheduled for this date and time.',
-        variant: 'error',
-      });
-      return;
-    }
-
-    setEventsToSave({ type: 'edit', data: editData });
-    setOpenConfirmSave(true);
   }
 
   // Add new date to the event
@@ -731,41 +636,6 @@ export default function UpcomingEvents() {
     };
   }, [saveTimeout]);
 
-  // Add this function to handle opening the add modal
-  function handleOpenEdit(event: EventItem) {
-    if (!canManageEvents) {
-      toast.error('Only Admin and Academic Head can edit events', {
-        style: {
-          background: '#fff',
-          color: '#dc2626',
-          border: '1px solid #e5e7eb',
-          boxShadow:
-            '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-          borderRadius: '0.5rem',
-          padding: '1rem',
-        },
-        iconTheme: {
-          primary: '#dc2626',
-          secondary: '#fff',
-        },
-      });
-      return;
-    }
-
-    setEditData({
-      id: event.id,
-      title: event.title,
-      description: event.description || '',
-      date: event.date,
-      fromTime: event.fromTime || '',
-      toTime: event.toTime || '',
-      dates: [],
-    });
-    setOpenEdit(true);
-    setAlert({ show: false, title: '', description: '', variant: 'success' });
-    setHasAttemptedSave(false); // Reset only when explicitly opening
-  }
-
   // Add validation function
   const hasIncompleteDates = (eventData: NewEvent | EditData): boolean => {
     // Check main date
@@ -781,6 +651,49 @@ export default function UpcomingEvents() {
 
   return (
     <div className='h-full flex flex-col'>
+      <DynamicToaster
+        toastOptions={{
+          className: '',
+          style: {
+            background: '#fff',
+            color: '#124A69',
+            border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
+          },
+          success: {
+            style: {
+              background: '#fff',
+              color: '#124A69',
+              border: '1px solid #e5e7eb',
+            },
+            iconTheme: {
+              primary: '#124A69',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            style: {
+              background: '#fff',
+              color: '#dc2626',
+              border: '1px solid #e5e7eb',
+            },
+            iconTheme: {
+              primary: '#dc2626',
+              secondary: '#fff',
+            },
+          },
+          loading: {
+            style: {
+              background: '#fff',
+              color: '#124A69',
+              border: '1px solid #e5e7eb',
+            },
+          },
+        }}
+      />
       <div className='flex justify-between items-center mb-1'>
         <h2 className='text-lg font-semibold text-[#FAEDCB]'>Events</h2>
         {canManageEvents && (
@@ -1033,73 +946,74 @@ export default function UpcomingEvents() {
               {editData.description.length}/50
             </p>
 
-            <div className='grid grid-cols-2 gap-4'>
-              <div>
-                <Label className='text-medium mb-2'>
-                  Date<span className='text-red-500'> *</span>
-                </Label>
-                <Popover
-                  modal
-                  open={openEditDatePicker}
-                  onOpenChange={setOpenEditDatePicker}
-                >
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant='outline'
-                      className='w-full flex justify-between'
-                    >
-                      {editData.date
-                        ? format(editData.date, 'PPP')
-                        : 'Pick a date'}
-                      <CalendarIcon className='ml-2 h-4 w-4' />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    align='start'
-                    className='w-auto p-0'
-                    onOpenAutoFocus={(e) => e.preventDefault()}
-                  >
-                    <Calendar
-                      mode='single'
-                      selected={editData.date || undefined}
-                      onSelect={(date) => {
-                        if (date) {
-                          setEditData({ ...editData, date: date || null });
-                        }
-                      }}
-                      disabled={(date) =>
-                        date < new Date(new Date().setHours(0, 0, 0, 0))
-                      }
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <div>
-                <Label className='text-medium mb-2'>Time</Label>
-                <div className='grid grid-cols-2 gap-2'>
+            <div className='space-y-2'>
+              <Label className='text-medium'>
+                Date and Time <span className='text-red-500'>*</span>
+              </Label>
+              <div className='space-y-1'>
+                <div className='flex gap-2'>
                   <div>
+                    <Popover
+                      modal
+                      open={openEditDatePicker}
+                      onOpenChange={setOpenEditDatePicker}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant='outline'
+                          className='w-[195px] h-7 text-[11px] flex justify-between'
+                        >
+                          {editData.date
+                            ? format(editData.date, 'MMM d, yyyy')
+                            : 'Pick a date'}
+                          <CalendarIcon className='ml-1 h-3 w-3' />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        align='start'
+                        className='w-auto p-0'
+                        onOpenAutoFocus={(e) => e.preventDefault()}
+                      >
+                        <Calendar
+                          mode='single'
+                          selected={editData.date || undefined}
+                          onSelect={(date) => {
+                            if (date) {
+                              setEditData({ ...editData, date: date || null });
+                            }
+                          }}
+                          disabled={(date) =>
+                            date < new Date(new Date().setHours(0, 0, 0, 0))
+                          }
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className='grid grid-cols-2 gap-1'>
                     <Input
                       type='time'
                       value={editData.fromTime}
                       onChange={(e) => handleEditTimeChange(e, true)}
+                      className='h-7 text-[11px]'
+                      placeholder='Start'
                     />
-                  </div>
-                  <div>
                     <Input
                       type='time'
                       value={editData.toTime}
                       onChange={(e) => handleEditTimeChange(e, false)}
+                      className='h-7 text-[11px]'
+                      placeholder='End'
                     />
                   </div>
                 </div>
-                {dateError && (
-                  <p className='text-sm text-red-500 mt-1'>{dateError}</p>
-                )}
-                {timeError && (
-                  <p className='text-sm text-red-500 mt-1'>{timeError}</p>
-                )}
               </div>
+              {dateError && (
+                <p className='text-[11px] text-red-500'>{dateError}</p>
+              )}
+              {timeError && (
+                <p className='text-[11px] text-red-500'>{timeError}</p>
+              )}
             </div>
           </div>
           <AlertDialogFooter>

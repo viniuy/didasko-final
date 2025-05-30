@@ -13,6 +13,7 @@ import {
   updateEvent,
 } from './actions/events';
 import { startOfDay, isPast, isSameDay } from 'date-fns';
+import { toast } from 'react-hot-toast';
 
 // Function to normalize date by removing time portion
 function normalizeDate(date: Date): Date {
@@ -36,7 +37,7 @@ export async function handleSaveNewEvent({
   }
 
   if (userRole !== Role.ADMIN && userRole !== Role.ACADEMIC_HEAD) {
-    onError('Only Admin and Academic Head can add events');
+    onError('Only Academic Head can add events');
     return;
   }
 
@@ -232,7 +233,7 @@ export async function handleDeleteEvent({
   }
 
   if (userRole !== Role.ADMIN && userRole !== Role.ACADEMIC_HEAD) {
-    onError('Only Admin and Academic Head can delete events');
+    onError('Only Academic Head can delete events');
     return;
   }
 
@@ -268,7 +269,7 @@ export async function handleUpdateEvent({
   }
 
   if (userRole !== Role.ADMIN && userRole !== Role.ACADEMIC_HEAD) {
-    onError('Only Admin and Academic Head can edit events');
+    onError('Only Academic Head can edit events');
     return;
   }
 
@@ -364,5 +365,5 @@ export async function handleUpdateEvent({
 }
 
 export function canUserManageEvents(userRole: Role | undefined): boolean {
-  return userRole === Role.ADMIN || userRole === Role.ACADEMIC_HEAD;
+  return userRole === Role.ACADEMIC_HEAD;
 }
