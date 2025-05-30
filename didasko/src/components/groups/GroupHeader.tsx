@@ -65,49 +65,6 @@ export function GroupHeader({
             onChange={(e) => onSearchChange(e.target.value)}
           />
         </div>
-        <div className='flex items-center gap-2'>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant='outline'
-                className='w-[140px] h-9 rounded-full border-gray-200 bg-[#F5F6FA] justify-between'
-              >
-                <span>Filter</span>
-                <svg
-                  className='h-4 w-4 text-gray-500'
-                  fill='none'
-                  stroke='currentColor'
-                  strokeWidth='2'
-                  viewBox='0 0 24 24'
-                >
-                  <path d='M19 9l-7 7-7-7' />
-                </svg>
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className='w-[200px] p-4'>
-              <div className='space-y-3'>
-                <div className='flex items-center space-x-2'>
-                  <Checkbox id='active' />
-                  <label
-                    htmlFor='active'
-                    className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
-                  >
-                    Active Groups
-                  </label>
-                </div>
-                <div className='flex items-center space-x-2'>
-                  <Checkbox id='completed' />
-                  <label
-                    htmlFor='completed'
-                    className='text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
-                  >
-                    Completed Groups
-                  </label>
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
       </div>
     </div>
   );

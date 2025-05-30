@@ -1355,14 +1355,14 @@ export function QuizTable({
                             <input
                               type='number'
                               min='0'
-                              max='100'
+                              max={selectedQuiz?.maxScore || 100}
                               value={studentScore.quizScore || ''}
                               onChange={(e) => {
                                 const value =
                                   e.target.value === ''
                                     ? 0
                                     : Math.min(
-                                        100,
+                                        selectedQuiz?.maxScore || 100,
                                         Math.max(0, parseInt(e.target.value)),
                                       );
                                 handleScoreChange(
