@@ -1461,7 +1461,14 @@ export default function UpcomingEvents() {
                       : 'Schedule'}
                   </div>
 
-                  <div className='space-y-1.5'>
+                  <div
+                    className={`space-y-1.5 ${
+                      eventsToSave.type === 'new' &&
+                      eventsToSave.data.dates.length > 6
+                        ? 'max-h-[300px] overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#124A69] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#0a2f42]'
+                        : ''
+                    }`}
+                  >
                     {/* Main Date */}
                     <div className='bg-gray-50 rounded-lg p-2'>
                       <div className='flex items-center gap-4 text-sm'>

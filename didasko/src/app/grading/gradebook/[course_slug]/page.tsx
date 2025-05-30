@@ -4,7 +4,7 @@ import { SidebarProvider } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/shared/layout/app-sidebar';
 import Header from '@/components/shared/layout/header';
 import Rightsidebar from '@/components/shared/layout/right-sidebar';
-import { Button } from '@/components/ui/button';
+import { format } from 'date-fns';
 import { useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
 import axiosInstance from '@/lib/axios';
@@ -74,6 +74,9 @@ export default function GradebookCoursePage({
               <div className='flex items-center justify-between mb-8'>
                 <h1 className='text-3xl font-bold tracking-tight text-[#A0A0A0]'>
                   Gradebook
+                </h1>
+                <h1 className='text-2xl font-bold tracking-tight text-[#A0A0A0]'>
+                  {format(new Date(), 'EEEE, MMMM d')}
                 </h1>
               </div>
 

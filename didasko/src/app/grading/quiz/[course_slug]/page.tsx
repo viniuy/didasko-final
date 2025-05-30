@@ -7,6 +7,8 @@ import Rightsidebar from '@/components/shared/layout/right-sidebar';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { QuizTable } from '@/components/grading/quiz-table';
 import { Loader2 } from 'lucide-react';
+import { format } from 'date-fns';
+
 import axios from 'axios';
 
 interface Course {
@@ -54,7 +56,10 @@ function QuizGradingContent({ course_slug }: { course_slug: string }) {
               <Header />
               <div className='flex items-center justify-between mb-8'>
                 <h1 className='text-3xl font-bold tracking-tight text-[#A0A0A0]'>
-                  Recitation
+                  Quiz
+                </h1>
+                <h1 className='text-2xl font-bold tracking-tight text-[#A0A0A0]'>
+                  {format(new Date(), 'EEEE, MMMM d')}
                 </h1>
               </div>
               <div className='flex-1 overflow-y-auto pb-6'>
@@ -105,6 +110,9 @@ function QuizGradingContent({ course_slug }: { course_slug: string }) {
             <div className='flex items-center justify-between'>
               <h1 className='text-3xl font-bold tracking-tight text-[#A0A0A0]'>
                 Quiz Grading
+              </h1>
+              <h1 className='text-2xl font-bold tracking-tight text-[#A0A0A0]'>
+                {format(new Date(), 'EEEE, MMMM d')}
               </h1>
             </div>
 

@@ -69,6 +69,9 @@ function IndividualRecitationContent({ course_slug }: { course_slug: string }) {
                 <h1 className='text-3xl font-bold tracking-tight text-[#A0A0A0]'>
                   Recitation
                 </h1>
+                <h1 className='text-2xl font-bold tracking-tight text-[#A0A0A0]'>
+                  {format(new Date(), 'EEEE, MMMM d')}
+                </h1>
               </div>
               <div className='flex-1 overflow-y-auto pb-6'>
                 <div className='flex flex-col items-center justify-center h-[calc(100vh-12rem)]'>
@@ -118,6 +121,9 @@ function IndividualRecitationContent({ course_slug }: { course_slug: string }) {
             <div className='flex items-center justify-between mb-8'>
               <h1 className='text-3xl font-bold tracking-tight text-[#A0A0A0]'>
                 Recitation
+              </h1>
+              <h1 className='text-2xl font-bold tracking-tight text-[#A0A0A0]'>
+                {format(new Date(), 'EEEE, MMMM d')}
               </h1>
             </div>
 
