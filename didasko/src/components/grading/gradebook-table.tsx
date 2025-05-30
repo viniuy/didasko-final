@@ -756,7 +756,7 @@ const GradeConfigDialog = ({
                         htmlFor='name'
                         className='text-sm font-medium text-gray-700'
                       >
-                        Gradebook Name *
+                        Gradebook Name <span className='text-red-500'>*</span>
                       </Label>
                       <div className='relative'>
                         <Input
@@ -950,7 +950,7 @@ const GradeConfigDialog = ({
                     </div>
                     <div className='space-y-2'>
                       <Label className='text-sm font-medium text-gray-700'>
-                        Date Range*
+                        Date Range <span className='text-red-500'>*</span>
                       </Label>
                       <div className='flex w-full max-w-[440px] justify-center mx-auto bg-white  rounded-lg border border-gray-200'>
                         <Calendar

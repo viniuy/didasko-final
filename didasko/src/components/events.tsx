@@ -86,6 +86,11 @@ export default function UpcomingEvents() {
 
   const [openDelete, setOpenDelete] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<string | null>(null);
+  const [openConfirmSave, setOpenConfirmSave] = useState(false);
+  const [eventsToSave, setEventsToSave] = useState<{
+    type: 'new' | 'edit';
+    data: NewEvent | EditData;
+  } | null>(null);
 
   const [openEdit, setOpenEdit] = useState(false);
   const [openEditDatePicker, setOpenEditDatePicker] = useState(false);
@@ -104,6 +109,11 @@ export default function UpcomingEvents() {
   const [openAdditionalDatePickers, setOpenAdditionalDatePickers] = useState<
     boolean[]
   >([]);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [openUnsavedChanges, setOpenUnsavedChanges] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'open' | 'close' | null>(
+    null,
+  );
   const [newEvent, setNewEvent] = useState<NewEvent>({
     title: '',
     description: '',
@@ -333,6 +343,67 @@ export default function UpcomingEvents() {
     });
   }
 
+  // Add function to reset new event form
+  const resetNewEventForm = () => {
+    setNewEvent({
+      title: '',
+      description: '',
+      date: null,
+      fromTime: '',
+      toTime: '',
+      dates: [],
+    });
+    setOpenAdditionalDatePickers([]);
+    setHasUnsavedChanges(false);
+  };
+
+  // Add function to check for unsaved changes
+  const hasChanges = (event: NewEvent) => {
+    return (
+      event.title !== '' ||
+      event.description !== '' ||
+      event.date !== null ||
+      event.fromTime !== '' ||
+      event.toTime !== '' ||
+      event.dates.length > 0
+    );
+  };
+
+  // Modify handleOpenAdd to use the new modal
+  function handleOpenAdd() {
+    if (hasUnsavedChanges) {
+      setPendingAction('open');
+      setOpenUnsavedChanges(true);
+    } else {
+      setOpenAdd(true);
+      setAlert({ show: false, title: '', description: '', variant: 'success' });
+      setHasAttemptedSave(false);
+    }
+  }
+
+  // Add function to handle unsaved changes response
+  const handleUnsavedChangesResponse = (keepChanges: boolean) => {
+    if (!keepChanges) {
+      resetNewEventForm();
+    }
+
+    if (pendingAction === 'open') {
+      setOpenAdd(true);
+      setAlert({ show: false, title: '', description: '', variant: 'success' });
+      setHasAttemptedSave(false);
+    } else if (pendingAction === 'close') {
+      setOpenAdd(false);
+    }
+
+    setOpenUnsavedChanges(false);
+    setPendingAction(null);
+  };
+
+  // Modify the newEvent state updates to track changes
+  useEffect(() => {
+    setHasUnsavedChanges(hasChanges(newEvent));
+  }, [newEvent]);
+
   async function saveNewEvent() {
     if (isSaving) return;
 
@@ -361,6 +432,13 @@ export default function UpcomingEvents() {
       return;
     }
 
+    setEventsToSave({ type: 'new', data: newEvent });
+    setOpenConfirmSave(true);
+  }
+
+  // Modify confirmSave to clear the form after successful save
+  async function confirmSave() {
+    if (!eventsToSave) return;
     setIsSaving(true);
     setHasAttemptedSave(true);
     setAlert({ show: false, title: '', description: '', variant: 'success' });
@@ -371,24 +449,80 @@ export default function UpcomingEvents() {
 
     const timeout = setTimeout(async () => {
       try {
-        const result = await handleSaveNewEvent({
-          newEvent,
-          userRole,
-          onSuccess: (message) => {
-            refreshEvents();
-            setIsSaving(false);
-            setOpenAdd(false);
-          },
-          onError: (error) => {
-            setAlert({
-              show: true,
-              title: 'Error',
-              description: error,
-              variant: 'error',
-            });
-            setIsSaving(false);
-          },
-        });
+        if (eventsToSave.type === 'new') {
+          const result = await handleSaveNewEvent({
+            newEvent: eventsToSave.data as NewEvent,
+            userRole,
+            onSuccess: (message) => {
+              toast.success('Event created successfully', {
+                style: {
+                  background: '#fff',
+                  color: '#124A69',
+                  border: '1px solid #e5e7eb',
+                  boxShadow:
+                    '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+                  borderRadius: '0.5rem',
+                  padding: '1rem',
+                },
+                iconTheme: {
+                  primary: '#124A69',
+                  secondary: '#fff',
+                },
+              });
+              refreshEvents();
+              setIsSaving(false);
+              setOpenAdd(false);
+              setOpenConfirmSave(false);
+              setEventsToSave(null);
+              resetNewEventForm(); // Clear the form
+            },
+            onError: (error) => {
+              setAlert({
+                show: true,
+                title: 'Error',
+                description: error,
+                variant: 'error',
+              });
+              setIsSaving(false);
+            },
+          });
+        } else {
+          const result = await handleUpdateEvent({
+            editData: eventsToSave.data as EditData,
+            userRole,
+            onSuccess: (message) => {
+              toast.success('Event updated successfully', {
+                style: {
+                  background: '#fff',
+                  color: '#124A69',
+                  border: '1px solid #e5e7eb',
+                  boxShadow:
+                    '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+                  borderRadius: '0.5rem',
+                  padding: '1rem',
+                },
+                iconTheme: {
+                  primary: '#124A69',
+                  secondary: '#fff',
+                },
+              });
+              refreshEvents();
+              setIsSaving(false);
+              setOpenEdit(false);
+              setOpenConfirmSave(false);
+              setEventsToSave(null);
+            },
+            onError: (error) => {
+              setAlert({
+                show: true,
+                title: 'Error',
+                description: error,
+                variant: 'error',
+              });
+              setIsSaving(false);
+            },
+          });
+        }
       } catch (error) {
         setAlert({
           show: true,
@@ -535,61 +669,8 @@ export default function UpcomingEvents() {
       return;
     }
 
-    setIsSaving(true);
-    setHasAttemptedSave(true);
-    setAlert({ show: false, title: '', description: '', variant: 'success' });
-
-    if (saveTimeout) {
-      clearTimeout(saveTimeout);
-    }
-
-    const timeout = setTimeout(async () => {
-      try {
-        const result = await handleUpdateEvent({
-          editData,
-          userRole,
-          onSuccess: (message) => {
-            toast.success('Event updated successfully', {
-              style: {
-                background: '#fff',
-                color: '#124A69',
-                border: '1px solid #e5e7eb',
-                boxShadow:
-                  '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-                borderRadius: '0.5rem',
-                padding: '1rem',
-              },
-              iconTheme: {
-                primary: '#124A69',
-                secondary: '#fff',
-              },
-            });
-            refreshEvents();
-            setIsSaving(false);
-            setOpenEdit(false);
-          },
-          onError: (error) => {
-            setAlert({
-              show: true,
-              title: 'Error',
-              description: error,
-              variant: 'error',
-            });
-            setIsSaving(false);
-          },
-        });
-      } catch (error) {
-        setAlert({
-          show: true,
-          title: 'Error',
-          description: 'Failed to update event. Please try again.',
-          variant: 'error',
-        });
-        setIsSaving(false);
-      }
-    }, 500);
-
-    setSaveTimeout(timeout);
+    setEventsToSave({ type: 'edit', data: editData });
+    setOpenConfirmSave(true);
   }
 
   // Add new date to the event
@@ -651,13 +732,6 @@ export default function UpcomingEvents() {
   }, [saveTimeout]);
 
   // Add this function to handle opening the add modal
-  function handleOpenAdd() {
-    setOpenAdd(true);
-    setAlert({ show: false, title: '', description: '', variant: 'success' });
-    setHasAttemptedSave(false); // Reset only when explicitly opening
-  }
-
-  // Add this function to handle opening the edit modal
   function handleOpenEdit(event: EventItem) {
     if (!canManageEvents) {
       toast.error('Only Admin and Academic Head can edit events', {
@@ -691,6 +765,19 @@ export default function UpcomingEvents() {
     setAlert({ show: false, title: '', description: '', variant: 'success' });
     setHasAttemptedSave(false); // Reset only when explicitly opening
   }
+
+  // Add validation function
+  const hasIncompleteDates = (eventData: NewEvent | EditData): boolean => {
+    // Check main date
+    if (!eventData.date) return true;
+
+    // Check additional dates if they exist
+    if ('dates' in eventData && eventData.dates.length > 0) {
+      return eventData.dates.some((date) => !date.date);
+    }
+
+    return false;
+  };
 
   return (
     <div className='h-full flex flex-col'>
@@ -1041,14 +1128,19 @@ export default function UpcomingEvents() {
           if (!open && (isSaving || alert.show || !hasAttemptedSave)) {
             return;
           }
-          setOpenAdd(open);
-          if (open) {
-            setAlert({
-              show: false,
-              title: '',
-              description: '',
-              variant: 'success',
-            });
+          if (!open && hasUnsavedChanges) {
+            setPendingAction('close');
+            setOpenUnsavedChanges(true);
+          } else {
+            setOpenAdd(open);
+            if (open) {
+              setAlert({
+                show: false,
+                title: '',
+                description: '',
+                variant: 'success',
+              });
+            }
           }
         }}
       >
@@ -1324,6 +1416,165 @@ export default function UpcomingEvents() {
               }
             >
               {isSaving ? 'Saving...' : 'Save'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={openConfirmSave} onOpenChange={setOpenConfirmSave}>
+        <AlertDialogContent className='max-h-[80vh] flex flex-col'>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Event Details</AlertDialogTitle>
+            <AlertDialogDescription>
+              Please review the event details before saving:
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className='flex-1 overflow-y-auto pr-2 space-y-4 py-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#124A69] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#0a2f42]'>
+            {eventsToSave && (
+              <div className='space-y-4'>
+                {/* Title and Description Section */}
+                <div className='space-y-2 border-b pb-4'>
+                  <div>
+                    <div className='font-medium text-sm text-gray-500 mb-1'>
+                      Title
+                    </div>
+                    <div className='text-[#124A69] font-medium'>
+                      {eventsToSave.data.title}
+                    </div>
+                  </div>
+                  <div>
+                    <div className='font-medium text-sm text-gray-500 mb-1'>
+                      Description
+                    </div>
+                    <div className='text-gray-600'>
+                      {eventsToSave.data.description || 'No description'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Dates Section */}
+                <div className='space-y-3'>
+                  <div className='font-medium text-sm text-gray-500'>
+                    {eventsToSave.type === 'new' &&
+                    eventsToSave.data.dates.length > 0
+                      ? 'Schedules'
+                      : 'Schedule'}
+                  </div>
+
+                  <div className='space-y-1.5'>
+                    {/* Main Date */}
+                    <div className='bg-gray-50 rounded-lg p-2'>
+                      <div className='flex items-center gap-4 text-sm'>
+                        <div className='flex items-center gap-1'>
+                          <span className='text-gray-500'>Date:</span>
+                          <span className='font-medium'>
+                            {eventsToSave.data.date
+                              ? format(eventsToSave.data.date, 'MMMM d, yyyy')
+                              : '----'}
+                          </span>
+                        </div>
+                        <div className='flex items-center gap-1'>
+                          <span className='text-gray-500'>Time:</span>
+                          <span className='font-medium'>
+                            {eventsToSave.data.fromTime &&
+                            eventsToSave.data.toTime
+                              ? `${formatTimeTo12Hour(
+                                  eventsToSave.data.fromTime,
+                                )} - ${formatTimeTo12Hour(
+                                  eventsToSave.data.toTime,
+                                )}`
+                              : '----'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Additional Dates */}
+                    {eventsToSave.type === 'new' &&
+                      eventsToSave.data.dates.length > 0 && (
+                        <>
+                          {eventsToSave.data.dates.map((date, index) => (
+                            <div
+                              key={index}
+                              className='bg-gray-50 rounded-lg p-2'
+                            >
+                              <div className='flex items-center gap-4 text-sm'>
+                                <div className='flex items-center gap-1'>
+                                  <span className='text-gray-500'>Date:</span>
+                                  <span className='font-medium'>
+                                    {date.date
+                                      ? format(date.date, 'MMMM d, yyyy')
+                                      : '----'}
+                                  </span>
+                                </div>
+                                <div className='flex items-center gap-1'>
+                                  <span className='text-gray-500'>Time:</span>
+                                  <span className='font-medium'>
+                                    {date.fromTime && date.toTime
+                                      ? `${formatTimeTo12Hour(
+                                          date.fromTime,
+                                        )} - ${formatTimeTo12Hour(date.toTime)}`
+                                      : '----'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <AlertDialogFooter className='mt-4'>
+            <AlertDialogCancel
+              onClick={() => {
+                setOpenConfirmSave(false);
+                setEventsToSave(null);
+              }}
+              className='bg-gray-100 text-gray-700 hover:bg-gray-200 h-8 text-xs'
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmSave}
+              className='bg-[#124A69] text-white hover:bg-[#0a2f42] h-8 text-xs'
+              disabled={
+                isSaving ||
+                (eventsToSave ? hasIncompleteDates(eventsToSave.data) : true)
+              }
+            >
+              {isSaving ? 'Saving...' : 'Confirm & Save'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={openUnsavedChanges}
+        onOpenChange={setOpenUnsavedChanges}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved Changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes in your event form. Would you like to
+              keep these changes?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => handleUnsavedChangesResponse(false)}
+              className='bg-gray-100 text-gray-700 hover:bg-gray-200 h-8 text-xs'
+            >
+              Discard Changes
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => handleUnsavedChangesResponse(true)}
+              className='bg-[#124A69] text-white hover:bg-[#0a2f42] h-8 text-xs'
+            >
+              Keep Changes
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

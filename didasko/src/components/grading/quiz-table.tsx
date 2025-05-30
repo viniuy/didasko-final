@@ -188,6 +188,8 @@ export function QuizTable({
   const [imageToRemove, setImageToRemove] = useState<Student | null>(null);
   const [tempImage, setTempImage] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [maxScoreError, setMaxScoreError] = useState<string>('');
+  const [attendanceDates, setAttendanceDates] = useState<Date[]>([]);
 
   // Fetch quizzes for the course when modal opens
   useEffect(() => {
@@ -930,6 +932,41 @@ export function QuizTable({
     );
   };
 
+  // Add function to fetch attendance dates
+  const fetchAttendanceDates = async () => {
+    if (!course_slug) return;
+
+    try {
+      const response = await axios.get(
+        `/api/courses/${course_slug}/attendance/dates`,
+      );
+
+      if (!response.data || !Array.isArray(response.data.dates)) {
+        console.error('Invalid response structure:', response.data);
+        return;
+      }
+
+      const uniqueDates = response.data.dates
+        .map((dateStr: string) => {
+          const date = new Date(dateStr);
+          return isNaN(date.getTime()) ? null : date;
+        })
+        .filter((date: Date | null): date is Date => date !== null)
+        .sort((a: Date, b: Date) => a.getTime() - b.getTime());
+
+      setAttendanceDates(uniqueDates);
+    } catch (error) {
+      console.error('Error fetching attendance dates:', error);
+    }
+  };
+
+  // Add useEffect to fetch attendance dates when course_slug changes
+  useEffect(() => {
+    if (course_slug) {
+      fetchAttendanceDates();
+    }
+  }, [course_slug]);
+
   return (
     <div className='min-h-screen w-full p-0'>
       <Toaster
@@ -1339,9 +1376,18 @@ export function QuizTable({
                                   e.preventDefault();
                                 }
                               }}
-                              className='w-20 p-1 border rounded text-center'
+                              className={cn(
+                                'w-20 p-1 border rounded text-center',
+                                maxScoreError &&
+                                  'border-red-500 focus-visible:ring-red-500',
+                              )}
                               placeholder='Score'
                             />
+                            {maxScoreError && (
+                              <p className='text-[10px] text-red-500 mt-0.5'>
+                                {maxScoreError}
+                              </p>
+                            )}
                           </td>
                           <td className='px-4 py-2 text-center'>
                             {(() => {
@@ -1704,6 +1750,18 @@ export function QuizTable({
                             numberOfMonths={2}
                             disabled={(date) => date > new Date()}
                             initialFocus
+                            modifiers={{
+                              hasAttendance: (date) => {
+                                return attendanceDates.some(
+                                  (attendanceDate) =>
+                                    attendanceDate.getFullYear() ===
+                                      date.getFullYear() &&
+                                    attendanceDate.getMonth() ===
+                                      date.getMonth() &&
+                                    attendanceDate.getDate() === date.getDate(),
+                                );
+                              },
+                            }}
                             classNames={{
                               day_selected:
                                 'bg-[#124A69] text-white hover:bg-[#124A69] hover:text-white focus:bg-[#124A69] focus:text-white',
@@ -1711,9 +1769,28 @@ export function QuizTable({
                                 'bg-[#124A69] text-white rounded-l-md',
                               day_range_end:
                                 'bg-[#124A69] text-white rounded-r-md',
-                              day_range_middle: 'bg-[#e3eef5] text-[#124A69]',
+                              day_range_middle: 'bg-[#e3eef5]',
                               day_today:
                                 'border border-[#124A69] text-[#124A69] bg-white',
+                              day_outside: 'text-gray-400 opacity-50',
+                              day_disabled: 'text-gray-400 opacity-50',
+                              day_hidden: 'invisible',
+                            }}
+                            modifiersStyles={{
+                              hasAttendance: {
+                                border: '1px solid #124A69',
+                                color: '#000000', // Black text for attendance dates
+                                borderRadius: '50%',
+                              },
+                              selected: {
+                                color: '#ffffff', // White text for selected dates
+                              },
+                              selected_hasAttendance: {
+                                border: '1px solid #124A69',
+                                backgroundColor: '#124A69', // Text color for attendance dates not in range
+                                color: '#124A69', // Text color for attendance dates not in range
+                                borderRadius: '50%',
+                              },
                             }}
                           />
                         </PopoverContent>
@@ -1729,9 +1806,28 @@ export function QuizTable({
                           min={1}
                           max={100}
                           value={maxScore}
-                          onChange={(e) => setMaxScore(Number(e.target.value))}
-                          className='bg-gray-50 border-gray-200'
+                          onChange={(e) => {
+                            const value = Number(e.target.value);
+                            if (value > 100) {
+                              setMaxScoreError(
+                                'Maximum score cannot exceed 100',
+                              );
+                            } else {
+                              setMaxScoreError('');
+                            }
+                            setMaxScore(Math.min(100, Math.max(1, value)));
+                          }}
+                          className={cn(
+                            'bg-gray-50 border-gray-200',
+                            maxScoreError &&
+                              'border-red-500 focus-visible:ring-red-500',
+                          )}
                         />
+                        {maxScoreError && (
+                          <p className='text-[10px] text-red-500 mt-0.5'>
+                            {maxScoreError}
+                          </p>
+                        )}
                       </div>
                       <div className='grid gap-2'>
                         <label className='text-sm font-medium text-gray-700'>

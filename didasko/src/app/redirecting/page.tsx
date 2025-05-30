@@ -37,11 +37,17 @@ export default function RedirectingPage() {
     }
   }, [session, status, router]);
 
-  const handleRoleSelection = (selectedRole: 'ADMIN' | 'ACADEMIC_HEAD') => {
+  const handleRoleSelection = async (selectedRole: 'ADMIN' | 'FACULTY') => {
     const roleMap: Record<string, string> = {
       ADMIN: '/dashboard/admin',
-      ACADEMIC_HEAD: '/dashboard/academic-head',
+      FACULTY: '/dashboard/faculty',
     };
+
+    // Update the session with the selected role
+    if (session?.user) {
+      session.user.role = selectedRole;
+    }
+
     router.replace(roleMap[selectedRole]);
   };
 
@@ -59,10 +65,10 @@ export default function RedirectingPage() {
             Continue as Admin
           </Button>
           <Button
-            onClick={() => handleRoleSelection('ACADEMIC_HEAD')}
+            onClick={() => handleRoleSelection('FACULTY')}
             className='bg-[#124A69] text-white hover:bg-[#0d3a56] px-6 py-3'
           >
-            Continue as Academic Head
+            Continue as Faculty
           </Button>
         </div>
       </div>

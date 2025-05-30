@@ -39,13 +39,11 @@ export default function GradebookCoursePage({
     const fetchCourseId = async () => {
       try {
         console.log('Fetching course ID for slug:', resolvedParams.course_slug);
-        const response = await axiosInstance.get(`/courses`, {
-          params: {
-            slug: resolvedParams.course_slug,
-          },
-        });
-        if (response.data.courses && response.data.courses.length > 0) {
-          const course = response.data.courses[0];
+        const response = await axiosInstance.get(
+          `/courses/${resolvedParams.course_slug}`,
+        );
+        if (response.data) {
+          const course = response.data;
           const fetchedCourseId = course.id;
           console.log('Fetched course ID:', fetchedCourseId);
           setCourseId(fetchedCourseId);
