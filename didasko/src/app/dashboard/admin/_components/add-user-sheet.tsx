@@ -190,7 +190,9 @@ export function AddUserSheet({ onSuccess }: AddUserSheetProps) {
         </SheetHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4 py-4'>
           <div className='space-y-1 w-97'>
-            <Label htmlFor='lastName'>Last Name *</Label>
+            <Label htmlFor='lastName'>
+              Last Name <span className='text-red-500'>*</span>
+            </Label>
             <Input
               id='lastName'
               {...form.register('lastName')}
@@ -217,7 +219,9 @@ export function AddUserSheet({ onSuccess }: AddUserSheetProps) {
 
           <div className='flex flex-row gap-2'>
             <div className='space-y-1'>
-              <Label htmlFor='firstName'>First Name *</Label>
+              <Label htmlFor='firstName'>
+                First Name <span className='text-red-500'>*</span>
+              </Label>
               <Input
                 id='firstName'
                 {...form.register('firstName')}
@@ -267,7 +271,9 @@ export function AddUserSheet({ onSuccess }: AddUserSheetProps) {
           </div>
 
           <div className='space-y-1 w-97'>
-            <Label htmlFor='email'>Email *</Label>
+            <Label htmlFor='email'>
+              School Email <span className='text-red-500'>*</span>
+            </Label>
             <Input
               id='email'
               type='email'
@@ -282,7 +288,9 @@ export function AddUserSheet({ onSuccess }: AddUserSheetProps) {
           </div>
 
           <div className='space-y-1'>
-            <Label htmlFor='department'>Department *</Label>
+            <Label htmlFor='department'>
+              Department <span className='text-red-500'>*</span>
+            </Label>
             <Select
               onValueChange={(value) => form.setValue('department', value)}
               defaultValue={form.getValues('department')}
@@ -306,7 +314,9 @@ export function AddUserSheet({ onSuccess }: AddUserSheetProps) {
           </div>
 
           <div className='space-y-1'>
-            <Label htmlFor='workType'>Work Type *</Label>
+            <Label htmlFor='workType'>
+              Work Type <span className='text-red-500'>*</span>
+            </Label>
             <Select
               onValueChange={(value) =>
                 form.setValue('workType', value as WorkType)
@@ -330,7 +340,9 @@ export function AddUserSheet({ onSuccess }: AddUserSheetProps) {
           </div>
 
           <div className='space-y-1'>
-            <Label htmlFor='role'>Role *</Label>
+            <Label htmlFor='role'>
+              Role <span className='text-red-500'>*</span>
+            </Label>
             <Select
               onValueChange={(value) => form.setValue('role', value as Role)}
               defaultValue={form.getValues('role')}
@@ -354,7 +366,9 @@ export function AddUserSheet({ onSuccess }: AddUserSheetProps) {
           </div>
 
           <div className='space-y-1'>
-            <Label htmlFor='permission'>Permission *</Label>
+            <Label htmlFor='permission'>
+              Permission <span className='text-red-500'>*</span>
+            </Label>
             <Select
               onValueChange={(value) =>
                 form.setValue('permission', value as Permission)

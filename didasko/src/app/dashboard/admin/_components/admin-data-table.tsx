@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Table,
   TableBody,
@@ -58,6 +58,14 @@ import {
 } from '@/components/ui/dialog';
 import * as XLSX from 'xlsx';
 import axiosInstance from '@/lib/axios';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
 
 interface User {
   id: string;
@@ -192,6 +200,14 @@ export function AdminDataTable({
   } | null>(null);
   const [tableData, setTableData] = useState<User[]>(users);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+  const [isRoleUpdating, setIsRoleUpdating] = useState<{
+    [key: string]: boolean;
+  }>({});
+  const [isPermissionUpdating, setIsPermissionUpdating] = useState<{
+    [key: string]: boolean;
+  }>({});
 
   // Filter users based on search query
   const filteredUsers = useMemo(() => {
@@ -208,172 +224,122 @@ export function AdminDataTable({
     );
   }, [tableData, searchQuery]);
 
-  const handleRoleChange = (userId: string, newRole: Role) => {
-    setEditedUsers((prev) => ({
-      ...prev,
-      [userId]: {
-        ...prev[userId],
-        role: newRole,
-      },
-    }));
-    toast.success(
-      `Role updated to ${newRole
-        .split('_')
-        .map(
-          (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
-        )
-        .join(' ')}`,
-      {
-        duration: 3000,
-        style: {
-          background: '#fff',
-          color: '#124A69',
-          border: '1px solid #e5e7eb',
-        },
-      },
-    );
-  };
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+  const currentUsers = filteredUsers.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage,
+  );
 
-  const handlePermissionChange = (
-    userId: string,
-    newPermission: Permission,
-  ) => {
-    setEditedUsers((prev) => ({
-      ...prev,
-      [userId]: {
-        ...prev[userId],
-        permission: newPermission,
-      },
-    }));
-    toast.success(`Permission ${newPermission.toLowerCase()}`, {
-      duration: 3000,
-      style: {
-        background: '#fff',
-        color: '#124A69',
-        border: '1px solid #e5e7eb',
-      },
-    });
-  };
-
-  const handleSaveChanges = async () => {
-    if (Object.keys(editedUsers).length === 0) return;
-
+  const handleRoleChange = async (userId: string, newRole: Role) => {
     try {
-      setIsSaving(true);
+      setIsRoleUpdating((prev) => ({ ...prev, [userId]: true }));
 
-      // Process each edited user
-      for (const [userId, changes] of Object.entries(editedUsers)) {
-        console.log('Saving changes for user:', { userId, changes });
+      const result = await editUser(userId, { role: newRole });
+      if (result.success) {
+        // Update the table data directly
+        setTableData((prevData) =>
+          prevData.map((user) =>
+            user.id === userId ? { ...user, role: newRole } : user,
+          ),
+        );
 
-        // Update role if changed
-        if (changes.role) {
-          const roleResult = await editUser(userId, { role: changes.role });
-          if (!roleResult.success) {
-            toast.error(`Failed to update role: ${roleResult.error}`, {
-              duration: 3000,
-              style: {
-                background: '#fff',
-                color: '#dc2626',
-                border: '1px solid #e5e7eb',
-              },
-            });
-            throw new Error(`Failed to update role: ${roleResult.error}`);
-          }
-        }
-
-        // Update permission if changed
-        if (changes.permission) {
-          const permissionResult = await editUser(userId, {
-            permission: changes.permission,
-          });
-          if (!permissionResult.success) {
-            toast.error(
-              `Failed to update permission: ${permissionResult.error}`,
-              {
-                duration: 3000,
-                style: {
-                  background: '#fff',
-                  color: '#dc2626',
-                  border: '1px solid #e5e7eb',
-                },
-              },
-            );
-            throw new Error(
-              `Failed to update permission: ${permissionResult.error}`,
-            );
-          }
-        }
-      }
-
-      // Clear edited state after successful save
-      setEditedUsers({});
-
-      // Refresh the table data
-      await refreshTableData();
-
-      toast.success('All changes saved successfully', {
-        duration: 3000,
-        style: {
-          background: '#fff',
-          color: '#124A69',
-          border: '1px solid #e5e7eb',
-        },
-      });
-
-      // Call onUserAdded callback if provided
-      if (onUserAdded) {
-        await onUserAdded();
+        toast.success(
+          `Role updated to ${newRole
+            .split('_')
+            .map(
+              (word) =>
+                word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
+            )
+            .join(' ')}`,
+          {
+            duration: 3000,
+            style: {
+              background: '#fff',
+              color: '#124A69',
+              border: '1px solid #e5e7eb',
+              boxShadow:
+                '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+              borderRadius: '0.5rem',
+              padding: '1rem',
+            },
+          },
+        );
+      } else {
+        throw new Error(result.error || 'Failed to update role');
       }
     } catch (error) {
-      console.error('Error saving changes:', error);
+      console.error('Error updating role:', error);
       toast.error(
-        error instanceof Error ? error.message : 'Failed to save changes',
+        error instanceof Error ? error.message : 'Failed to update role',
         {
           duration: 3000,
           style: {
             background: '#fff',
             color: '#dc2626',
             border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
           },
         },
       );
     } finally {
-      setIsSaving(false);
+      setIsRoleUpdating((prev) => ({ ...prev, [userId]: false }));
     }
   };
 
-  const handleDeleteUser = async () => {
-    if (!userToDelete) return;
-
+  const handlePermissionChange = async (
+    userId: string,
+    newPermission: Permission,
+  ) => {
     try {
-      setIsRefreshing(true);
-      const result = await deleteUser(userToDelete.id);
+      setIsPermissionUpdating((prev) => ({ ...prev, [userId]: true }));
 
+      const result = await editUser(userId, { permission: newPermission });
       if (result.success) {
-        console.log('User deleted successfully:', { userId: userToDelete.id });
-        toast.success('User deleted successfully');
+        // Update the table data directly
+        setTableData((prevData) =>
+          prevData.map((user) =>
+            user.id === userId ? { ...user, permission: newPermission } : user,
+          ),
+        );
 
-        // Refresh the table data
-        await refreshTableData();
+        toast.success(`Permission ${newPermission.toLowerCase()}`, {
+          duration: 3000,
+          style: {
+            background: '#fff',
+            color: '#124A69',
+            border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
+          },
+        });
       } else {
-        console.error('Failed to delete user:', result.error);
-
-        // Show specific error message for user not found
-        if (
-          result.error?.includes('not found') ||
-          result.error?.includes('does not exist')
-        ) {
-          toast.error('User no longer exists. The table will be refreshed.');
-          await refreshTableData();
-        } else {
-          toast.error(result.error || 'Failed to delete user');
-        }
+        throw new Error(result.error || 'Failed to update permission');
       }
     } catch (error) {
-      console.error('Error deleting user:', error);
-      toast.error('An error occurred while deleting the user');
+      console.error('Error updating permission:', error);
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to update permission',
+        {
+          duration: 3000,
+          style: {
+            background: '#fff',
+            color: '#dc2626',
+            border: '1px solid #e5e7eb',
+            boxShadow:
+              '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '0.5rem',
+            padding: '1rem',
+          },
+        },
+      );
     } finally {
-      setUserToDelete(null);
+      setIsPermissionUpdating((prev) => ({ ...prev, [userId]: false }));
     }
   };
 
@@ -427,7 +393,40 @@ export function AdminDataTable({
     setEditingUser(null);
   };
 
-  const hasChanges = Object.keys(editedUsers).length > 0;
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+
+    try {
+      setIsRefreshing(true);
+      const result = await deleteUser(userToDelete.id);
+
+      if (result.success) {
+        console.log('User deleted successfully:', { userId: userToDelete.id });
+        toast.success('User deleted successfully');
+
+        // Refresh the table data
+        await refreshTableData();
+      } else {
+        console.error('Failed to delete user:', result.error);
+
+        // Show specific error message for user not found
+        if (
+          result.error?.includes('not found') ||
+          result.error?.includes('does not exist')
+        ) {
+          toast.error('User no longer exists. The table will be refreshed.');
+          await refreshTableData();
+        } else {
+          toast.error(result.error || 'Failed to delete user');
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      toast.error('An error occurred while deleting the user');
+    } finally {
+      setUserToDelete(null);
+    }
+  };
 
   // Function to get initials from name
   const getInitials = (name: string) => {
@@ -439,20 +438,6 @@ export function AdminDataTable({
       return (parts[0][0] + parts[1][0]).toUpperCase();
     }
     return parts[0][0].toUpperCase();
-  };
-
-  const handleCancelChanges = () => {
-    if (Object.keys(editedUsers).length > 0) {
-      toast.error('Changes discarded', {
-        duration: 3000,
-        style: {
-          background: '#fff',
-          color: '#dc2626',
-          border: '1px solid #e5e7eb',
-        },
-      });
-    }
-    setEditedUsers({});
   };
 
   const handlePreviewData = () => {
@@ -507,8 +492,8 @@ export function AdminDataTable({
         [''],
         // Column headers
         [
-          'Last Name',
           'First Name',
+          'Last Name',
           'Middle Initial',
           'Email',
           'Department',
@@ -521,14 +506,14 @@ export function AdminDataTable({
       // Create user data rows
       const userRows = users.map((user) => {
         const nameParts = user.name.split(' ');
-        const lastName = nameParts[0] || '';
-        const firstName = nameParts[1] || '';
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts[1] || '';
         const middleInitial =
           nameParts.length > 2 ? nameParts[2].charAt(0) : '';
 
         return [
-          lastName,
           firstName,
+          lastName,
           middleInitial,
           user.email || '',
           user.department || '',
@@ -562,8 +547,8 @@ export function AdminDataTable({
 
       // Configure column widths
       ws['!cols'] = [
-        { wch: 20 }, // Last Name
         { wch: 20 }, // First Name
+        { wch: 20 }, // Last Name
         { wch: 15 }, // Middle Initial
         { wch: 30 }, // Email
         { wch: 20 }, // Department
@@ -602,12 +587,20 @@ export function AdminDataTable({
         [''],
         ['Date:', new Date().toLocaleDateString()],
         [''],
-        ['Note: All email addresses must be from @alabang.sti.edu.ph domain'],
+        ['IMPORTANT NOTES:'],
+        ['1. All email addresses MUST be from @alabang.sti.edu.ph domain'],
+        ['2. Example: john.doe@alabang.sti.edu.ph'],
+        ['3. Do not include empty rows'],
+        ['4. All fields are required'],
+        [
+          '5. Names can only contain letters and one space (e.g., "John Smith", "Mary Jane")',
+        ],
+        ['6. Middle initial must be a single letter'],
         [''],
         // Column headers
         [
-          'Last Name',
           'First Name',
+          'Last Name',
           'Middle Initial',
           'Email',
           'Department',
@@ -619,10 +612,10 @@ export function AdminDataTable({
 
       // Create example row
       const exampleRow = [
-        'Doe',
         'John',
+        'Smith',
         'M',
-        'john.doe@alabang.sti.edu.ph',
+        'john.smith@alabang.sti.edu.ph',
         'IT Department',
         'Full Time',
         'Faculty',
@@ -640,20 +633,26 @@ export function AdminDataTable({
 
       // Configure column widths
       ws['!cols'] = [
-        { wch: 20 }, // Last Name
         { wch: 20 }, // First Name
+        { wch: 20 }, // Last Name
         { wch: 15 }, // Middle Initial
-        { wch: 30 }, // Email
+        { wch: 35 }, // Email (increased width for longer email addresses)
         { wch: 20 }, // Department
         { wch: 15 }, // Work Type
         { wch: 15 }, // Role
         { wch: 15 }, // Permission
       ];
 
-      // Merge cells for title
+      // Merge cells for title and notes
       ws['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }, // Merge first row across all columns
-        { s: { r: 4, c: 0 }, e: { r: 4, c: 7 } }, // Merge note row across all columns
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }, // Merge title row
+        { s: { r: 4, c: 0 }, e: { r: 4, c: 7 } }, // Merge "IMPORTANT NOTES:" row
+        { s: { r: 5, c: 0 }, e: { r: 5, c: 7 } }, // Merge email requirement note
+        { s: { r: 6, c: 0 }, e: { r: 6, c: 7 } }, // Merge email example
+        { s: { r: 7, c: 0 }, e: { r: 7, c: 7 } }, // Merge empty rows note
+        { s: { r: 8, c: 0 }, e: { r: 8, c: 7 } }, // Merge required fields note
+        { s: { r: 9, c: 0 }, e: { r: 9, c: 7 } }, // Merge name format note
+        { s: { r: 10, c: 0 }, e: { r: 10, c: 7 } }, // Merge middle initial note
       ];
 
       const wb = XLSX.utils.book_new();
@@ -978,6 +977,14 @@ export function AdminDataTable({
     }
   };
 
+  // Add useEffect to handle pagination when filtered users change
+  useEffect(() => {
+    const maxPage = Math.ceil(filteredUsers.length / itemsPerPage);
+    if (currentPage > maxPage && maxPage > 0) {
+      setCurrentPage(maxPage);
+    }
+  }, [filteredUsers.length, currentPage, itemsPerPage]);
+
   return (
     <div className='space-y-4'>
       <div className='flex items-center justify-between'>
@@ -999,195 +1006,258 @@ export function AdminDataTable({
             title='Import Users'
           >
             Import
-            <Upload className='h-4 w-4' />
+            <Download className='h-4 w-4' />
           </Button>
           <Button variant='outline' onClick={handleExport} title='Export Users'>
             Export
-            <Download className='h-4 w-4' />
+            <Upload className='h-4 w-4' />
           </Button>
           <UserSheet mode='add' onSuccess={onUserAdded} />
         </div>
       </div>
 
-      <div className='rounded-md border'>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className='w-[250px]'>Name</TableHead>
-              <TableHead className='w-[250px]'>Email</TableHead>
-              <TableHead className='w-[150px]'>Department</TableHead>
-              <TableHead className='w-[120px]'>Work Type</TableHead>
-              <TableHead className='w-[120px]'>Role</TableHead>
-              <TableHead className='w-[120px]'>Permission</TableHead>
-              <TableHead className='w-[70px]'>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isRefreshing ? (
+      <div className='relative min-h-[700px] flex flex-col'>
+        <div className='flex-1 rounded-md border'>
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={7} className='h-24'>
-                  <div className='flex justify-center items-center'>
-                    <div className='animate-spin rounded-full h-6 w-6 border-b-2 border-[#124A69]' />
-                  </div>
-                </TableCell>
+                <TableHead className='w-[250px]'>Name</TableHead>
+                <TableHead className='w-[250px]'>Email</TableHead>
+                <TableHead className='w-[150px]'>Department</TableHead>
+                <TableHead className='w-[120px]'>Work Type</TableHead>
+                <TableHead className='w-[120px]'>Role</TableHead>
+                <TableHead className='w-[120px]'>Permission</TableHead>
+                <TableHead className='w-[70px]'>Actions</TableHead>
               </TableRow>
-            ) : (
-              <>
-                {filteredUsers.map((user) => {
-                  const isEdited = editedUsers[user.id];
-                  const currentRole = isEdited?.role || user.role;
-                  const currentPermission =
-                    isEdited?.permission || user.permission;
+            </TableHeader>
+            <TableBody>
+              {isRefreshing ? (
+                <TableRow>
+                  <TableCell colSpan={7} className='h-24'>
+                    <div className='flex justify-center items-center'>
+                      <div className='animate-spin rounded-full h-6 w-6 border-b-2 border-[#124A69]' />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                <>
+                  {currentUsers.map((user) => {
+                    const isEdited = editedUsers[user.id];
+                    const currentRole = isEdited?.role || user.role;
+                    const currentPermission =
+                      isEdited?.permission || user.permission;
 
-                  return (
-                    <TableRow
-                      key={user.id}
-                      className={isEdited ? 'bg-yellow-50' : ''}
-                    >
-                      <TableCell className='font-medium'>
-                        <div className='flex items-center gap-2'>
-                          <Avatar>
-                            <AvatarFallback>
-                              {getInitials(user.name)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>{formatNameDisplay(user.name)}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>{user.email}</TableCell>
-                      <TableCell>{user.department}</TableCell>
-                      <TableCell>
-                        {user.workType
-                          .split('_')
-                          .map(
-                            (word) =>
-                              word.charAt(0).toUpperCase() +
-                              word.slice(1).toLowerCase(),
-                          )
-                          .join(' ')}
-                      </TableCell>
-                      <TableCell>
-                        <Select
-                          value={currentRole}
-                          onValueChange={(value: Role) =>
-                            handleRoleChange(user.id, value)
-                          }
-                        >
-                          <SelectTrigger className='w-[130px]'>
-                            <SelectValue placeholder='Select role' />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value='ADMIN'>Admin</SelectItem>
-                            <SelectItem value='FACULTY'>Faculty</SelectItem>
-                            <SelectItem value='ACADEMIC_HEAD'>
-                              Academic Head
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        <Select
-                          value={currentPermission}
-                          onValueChange={(value: Permission) =>
-                            handlePermissionChange(user.id, value)
-                          }
-                        >
-                          <SelectTrigger className='w-[130px]'>
-                            <SelectValue placeholder='Select permission'>
-                              <div className='flex items-center gap-2'>
-                                <div
-                                  className={`h-2 w-2 rounded-full ${
-                                    currentPermission === 'GRANTED'
-                                      ? 'bg-green-500'
-                                      : 'bg-red-500'
-                                  }`}
-                                />
-                                <span>
-                                  {currentPermission === 'GRANTED'
-                                    ? 'Granted'
-                                    : 'Denied'}
-                                </span>
-                              </div>
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value='GRANTED'>
-                              <div className='flex items-center gap-2'>
-                                <div className='h-2 w-2 rounded-full bg-green-500' />
-                                <span>Granted</span>
-                              </div>
-                            </SelectItem>
-                            <SelectItem value='DENIED'>
-                              <div className='flex items-center gap-2'>
-                                <div className='h-2 w-2 rounded-full bg-red-500' />
-                                <span>Denied</span>
-                              </div>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant='ghost' className='h-8 w-8 p-0'>
-                              <span className='sr-only'>Open menu</span>
-                              <MoreHorizontal className='h-4 w-4' />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align='end'>
-                            <DropdownMenuItem
-                              className='flex items-center gap-2'
-                              onClick={() => setEditingUser(user)}
-                            >
-                              <Pencil className='h-4 w-4' />
-                              Edit User
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className='flex items-center gap-2 text-red-600'
-                              onClick={() => {
-                                setUserToDelete(user);
-                                setIsDeleteDialogOpen(true);
-                              }}
-                            >
-                              <Trash2 className='h-4 w-4' />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                    return (
+                      <TableRow
+                        key={user.id}
+                        className={isEdited ? 'bg-yellow-50' : ''}
+                      >
+                        <TableCell className='font-medium'>
+                          <div className='flex items-center gap-2'>
+                            <Avatar>
+                              <AvatarFallback>
+                                {getInitials(user.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>{formatNameDisplay(user.name)}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>{user.email}</TableCell>
+                        <TableCell>{user.department}</TableCell>
+                        <TableCell>
+                          {user.workType
+                            .split('_')
+                            .map(
+                              (word) =>
+                                word.charAt(0).toUpperCase() +
+                                word.slice(1).toLowerCase(),
+                            )
+                            .join(' ')}
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={currentRole}
+                            onValueChange={(value: Role) =>
+                              handleRoleChange(user.id, value)
+                            }
+                            disabled={isRoleUpdating[user.id]}
+                          >
+                            <SelectTrigger className='w-[130px]'>
+                              <SelectValue placeholder='Select role'>
+                                {isRoleUpdating[user.id] ? (
+                                  <div className='flex items-center gap-2'>
+                                    <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-[#124A69]' />
+                                    <span>Updating...</span>
+                                  </div>
+                                ) : (
+                                  currentRole
+                                    .split('_')
+                                    .map(
+                                      (word) =>
+                                        word.charAt(0).toUpperCase() +
+                                        word.slice(1).toLowerCase(),
+                                    )
+                                    .join(' ')
+                                )}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value='ADMIN'>Admin</SelectItem>
+                              <SelectItem value='FACULTY'>Faculty</SelectItem>
+                              <SelectItem value='ACADEMIC_HEAD'>
+                                Academic Head
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={currentPermission}
+                            onValueChange={(value: Permission) =>
+                              handlePermissionChange(user.id, value)
+                            }
+                            disabled={isPermissionUpdating[user.id]}
+                          >
+                            <SelectTrigger className='w-[130px]'>
+                              <SelectValue placeholder='Select permission'>
+                                {isPermissionUpdating[user.id] ? (
+                                  <div className='flex items-center gap-2'>
+                                    <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-[#124A69]' />
+                                    <span>Updating...</span>
+                                  </div>
+                                ) : (
+                                  <div className='flex items-center gap-2'>
+                                    <div
+                                      className={`h-2 w-2 rounded-full ${
+                                        currentPermission === 'GRANTED'
+                                          ? 'bg-green-500'
+                                          : 'bg-red-500'
+                                      }`}
+                                    />
+                                    <span>
+                                      {currentPermission === 'GRANTED'
+                                        ? 'Granted'
+                                        : 'Denied'}
+                                    </span>
+                                  </div>
+                                )}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value='GRANTED'>
+                                <div className='flex items-center gap-2'>
+                                  <div className='h-2 w-2 rounded-full bg-green-500' />
+                                  <span>Granted</span>
+                                </div>
+                              </SelectItem>
+                              <SelectItem value='DENIED'>
+                                <div className='flex items-center gap-2'>
+                                  <div className='h-2 w-2 rounded-full bg-red-500' />
+                                  <span>Denied</span>
+                                </div>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant='ghost' className='h-8 w-8 p-0'>
+                                <span className='sr-only'>Open menu</span>
+                                <MoreHorizontal className='h-4 w-4' />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align='end'>
+                              <DropdownMenuItem
+                                className='flex items-center gap-2'
+                                onClick={() => setEditingUser(user)}
+                              >
+                                <Pencil className='h-4 w-4' />
+                                Edit User
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className='flex items-center gap-2 text-red-600'
+                                onClick={() => {
+                                  setUserToDelete(user);
+                                  setIsDeleteDialogOpen(true);
+                                }}
+                              >
+                                <Trash2 className='h-4 w-4' />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {filteredUsers.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className='h-24 text-center'>
+                        No users found.
                       </TableCell>
                     </TableRow>
-                  );
-                })}
-                {filteredUsers.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7} className='h-24 text-center'>
-                      No users found.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-      {hasChanges && (
-        <div className='flex justify-end gap-2'>
-          <Button
-            variant='outline'
-            onClick={handleCancelChanges}
-            disabled={isSaving}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSaveChanges}
-            disabled={isSaving}
-            className='bg-[#124A69] hover:bg-[#0D3A54] text-white'
-          >
-            {isSaving ? 'Saving...' : 'Save Changes'}
-          </Button>
+                  )}
+                </>
+              )}
+            </TableBody>
+          </Table>
         </div>
-      )}
+
+        {filteredUsers.length > 0 && (
+          <div className='sticky bottom-0 bg-white border-t mt-4 py-4'>
+            <div className='flex justify-between items-center px-2'>
+              <p className='text-sm text-gray-500 w-full'>
+                {currentPage * itemsPerPage - (itemsPerPage - 1)}-
+                {Math.min(currentPage * itemsPerPage, filteredUsers.length)} of{' '}
+                {filteredUsers.length} users
+              </p>
+              <Pagination className='flex justify-end'>
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      onClick={() =>
+                        setCurrentPage((prev) => Math.max(prev - 1, 1))
+                      }
+                      className={
+                        currentPage === 1
+                          ? 'pointer-events-none opacity-50'
+                          : ''
+                      }
+                    />
+                  </PaginationItem>
+                  {[...Array(totalPages)].map((_, i) => (
+                    <PaginationItem key={i}>
+                      <PaginationLink
+                        isActive={currentPage === i + 1}
+                        onClick={() => setCurrentPage(i + 1)}
+                        className={
+                          currentPage === i + 1 ? 'bg-[#124A69] text-white' : ''
+                        }
+                      >
+                        {i + 1}
+                      </PaginationLink>
+                    </PaginationItem>
+                  ))}
+                  <PaginationItem>
+                    <PaginationNext
+                      onClick={() =>
+                        setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                      }
+                      className={
+                        currentPage === totalPages
+                          ? 'pointer-events-none opacity-50'
+                          : ''
+                      }
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            </div>
+          </div>
+        )}
+      </div>
+
       {editingUser && (
         <UserSheet
           mode='edit'
@@ -1217,7 +1287,10 @@ export function AdminDataTable({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDeleteUser}
+              onClick={() => {
+                handleDeleteUser();
+                setIsDeleteDialogOpen(false);
+              }}
               className='bg-red-600 text-white hover:bg-red-700'
             >
               Delete

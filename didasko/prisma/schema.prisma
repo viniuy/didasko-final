@@ -275,8 +275,8 @@ model Course {
   academicYear String
   status       CourseStatus @default(ACTIVE) 
   section      String
-  facultyId    String
-  faculty      User                 @relation("FacultyCourses", fields: [facultyId], references: [id])
+  faculty      User?    @relation("FacultyCourses", fields: [facultyId], references: [id])
+  facultyId    String?  @map("faculty_id")
   students     Student[]            @relation("StudentCourses")
   schedules    CourseSchedule[]
   attendance   Attendance[]

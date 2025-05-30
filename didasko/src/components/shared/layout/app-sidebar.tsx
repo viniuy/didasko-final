@@ -123,11 +123,59 @@ export function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
 
+  // Define allowed paths for each role
+  const allowedPaths = {
+    ADMIN: ['/dashboard/admin', '/courses', '/accounts'],
+    ACADEMIC_HEAD: [
+      '/dashboard/academic-head',
+      '/attendance',
+      '/faculty-load',
+      '/grading/gradebook',
+      '/grading/reporting',
+      '/grading/recitation',
+      '/grading/quiz',
+    ],
+    FACULTY: [
+      '/dashboard/faculty',
+      '/attendance',
+      '/grading/gradebook',
+      '/grading/reporting',
+      '/grading/recitation',
+      '/grading/quiz',
+    ],
+  };
+
+  // Immediate path check and redirect
   useEffect(() => {
-    if (status === 'unauthenticated') {
+    const role = session?.user?.role;
+    const currentPath = pathname;
+
+    // If we have a role, check if the path is allowed
+    if (role) {
+      const isPathAllowed = allowedPaths[role]?.some((path) =>
+        currentPath.startsWith(path),
+      );
+
+      if (!isPathAllowed) {
+        switch (role) {
+          case 'ADMIN':
+            router.push('/dashboard/admin');
+            break;
+          case 'ACADEMIC_HEAD':
+            router.push('/dashboard/academic-head');
+            break;
+          case 'FACULTY':
+            router.push('/dashboard/faculty');
+            break;
+          default:
+            router.push('/');
+        }
+      }
+    } else if (status === 'unauthenticated') {
+      // If not authenticated, redirect to home
       router.push('/');
     }
-  }, [status, router]);
+  }, [pathname, session?.user?.role, status, router]);
 
   const isAdmin = session?.user?.role === 'ADMIN';
   const isAcademicHead = session?.user?.role === 'ACADEMIC_HEAD';

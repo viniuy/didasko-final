@@ -35,16 +35,16 @@ const userSchema = z.object({
     .min(2, 'Last name must be at least 2 characters')
     .max(30, 'Last name must be at most 30 characters')
     .refine(
-      (val) => /^[A-Za-z\s.-]+$/.test(val),
-      'Last name cannot contain special characters or numbers',
+      (val) => /^[A-Za-z]+(?: [A-Za-z]+)?$/.test(val),
+      'Last name can only contain letters and one space',
     ),
   firstName: z
     .string()
     .min(2, 'First name must be at least 2 characters')
     .max(30, 'First name must be at most 30 characters')
     .refine(
-      (val) => /^[A-Za-z\s.-]+$/.test(val),
-      'First name cannot contain special characters or numbers',
+      (val) => /^[A-Za-z]+(?: [A-Za-z]+)?$/.test(val),
+      'First name can only contain letters and one space',
     ),
   middleInitial: z
     .string()
@@ -54,7 +54,13 @@ const userSchema = z.object({
       'Middle initial must be letters only',
     )
     .optional(),
-  email: z.string().email('Invalid email address'),
+  email: z
+    .string()
+    .email('Invalid email address')
+    .refine(
+      (email) => email.endsWith('@alabang.sti.edu.ph'),
+      'Email must be from alabang.sti.edu.ph domain',
+    ),
   department: z.string().min(1, 'Department is required'),
   workType: z.enum(['FULL_TIME', 'PART_TIME', 'CONTRACT']),
   role: z.enum(['ADMIN', 'FACULTY', 'ACADEMIC_HEAD']),
@@ -126,18 +132,10 @@ export function UserSheet({
       return false;
     }
 
-    if (value.length < 2) {
+    if (!/^[A-Za-z]+(?: [A-Za-z]+)?$/.test(value)) {
       setNameError((prev) => ({
         ...prev,
-        [field]: 'Must be at least 2 characters',
-      }));
-      return false;
-    }
-
-    if (!/^[A-Za-z\s.-]+$/.test(value)) {
-      setNameError((prev) => ({
-        ...prev,
-        [field]: 'Cannot contain special characters or numbers',
+        [field]: 'Can only contain letters and one space',
       }));
       return false;
     }
@@ -145,48 +143,94 @@ export function UserSheet({
     return true;
   };
 
-  // Add parseName function
+  // Comprehensive name parsing function
   const parseName = (fullName: string) => {
-    // Remove any extra spaces
+    // Remove any extra spaces and normalize the string
     const trimmedName = fullName.trim().replace(/\s+/g, ' ');
-
     let firstName = '';
     let middleInitial = '';
     let lastName = '';
 
+    // Check for comma format (Last, First Middle)
     const commaIndex = trimmedName.indexOf(',');
-
     if (commaIndex > -1) {
-      // Format: "LastName, FirstName MiddleInitial(s)"
       lastName = trimmedName.substring(0, commaIndex).trim();
       const restOfName = trimmedName.substring(commaIndex + 1).trim();
       const spaceParts = restOfName.split(' ').filter((part) => part !== '');
 
-      firstName = spaceParts[0] || '';
-      middleInitial =
-        spaceParts.length > 1
-          ? spaceParts.slice(1).join(' ').replace(/\./g, '').charAt(0)
-          : '';
+      if (spaceParts.length > 0) {
+        firstName = spaceParts[0];
+        // Check for middle initial in the remaining parts
+        if (spaceParts.length > 1) {
+          const middlePart = spaceParts[1];
+          // Handle cases like "E." or "E" or "Edward"
+          if (/^[A-Z]\.?$/.test(middlePart)) {
+            middleInitial = middlePart.replace('.', '');
+          } else if (middlePart.length === 1) {
+            middleInitial = middlePart;
+          } else {
+            middleInitial = middlePart.charAt(0);
+          }
+        }
+      }
     } else {
-      // Format: "FirstName MiddleInitial(s) LastName"
-      const spaceParts = trimmedName.split(' ').filter((part) => part !== '');
+      // No comma format (First Middle Last)
+      const parts = trimmedName.split(' ').filter((part) => part !== '');
 
-      if (spaceParts.length === 3) {
-        firstName = spaceParts[0];
-        middleInitial = spaceParts[1].replace(/\./g, '').charAt(0);
-        lastName = spaceParts[2];
-      } else if (spaceParts.length === 2) {
-        firstName = spaceParts[0];
-        lastName = spaceParts[1];
-        middleInitial = '';
-      } else if (spaceParts.length === 1) {
-        firstName = spaceParts[0];
-        lastName = '';
-        middleInitial = '';
+      if (parts.length === 1) {
+        // Single name
+        firstName = parts[0];
+      } else if (parts.length === 2) {
+        // First Last
+        firstName = parts[0];
+        lastName = parts[1];
+      } else if (parts.length >= 3) {
+        // First Middle Last or First Middle Middle Last
+        firstName = parts[0];
+        lastName = parts[parts.length - 1];
+
+        // Check middle parts for initials
+        const middleParts = parts.slice(1, -1);
+        const middleInitials = middleParts.map((part) => {
+          if (/^[A-Z]\.?$/.test(part)) {
+            return part.replace('.', '');
+          } else if (part.length === 1) {
+            return part;
+          } else {
+            return part.charAt(0);
+          }
+        });
+
+        middleInitial = middleInitials.join('');
       }
     }
 
-    return { firstName, middleInitial, lastName };
+    // Clean up the results
+    firstName = firstName.trim();
+    lastName = lastName.trim();
+    middleInitial = middleInitial.trim().toUpperCase();
+
+    // Handle special cases
+    if (firstName.toLowerCase() === 'jr' || firstName.toLowerCase() === 'sr') {
+      // If first name is a suffix, move it to the end of last name
+      lastName = `${lastName} ${firstName}`;
+      firstName = '';
+    }
+
+    // Handle cases where first name might be empty
+    if (!firstName && lastName) {
+      const lastParts = lastName.split(' ');
+      if (lastParts.length > 1) {
+        firstName = lastParts[0];
+        lastName = lastParts.slice(1).join(' ');
+      }
+    }
+
+    return {
+      firstName,
+      middleInitial,
+      lastName,
+    };
   };
 
   // Use parseName instead of simple split
@@ -304,7 +348,9 @@ export function UserSheet({
           <div className='flex-1'>
             <div className='space-y-4'>
               <div className='space-y-1 w-97'>
-                <Label htmlFor='lastName'>Last Name *</Label>
+                <Label htmlFor='lastName'>
+                  Last Name <span className='text-red-500'>*</span>
+                </Label>
                 <Input
                   id='lastName'
                   {...form.register('lastName')}
@@ -331,7 +377,9 @@ export function UserSheet({
 
               <div className='flex flex-row gap-2'>
                 <div className='space-y-1'>
-                  <Label htmlFor='firstName'>First Name *</Label>
+                  <Label htmlFor='firstName'>
+                    First Name <span className='text-red-500'>*</span>
+                  </Label>
                   <Input
                     id='firstName'
                     {...form.register('firstName')}
@@ -383,7 +431,9 @@ export function UserSheet({
               </div>
 
               <div className='space-y-1 w-97'>
-                <Label htmlFor='email'>Email *</Label>
+                <Label htmlFor='email'>
+                  School Email <span className='text-red-500'>*</span>
+                </Label>
                 <Input
                   id='email'
                   type='email'
@@ -401,7 +451,9 @@ export function UserSheet({
 
               <div className='flex flex-row gap-2'>
                 <div className='space-y-1 flex-1'>
-                  <Label htmlFor='department'>Department *</Label>
+                  <Label htmlFor='department'>
+                    Department <span className='text-red-500'>*</span>
+                  </Label>
                   <Select
                     onValueChange={(value) =>
                       form.setValue('department', value)
@@ -427,7 +479,9 @@ export function UserSheet({
                 </div>
 
                 <div className='space-y-1 flex-1'>
-                  <Label htmlFor='workType'>Work Type *</Label>
+                  <Label htmlFor='workType'>
+                    Work Type <span className='text-red-500'>*</span>
+                  </Label>
                   <Select
                     onValueChange={(value) =>
                       form.setValue('workType', value as WorkType)
@@ -444,9 +498,6 @@ export function UserSheet({
                       <SelectItem value={WorkType.PART_TIME}>
                         Part Time
                       </SelectItem>
-                      <SelectItem value={WorkType.CONTRACT}>
-                        Contract
-                      </SelectItem>
                     </SelectContent>
                   </Select>
                   {form.formState.errors.workType && (
@@ -459,7 +510,9 @@ export function UserSheet({
 
               <div className='flex flex-row gap-2'>
                 <div className='space-y-1 flex-1'>
-                  <Label htmlFor='role'>Role *</Label>
+                  <Label htmlFor='role'>
+                    Role <span className='text-red-500'>*</span>
+                  </Label>
                   <Select
                     onValueChange={(value) =>
                       form.setValue('role', value as Role)
@@ -485,7 +538,9 @@ export function UserSheet({
                 </div>
 
                 <div className='space-y-1 flex-1'>
-                  <Label htmlFor='permission'>Permission *</Label>
+                  <Label htmlFor='permission'>
+                    Permission <span className='text-red-500'>*</span>
+                  </Label>
                   <Select
                     onValueChange={(value) =>
                       form.setValue('permission', value as Permission)
