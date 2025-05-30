@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { Role, WorkType, Permission } from '@prisma/client';
-import * as XLSX from 'xlsx';
 
 interface ImportResult {
   success: boolean;
@@ -18,6 +17,12 @@ interface ImportResult {
     email: string;
     row: number;
   }[];
+  detailedFeedback: {
+    row: number;
+    email: string;
+    status: 'imported' | 'skipped' | 'error';
+    message?: string;
+  }[];
 }
 
 export async function POST(request: Request) {
@@ -29,6 +34,7 @@ export async function POST(request: Request) {
     skipped: 0,
     errors: [],
     importedUsers: [],
+    detailedFeedback: [],
   };
 
   try {
@@ -38,89 +44,19 @@ export async function POST(request: Request) {
       Object.fromEntries(request.headers.entries()),
     );
 
-    const formData = await request.formData();
-    const file = formData.get('file') as File;
-
-    if (!file) {
-      console.log('No file provided');
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    // Expecting an array of user data in the request body
+    const body = await request.json();
+    if (!Array.isArray(body)) {
+      console.log('Invalid request body: not an array');
+      return NextResponse.json(
+        { error: 'Invalid request body: Expected an array of user data' },
+        { status: 400 },
+      );
     }
 
-    // Log file details
-    console.log('Received file:', {
-      name: file.name,
-      type: file.type,
-      size: file.size,
-    });
+    let data: any[];
 
-    // Read the file content
-    console.log('Reading file content...');
-    const buffer = await file.arrayBuffer();
-    console.log('File buffer size:', buffer.byteLength);
-
-    let data;
-    if (file.name.toLowerCase().endsWith('.csv')) {
-      // Handle CSV files
-      const text = await file.text();
-      console.log('CSV content preview:', text.substring(0, 200));
-      const rows = text.split('\n').map((row) => row.split(','));
-      data = rows.slice(1).map((row) => {
-        const obj: any = {};
-        rows[0].forEach((header, index) => {
-          obj[header.trim()] = row[index]?.trim() || '';
-        });
-        return obj;
-      });
-    } else {
-      // Handle Excel files
-      const workbook = XLSX.read(buffer, { type: 'array' });
-      console.log('Workbook sheets:', workbook.SheetNames);
-
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-
-      // Get the range of the worksheet
-      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
-      console.log('Worksheet range:', range);
-
-      // Skip the header rows (title, date, etc.) and start from the actual column headers
-      let headerRowIndex = -1;
-      for (let R = range.s.r; R <= range.e.r; R++) {
-        const firstCell = worksheet[XLSX.utils.encode_cell({ r: R, c: 0 })];
-        if (firstCell?.v === 'Last Name') {
-          headerRowIndex = R;
-          break;
-        }
-      }
-
-      if (headerRowIndex === -1) {
-        throw new Error('Could not find header row in Excel file');
-      }
-
-      console.log('Found header row at index:', headerRowIndex);
-
-      // Read data starting from the row after headers
-      data = XLSX.utils.sheet_to_json(worksheet, {
-        range: headerRowIndex,
-        header: 1,
-        raw: false,
-        defval: '',
-      });
-
-      // Remove the header row
-      data = data.slice(1);
-
-      // Map array data to object with proper keys
-      data = data.map((row: any) => ({
-        'Last Name': row[0] || '',
-        'First Name': row[1] || '',
-        'Middle Initial': row[2] || '',
-        Email: row[3] || '',
-        Department: row[4] || '',
-        'Work Type': row[5] || '',
-        Role: row[6] || '',
-        Permission: row[7] || '',
-      }));
-    }
+    data = body;
 
     console.log('Parsed data sample:', data.slice(0, 1));
     result.total = data.length;
@@ -186,6 +122,12 @@ export async function POST(request: Request) {
               message: 'Missing required fields',
             });
             result.skipped++;
+            result.detailedFeedback.push({
+              row: rowNumber,
+              email: email || 'N/A',
+              status: 'skipped',
+              message: 'Missing required fields',
+            });
             return;
           }
 
@@ -198,6 +140,12 @@ export async function POST(request: Request) {
               message: 'Email already exists in the system',
             });
             result.skipped++;
+            result.detailedFeedback.push({
+              row: rowNumber,
+              email: email || '',
+              status: 'skipped',
+              message: 'Email already exists',
+            });
             return;
           }
 
@@ -256,23 +204,34 @@ export async function POST(request: Request) {
               email,
               row: rowNumber,
             });
+            result.detailedFeedback.push({
+              row: rowNumber,
+              email,
+              status: 'imported',
+            });
           } catch (error) {
             console.error(`Error creating user at row ${rowNumber}:`, error);
+            const errorMessage =
+              error instanceof Error ? error.message : 'Failed to create user';
             result.errors.push({
               row: rowNumber,
               email,
-              message:
-                error instanceof Error
-                  ? error.message
-                  : 'Failed to create user',
+              message: errorMessage,
             });
             result.skipped++;
+            result.detailedFeedback.push({
+              row: rowNumber,
+              email,
+              status: 'error',
+              message: errorMessage,
+            });
           }
         }),
       );
     }
 
-    result.success = result.imported > 0 || result.skipped > 0;
+    result.success =
+      result.imported > 0 || result.skipped > 0 || result.errors.length > 0;
     console.log('Import process completed:', result);
 
     // Always return a 200 status with the result
@@ -283,28 +242,29 @@ export async function POST(request: Request) {
       errors: result.errors,
       importedUsers: result.importedUsers,
       total: result.total,
+      detailedFeedback: result.detailedFeedback,
     });
   } catch (error) {
     console.error('Error in import process:', error);
+    const errorMessage =
+      error instanceof Error ? error.message : 'Failed to process import';
     return NextResponse.json(
       {
-        success: true,
+        success: false,
         imported: 0,
         skipped: 0,
         errors: [
           {
             row: 0,
             email: 'N/A',
-            message:
-              error instanceof Error
-                ? error.message
-                : 'Failed to process import',
+            message: errorMessage,
           },
         ],
         importedUsers: [],
         total: 0,
+        detailedFeedback: [],
       },
-      { status: 200 },
+      { status: 500 },
     );
   }
 }

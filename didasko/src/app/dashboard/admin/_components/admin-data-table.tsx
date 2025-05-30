@@ -120,34 +120,52 @@ const formatNameDisplay = (fullName: string) => {
   let lastName = '';
 
   if (commaParts.length > 1) {
-    // Format: "LastName, FirstName MiddleInitial"
+    // Format: "LastName, FirstName SecondName MiddleInitial"
     lastName = commaParts[0].trim();
     const restOfName = commaParts[1].trim();
     const spaceParts = restOfName.split(' ');
-    firstName = spaceParts[0] || '';
-    middleInitial =
-      spaceParts.length > 1
-        ? spaceParts.slice(1).join(' ').replace('.', '')
-        : '';
+
+    // Check if the last part is a middle initial
+    const lastPart = spaceParts[spaceParts.length - 1];
+    if (lastPart.length === 1 || lastPart.includes('.')) {
+      middleInitial = lastPart.replace('.', '') + '.'; // Add dot if not present
+      // Everything before the middle initial is first name (including second name)
+      firstName = spaceParts.slice(0, -1).join(' ');
+    } else {
+      // No middle initial, everything before last name is first name
+      firstName = spaceParts.slice(0, -1).join(' ');
+    }
   } else {
-    // Assume Format: "FirstName MiddleInitial LastName" or "FirstName LastName"
+    // Format: "FirstName SecondName MiddleInitial LastName" or "FirstName SecondName LastName"
     const spaceParts = trimmedName.split(' ');
     if (spaceParts.length === 1) {
       firstName = spaceParts[0];
     } else if (spaceParts.length === 2) {
       firstName = spaceParts[0];
       lastName = spaceParts[1];
-    } else if (spaceParts.length > 2) {
-      firstName = spaceParts[0];
-      lastName = spaceParts[spaceParts.length - 1];
-      middleInitial = spaceParts.slice(1, -1).join(' ').replace('.', '');
+    } else {
+      // Check if the second-to-last part is a middle initial
+      const secondToLast = spaceParts[spaceParts.length - 2];
+      if (secondToLast.length === 1 || secondToLast.includes('.')) {
+        middleInitial = secondToLast.replace('.', '') + '.'; // Add dot if not present
+        lastName = spaceParts[spaceParts.length - 1];
+        // First name is the first part, second name is everything between first name and middle initial
+        firstName = spaceParts[0];
+        if (spaceParts.length > 3) {
+          firstName += ' ' + spaceParts.slice(1, -2).join(' ');
+        }
+      } else {
+        // No middle initial, last part is last name, everything else is first name (including second name)
+        lastName = spaceParts[spaceParts.length - 1];
+        firstName = spaceParts.slice(0, -1).join(' ');
+      }
     }
   }
 
   // Construct the display name
   let displayName = firstName;
   if (middleInitial) {
-    displayName += ` ${middleInitial}.`;
+    displayName += ` ${middleInitial}`;
   }
   if (lastName) {
     displayName += ` ${lastName}`;
@@ -157,7 +175,7 @@ const formatNameDisplay = (fullName: string) => {
 };
 
 export function AdminDataTable({
-  users,
+  users: initialUsers,
   onSaveChanges,
   onUserAdded,
 }: AdminDataTableProps) {
@@ -186,6 +204,12 @@ export function AdminDataTable({
     skipped: number;
     errors: Array<{ email: string; message: string }>;
     total: number;
+    detailedFeedback: Array<{
+      row: number;
+      email: string;
+      status: string;
+      message: string;
+    }>;
   } | null>(null);
   const [importTemplate, setImportTemplate] = useState<CsvRow[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -198,7 +222,7 @@ export function AdminDataTable({
     error?: string;
     hasError?: boolean;
   } | null>(null);
-  const [tableData, setTableData] = useState<User[]>(users);
+  const [tableData, setTableData] = useState<User[]>(initialUsers);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
@@ -209,13 +233,66 @@ export function AdminDataTable({
     [key: string]: boolean;
   }>({});
 
+  const refreshTableData = async () => {
+    try {
+      setIsRefreshing(true);
+      const response = await axiosInstance.get('/users');
+      const data = await response.data;
+      if (data.users) {
+        // Create a map of existing users for quick lookup
+        const existingUsersMap = new Map(
+          tableData.map((user) => [user.id, user]),
+        );
+
+        // Merge new users with existing ones, preserving order and complete data structure
+        const mergedUsers = data.users.map((newUser: User) => {
+          const existingUser = existingUsersMap.get(newUser.id);
+          if (existingUser) {
+            // Preserve existing user data and update with any new changes
+            return {
+              ...existingUser,
+              ...newUser,
+              // Ensure all required fields are present
+              id: newUser.id,
+              name: newUser.name,
+              email: newUser.email,
+              department: newUser.department,
+              workType: newUser.workType,
+              role: newUser.role,
+              permission: newUser.permission,
+            };
+          }
+          return newUser;
+        });
+
+        // Add any users that weren't in the response but exist in current table
+        const newUsers = tableData.filter(
+          (user) => !data.users.some((newUser: User) => newUser.id === user.id),
+        );
+
+        setTableData([...mergedUsers, ...newUsers]);
+      }
+    } catch (error) {
+      console.error('Error refreshing table data:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Add useEffect to refresh data when initialUsers changes
+  useEffect(() => {
+    if (initialUsers.length > 0) {
+      setTableData(initialUsers);
+    }
+  }, [initialUsers]);
+
   // Filter users based on search query
   const filteredUsers = useMemo(() => {
     if (!searchQuery.trim()) return tableData;
 
     const query = searchQuery.toLowerCase();
     return tableData.filter(
-      (user) =>
+      (user: User) =>
         user.name.toLowerCase().includes(query) ||
         user.email.toLowerCase().includes(query) ||
         user.department.toLowerCase().includes(query) ||
@@ -225,11 +302,22 @@ export function AdminDataTable({
   }, [tableData, searchQuery]);
 
   // Calculate pagination
-  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredUsers.length / itemsPerPage),
+  );
   const currentUsers = filteredUsers.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage,
   );
+
+  // Add useEffect to handle pagination when filtered users change
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(filteredUsers.length / itemsPerPage));
+    if (currentPage > maxPage) {
+      setCurrentPage(maxPage);
+    }
+  }, [filteredUsers.length, currentPage, itemsPerPage]);
 
   const handleRoleChange = async (userId: string, newRole: Role) => {
     try {
@@ -374,6 +462,8 @@ export function AdminDataTable({
         if (onUserAdded) {
           await onUserAdded(); // Refresh the user list
         }
+        // Close the edit sheet
+        setEditingUser(null);
       } else {
         console.error('Failed to update user:', result.error);
         throw new Error(result.error || 'Failed to update user');
@@ -443,30 +533,53 @@ export function AdminDataTable({
   const handlePreviewData = () => {
     try {
       // Format data for CSV
-      const csvData: CsvRow[] = users.map((user) => {
+      const csvData: CsvRow[] = tableData.map((user: User) => {
         const nameParts = user.name.split(' ');
-        const lastName = nameParts[0] || '';
-        const firstName = nameParts[1] || '';
-        const middleInitial =
-          nameParts.length > 2 ? nameParts[2].charAt(0) : '';
+        let firstName = '';
+        let lastName = '';
+        let middleInitial = '';
+
+        if (nameParts.length >= 2) {
+          // Last part is always last name
+          lastName = nameParts[nameParts.length - 1];
+
+          // Check if second-to-last part is a middle initial
+          if (nameParts.length >= 3) {
+            const secondToLast = nameParts[nameParts.length - 2];
+            if (/^[A-Z]\.?$/.test(secondToLast) || secondToLast.length === 1) {
+              middleInitial = secondToLast.replace('.', '');
+              // Everything before middle initial is first name
+              firstName = nameParts.slice(0, -2).join(' ');
+            } else {
+              // No middle initial, everything before last name is first name
+              firstName = nameParts.slice(0, -1).join(' ');
+            }
+          } else {
+            // Only two parts, first is first name
+            firstName = nameParts[0];
+          }
+        } else {
+          // Single name
+          firstName = nameParts[0];
+        }
 
         return {
-          'Last Name': lastName,
           'First Name': firstName,
+          'Last Name': lastName,
           'Middle Initial': middleInitial,
           Email: user.email || '',
           Department: user.department || '',
           'Work Type': user.workType
             .split('_')
             .map(
-              (word) =>
+              (word: string) =>
                 word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
             )
             .join(' '),
           Role: user.role
             .split('_')
             .map(
-              (word) =>
+              (word: string) =>
                 word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
             )
             .join(' '),
@@ -504,12 +617,35 @@ export function AdminDataTable({
       ];
 
       // Create user data rows
-      const userRows = users.map((user) => {
+      const userRows = tableData.map((user: User) => {
         const nameParts = user.name.split(' ');
-        const firstName = nameParts[0] || '';
-        const lastName = nameParts[1] || '';
-        const middleInitial =
-          nameParts.length > 2 ? nameParts[2].charAt(0) : '';
+        let firstName = '';
+        let lastName = '';
+        let middleInitial = '';
+
+        if (nameParts.length >= 2) {
+          // Last part is always last name
+          lastName = nameParts[nameParts.length - 1];
+
+          // Check if second-to-last part is a middle initial
+          if (nameParts.length >= 3) {
+            const secondToLast = nameParts[nameParts.length - 2];
+            if (/^[A-Z]\.?$/.test(secondToLast) || secondToLast.length === 1) {
+              middleInitial = secondToLast.replace('.', '');
+              // Everything before middle initial is first name
+              firstName = nameParts.slice(0, -2).join(' ');
+            } else {
+              // No middle initial, everything before last name is first name
+              firstName = nameParts.slice(0, -1).join(' ');
+            }
+          } else {
+            // Only two parts, first is first name
+            firstName = nameParts[0];
+          }
+        } else {
+          // Single name
+          firstName = nameParts[0];
+        }
 
         return [
           firstName,
@@ -593,7 +729,7 @@ export function AdminDataTable({
         ['3. Do not include empty rows'],
         ['4. All fields are required'],
         [
-          '5. Names can only contain letters and one space (e.g., "John Smith", "Mary Jane")',
+          '5. Names can only contain letters and one space (e.g., "John Smith")',
         ],
         ['6. Middle initial must be a single letter'],
         [''],
@@ -614,7 +750,7 @@ export function AdminDataTable({
       const exampleRow = [
         'John',
         'Smith',
-        'M',
+        'A',
         'john.smith@alabang.sti.edu.ph',
         'IT Department',
         'Full Time',
@@ -692,80 +828,174 @@ export function AdminDataTable({
 
           // Handle different file types
           if (file.name.toLowerCase().endsWith('.csv')) {
-            // For CSV files
+            // For CSV files, read into raw array of arrays
             const csvData = data.toString();
             rawData = csvData
               .split('\n')
               .map((line) =>
                 line
                   .split(',')
-                  .map((cell) => cell.trim().replace(/^["']|["']$/g, '')),
+                  .map((cell) => cell.trim().replace(/^["\']|["\']$/g, '')),
               );
           } else {
-            // For Excel files
+            // For Excel files, convert to CSV string first, then parse into raw array of arrays
             const workbook = XLSX.read(data, { type: 'binary' });
             if (!workbook.SheetNames.length) {
               reject(new Error('No sheets found in the file'));
               return;
             }
-
             const sheetName = workbook.SheetNames[0];
             const worksheet = workbook.Sheets[sheetName];
 
-            rawData = XLSX.utils.sheet_to_json<string[]>(worksheet, {
-              header: 1,
-              raw: false,
-              blankrows: false,
+            // Convert worksheet to CSV string
+            const csvString = XLSX.utils.sheet_to_csv(worksheet, {
+              blankrows: false, // Skip blank rows
+              forceQuotes: true, // Ensure values with commas are quoted
             });
+
+            // Parse CSV string into raw array of arrays
+            rawData = csvString.split('\n').map(
+              (line) =>
+                line
+                  .split(',')
+                  .map((cell) => cell.trim().replace(/^"|"$/g, '')), // Remove potential quotes added by forceQuotes
+            );
           }
+
+          // --- Debugging: Log rawData structure and content ---
+          console.log('Type of rawData:', typeof rawData);
+          console.log('Is rawData an Array?', Array.isArray(rawData));
+          if (Array.isArray(rawData)) {
+            console.log('rawData length:', rawData.length);
+            console.log('First few rows of rawData:', rawData.slice(0, 15));
+            if (rawData.length > 0 && Array.isArray(rawData[0])) {
+              console.log('Type of first row:', typeof rawData[0]);
+              console.log('Is first row an Array?', Array.isArray(rawData[0]));
+              console.log(
+                'First few cells of first row:',
+                rawData[0].slice(0, 5),
+              );
+            } else if (rawData.length > 0) {
+              console.log(
+                'First row is not an array. Structure might be unexpected.',
+                rawData[0],
+              );
+            }
+          } else {
+            console.error(
+              'rawData is not an array. Import cannot proceed.',
+              rawData,
+            );
+            reject(new Error('Failed to read file data into expected format.'));
+            return; // Stop processing if rawData is not an array
+          }
+          // --- End Debugging ---
 
           // Find the actual data rows (skip title, date, etc.)
           let headerRowIndex = -1;
+          const expectedHeaders = [
+            'First Name',
+            'Last Name',
+            'Middle Initial',
+            'Email',
+            'Department',
+            'Work Type',
+            'Role',
+            'Permission',
+          ];
+
+          // Log the expected headers for debugging
+          console.log('Looking for headers:', expectedHeaders);
+
           for (let i = 0; i < rawData.length; i++) {
             const row = rawData[i];
-            if (
-              Array.isArray(row) &&
-              row.length >= 2 &&
-              row[0]?.trim().toLowerCase() === 'last name' &&
-              row[1]?.trim().toLowerCase() === 'first name'
-            ) {
+            // Ensure row is an array and has enough columns before checking headers
+            if (!Array.isArray(row) || row.length < expectedHeaders.length)
+              continue;
+
+            // --- Detailed Debugging inside header detection loop ---
+            console.log(
+              `Checking row ${i} for headers:`,
+              row.slice(0, expectedHeaders.length),
+            ); // Log the potential header cells
+
+            const isHeaderRow = expectedHeaders.every((header, index) => {
+              const cellValue =
+                typeof row[index] === 'string' || typeof row[index] === 'number'
+                  ? String(row[index]).trim().toLowerCase()
+                  : ''; // Treat non-string/number as empty
+              const expectedValue = header.toLowerCase();
+              const matches = cellValue === expectedValue;
+
+              if (!matches) {
+                console.log(
+                  `Mismatch in header check at row ${i}, column ${index}:`,
+                  {
+                    expectedHeader: header,
+                    cellValue: row[index], // Log original cell value
+                    processedCellValue: cellValue, // Log processed cell value
+                    expectedProcessedValue: expectedValue,
+                  },
+                );
+              }
+
+              return matches;
+            });
+            // --- End Detailed Debugging ---
+
+            if (isHeaderRow) {
               headerRowIndex = i;
+              console.log('Found header row at index:', i);
               break;
             }
           }
 
           if (headerRowIndex === -1) {
-            reject(
-              new Error(
-                'Could not find header row in file. Please make sure the file follows the template format.',
-              ),
-            );
-            return;
+            // Instead of rejecting, resolve with an empty array and let the caller handle the invalid format
+            resolve([]);
+            return; // Exit the function after resolving
           }
 
-          // Convert the data rows to the expected format
-          const headers = rawData[headerRowIndex].map((h) => h.trim());
-          const dataRows = rawData
+          // Extract headers and data rows after finding the header index
+          const headers = rawData[headerRowIndex].map(
+            (h) => h?.toString().trim() || '',
+          ); // Ensure headers are strings and handle potential null/undefined
+          console.log('Found headers:', headers);
+
+          const dataRowsRaw = rawData
             .slice(headerRowIndex + 1)
             .filter(
               (row) =>
-                Array.isArray(row) && row.some((cell) => cell && cell.trim()),
-            );
+                Array.isArray(row) &&
+                row.some(
+                  (cell) =>
+                    cell !== null &&
+                    cell !== undefined &&
+                    cell.toString().trim() !== '',
+                ),
+            ); // Filter out empty or null/undefined rows
 
-          const formattedData = dataRows
-            .map((row) => {
-              const rowData: Record<string, string> = {};
-              headers.forEach((header, index) => {
-                if (header && row[index]) {
-                  rowData[header] = row[index].toString().trim();
-                }
-              });
-              return rowData;
-            })
-            .filter((row): row is CsvRow => {
+          console.log('Raw data rows after header:', dataRowsRaw.slice(0, 5));
+
+          // Manually map data rows to objects using found headers
+          const formattedData: CsvRow[] = dataRowsRaw.map((row) => {
+            const rowData: Record<string, string> = {};
+            headers.forEach((header, index) => {
+              // Use header as key, get cell value, trim, default to empty string, ensure it's a string
+              rowData[header] =
+                row[index] !== null && row[index] !== undefined
+                  ? String(row[index]).trim()
+                  : '';
+            });
+            return rowData as CsvRow; // Cast to CsvRow type
+          });
+
+          // Filter out any rows that don't have required fields AFTER mapping
+          const validFormattedData = formattedData.filter(
+            (row): row is CsvRow => {
               const requiredFields = [
-                'Last Name',
                 'First Name',
+                'Last Name',
                 'Email',
                 'Department',
                 'Work Type',
@@ -773,27 +1003,39 @@ export function AdminDataTable({
                 'Permission',
               ];
 
-              return requiredFields.every(
+              // Check if all required fields have a non-empty value
+              const isValid = requiredFields.every(
                 (field) => row[field] && row[field].toString().trim() !== '',
               );
-            });
 
-          if (formattedData.length === 0) {
+              if (!isValid) {
+                console.log('Invalid row (missing required fields):', row);
+              }
+
+              return isValid;
+            },
+          );
+
+          if (validFormattedData.length === 0) {
             reject(
               new Error(
-                'No valid data rows found in file. Please check the template format.',
+                'No valid data rows found in file. Please check that there are rows with all required information below the header.',
               ),
             );
             return;
           }
 
-          resolve(formattedData);
+          console.log(
+            'Successfully formatted data:',
+            validFormattedData.slice(0, 2),
+          );
+          resolve(validFormattedData);
         } catch (error) {
           console.error('File parsing error:', error);
           reject(
             new Error(
-              'Error parsing file. Please make sure you are using the correct template format.',
-            ),
+              'Error parsing file. Please make sure you are using a valid file and template format.',
+            ), // More general error for other parsing issues
           );
         }
       };
@@ -815,23 +1057,37 @@ export function AdminDataTable({
 
   const handleFilePreview = async (file: File) => {
     try {
+      console.log('Starting file preview for:', file.name);
       const data = await readFile(file);
+      console.log(
+        'readFile resolved successfully in handleFilePreview. Data length:',
+        data.length,
+      );
+
       if (data.length > 0) {
         const previewRows = data.slice(0, 5);
         setPreviewData(previewRows);
         setIsValidFile(true);
         toast.success('File loaded successfully');
       } else {
-        throw new Error('No valid data found in file');
+        // This branch is reached if readFile resolves with an empty array (e.g., header not found)
+        console.warn('readFile resolved with empty data in handleFilePreview.');
+        setIsValidFile(false); // Mark as invalid
+        setPreviewData([]); // Clear preview data
+        toast.error(
+          'Could not find header row. Please make sure the file is using the template format.',
+        ); // Specific error message
+        // No need to throw here, already handled the invalid state
       }
     } catch (error) {
-      console.error('Error reading file:', error);
+      console.error('Error caught in handleFilePreview:', error);
       setIsValidFile(false);
       setPreviewData([]);
+      // Use a more general error message here for other parsing issues caught by readFile's catch
       toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Error reading file. Please check the template format.',
+        error instanceof Error && error.message.includes('parsing file')
+          ? error.message // Use the more general parsing error message from readFile's catch
+          : 'Error reading file. Please ensure it is a valid Excel or CSV file.',
       );
     }
   };
@@ -839,7 +1095,7 @@ export function AdminDataTable({
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      console.log('Selected file:', file.name);
+      console.log('Selected file for change:', file.name);
       if (validateFile(file)) {
         setSelectedFile(file);
         handleFilePreview(file);
@@ -847,7 +1103,10 @@ export function AdminDataTable({
         setSelectedFile(null);
         setPreviewData([]);
         setIsValidFile(false);
+        console.log('File validation failed in handleFileChange.');
       }
+    } else {
+      console.log('No file selected in handleFileChange.');
     }
   };
 
@@ -878,112 +1137,125 @@ export function AdminDataTable({
     return true;
   };
 
-  const refreshTableData = async () => {
-    try {
-      setIsRefreshing(true);
-      const response = await axiosInstance.get('/users');
-      const data = await response.data;
-      if (data.users) {
-        setTableData(data.users);
-      }
-    } catch (error) {
-      console.error('Error refreshing table data:', error);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
   const handleImport = async () => {
-    if (!selectedFile) return;
+    if (!selectedFile || !isValidFile || previewData.length === 0) {
+      console.warn(
+        'Import attempted without a valid file or no data to import.',
+      );
+      // Optionally show a toast message here
+      if (!selectedFile) toast.error('Please select a file first.');
+      else if (!isValidFile) toast.error('Selected file is not valid.');
+      else if (previewData.length === 0)
+        toast.error('No valid data rows found in the file preview.');
+      return;
+    }
 
     try {
       setShowImportStatus(true);
       setImportProgress({
         current: 0,
-        total: 1,
-        status: 'Validating emails...',
+        total: previewData.length, // Total is the number of rows to import
+        status: 'Importing users...',
       });
+      console.log('Starting import process. Sending parsed data to backend.');
 
-      // Read and validate the file first
-      const data = await readFile(selectedFile);
-      const invalidEmails = data.filter((row) => !validateEmail(row.Email));
+      // We are now sending the already parsed previewData directly
+      // No need for FormData or file processing on the frontend here
 
-      if (invalidEmails.length > 0) {
-        setImportProgress({
-          current: 0,
-          total: 1,
-          status: 'Validation failed',
-          error: `Found ${invalidEmails.length} invalid email(s). All emails must be from @alabang.sti.edu.ph domain.`,
-          hasError: true,
-        });
-        return;
-      }
+      const response = await axiosInstance.post('/users/import', previewData);
 
-      setImportProgress({
-        current: 0,
-        total: 1,
-        status: 'Uploading file...',
-      });
-
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-
-      const response = await axiosInstance.post('/users/import', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-
-      const { imported, skipped, errors, importedUsers } = response.data;
-
-      // Set import status for the modal
-      setImportStatus({
+      const {
         imported,
         skipped,
         errors,
-        total: imported + skipped,
+        importedUsers,
+        total: backendTotalProcessed,
+        detailedFeedback,
+      } = response.data;
+
+      // Set import status for the modal
+      setImportStatus({
+        imported: imported || 0, // number of successfully imported users
+        skipped: skipped || 0, // number of skipped users (e.g., duplicates)
+        errors: errors || [], // array of errors with email and message
+        total: backendTotalProcessed || previewData.length, // Total processed items reported by backend or frontend total
+        detailedFeedback: detailedFeedback || [], // Store detailed feedback
       });
 
-      // Show success message with import statistics
-      let message = `Successfully imported ${imported} users`;
-      if (skipped > 0) {
-        message += ` (${skipped} skipped)`;
+      // Check if there were any errors or only skipped users
+      if (errors && errors.length > 0) {
+        toast.error(`Import finished with ${errors.length} errors.`);
+      } else if (skipped && skipped > 0) {
+        toast.warning(`Import finished. ${skipped} users skipped.`);
+      } else if (imported && imported > 0) {
+        toast.success(`Successfully imported ${imported} users.`);
+      } else {
+        // Handle case where response is success but no users were imported/skipped/errored (e.g., empty file after header)
+        toast.info('Import process finished with no users imported.');
       }
 
-      toast.success(message);
-
-      // Clear the progress
+      // Clear the progress after process is complete/failed
       setImportProgress(null);
 
       // Refresh the table data
-      await refreshTableData();
+      // A short delay might be needed to ensure backend database is updated before fetching
+      setTimeout(async () => {
+        await refreshTableData();
+        if (onUserAdded) {
+          onUserAdded(); // Refresh the user list if necessary
+        }
+      }, 500); // Add a small delay
+    } catch (error: any) {
+      console.error('Error caught in handleImport:', error);
+      console.error('Full error object:', JSON.stringify(error, null, 2)); // Log the full error object
 
-      if (onUserAdded) {
-        onUserAdded();
+      let errorMessage = 'Failed to import users';
+      let importErrors = [];
+
+      if (error.response && error.response.data && error.response.data.error) {
+        // Backend returned a specific error message in the response body
+        errorMessage = error.response.data.error;
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (
+        typeof error === 'object' &&
+        error !== null &&
+        'message' in error
+      ) {
+        errorMessage = String((error as { message: unknown }).message);
+      } else if (typeof error === 'string') {
+        errorMessage = error;
       }
-    } catch (error) {
-      console.error('Error importing users:', error);
+
+      // Try to get detailed errors from backend response if available
+      const errorResponse = (error as any)?.response?.data;
+      if (errorResponse && errorResponse.errors) {
+        importErrors = errorResponse.errors;
+      } else {
+        // If no detailed error response, just show the basic error
+        importErrors.push({ email: 'N/A', message: errorMessage });
+      }
+
       setImportProgress({
         current: 0,
-        total: 1,
+        total: previewData.length, // Total is the number of rows attempted to import
         status: 'Import failed',
-        error:
-          error instanceof Error ? error.message : 'Failed to import users',
+        error: errorMessage,
         hasError: true,
       });
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to import users',
-      );
+      toast.error(errorMessage);
+
+      // Set import status to show details
+      setImportStatus({
+        imported: errorResponse?.imported || 0,
+        skipped: errorResponse?.skipped || 0,
+        errors: importErrors, // This is the summary errors array
+        total: errorResponse?.total || previewData.length,
+        detailedFeedback: errorResponse?.detailedFeedback || [], // Store detailed feedback from error response
+      });
+      // Keep status modal open to show errors
     }
   };
-
-  // Add useEffect to handle pagination when filtered users change
-  useEffect(() => {
-    const maxPage = Math.ceil(filteredUsers.length / itemsPerPage);
-    if (currentPage > maxPage && maxPage > 0) {
-      setCurrentPage(maxPage);
-    }
-  }, [filteredUsers.length, currentPage, itemsPerPage]);
 
   return (
     <div className='space-y-4'>
@@ -1012,7 +1284,7 @@ export function AdminDataTable({
             Export
             <Upload className='h-4 w-4' />
           </Button>
-          <UserSheet mode='add' onSuccess={onUserAdded} />
+          <UserSheet mode='add' onSuccess={refreshTableData} />
         </div>
       </div>
 
@@ -1633,7 +1905,11 @@ export function AdminDataTable({
                       Successfully Imported
                     </h3>
                     <p className='text-2xl font-semibold text-green-600'>
-                      {importStatus.imported}
+                      {
+                        importStatus.detailedFeedback.filter(
+                          (f) => f.status === 'imported',
+                        ).length
+                      }
                     </p>
                   </div>
                   <div className='bg-amber-50 p-4 rounded-lg border border-amber-200'>
@@ -1641,58 +1917,103 @@ export function AdminDataTable({
                       Skipped
                     </h3>
                     <p className='text-2xl font-semibold text-amber-600'>
-                      {importStatus.skipped}
+                      {
+                        importStatus.detailedFeedback.filter(
+                          (f) => f.status === 'skipped',
+                        ).length
+                      }
                     </p>
                   </div>
                   <div className='bg-red-50 p-4 rounded-lg border border-red-200'>
                     <h3 className='text-sm font-medium text-red-800'>Errors</h3>
                     <p className='text-2xl font-semibold text-red-600'>
-                      {importStatus.errors.length}
+                      {
+                        importStatus.detailedFeedback.filter(
+                          (f) => f.status === 'error',
+                        ).length
+                      }
                     </p>
                   </div>
                 </div>
 
-                {importStatus.errors.length > 0 && (
-                  <div className='border rounded-lg overflow-hidden max-w-[2100px]'>
-                    <div className='bg-gray-50 p-4 border-b'>
-                      <h3 className='font-medium text-gray-700'>
-                        Import Errors
-                      </h3>
-                      <p className='text-sm text-gray-500'>
-                        {importStatus.errors.length} users could not be imported
-                      </p>
-                    </div>
-                    <div className='max-h-[300px] overflow-auto'>
-                      <table className='w-full border-collapse'>
-                        <thead className='bg-gray-50 sticky top-0'>
-                          <tr>
-                            <th className='px-4 py-2 text-left text-sm font-medium text-gray-500'>
-                              Email
-                            </th>
-                            <th className='px-4 py-2 text-left text-sm font-medium text-gray-500'>
-                              Error Message
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {importStatus.errors.map((error, index) => (
-                            <tr
-                              key={index}
-                              className='border-t hover:bg-gray-50'
-                            >
-                              <td className='px-4 py-2 text-sm text-gray-900'>
-                                {error.email}
-                              </td>
-                              <td className='px-4 py-2 text-sm text-red-600'>
-                                {error.message}
-                              </td>
+                {importStatus.detailedFeedback &&
+                  importStatus.detailedFeedback.length > 0 && (
+                    <div className='border rounded-lg overflow-hidden max-w-[2100px]'>
+                      <div className='bg-gray-50 p-4 border-b'>
+                        <h3 className='font-medium text-gray-700'>
+                          Detailed Import Feedback
+                        </h3>
+                        <p className='text-sm text-gray-500'>
+                          Status of each row processed during import.
+                        </p>
+                      </div>
+                      <div className='max-h-[300px] overflow-auto'>
+                        <table className='w-full border-collapse'>
+                          <thead className='bg-gray-50 sticky top-0'>
+                            <tr>
+                              <th className='px-4 py-2 text-left text-sm font-medium text-gray-500'>
+                                Row
+                              </th>
+                              <th className='px-4 py-2 text-left text-sm font-medium text-gray-500'>
+                                Email
+                              </th>
+                              <th className='px-4 py-2 text-left text-sm font-medium text-gray-500'>
+                                Status
+                              </th>
+                              <th className='px-4 py-2 text-left text-sm font-medium text-gray-500'>
+                                Message
+                              </th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {importStatus.detailedFeedback.map(
+                              (feedback, index) => (
+                                <tr
+                                  key={index}
+                                  className='border-t hover:bg-gray-50'
+                                >
+                                  <td className='px-4 py-2 text-sm text-gray-900'>
+                                    {feedback.row}
+                                  </td>
+                                  <td className='px-4 py-2 text-sm text-gray-900'>
+                                    {feedback.email}
+                                  </td>
+                                  <td className='px-4 py-2 text-sm font-medium'>
+                                    <Badge
+                                      variant={
+                                        feedback.status === 'imported'
+                                          ? 'default'
+                                          : feedback.status === 'skipped'
+                                          ? 'secondary'
+                                          : 'destructive' // error status
+                                      }
+                                      className={
+                                        feedback.status === 'imported'
+                                          ? 'bg-green-500 text-white'
+                                          : ''
+                                      }
+                                    >
+                                      {feedback.status.charAt(0).toUpperCase() +
+                                        feedback.status.slice(1)}
+                                    </Badge>
+                                  </td>
+                                  <td
+                                    className={`px-4 py-2 text-sm ${
+                                      feedback.status === 'error'
+                                        ? 'text-red-600'
+                                        : 'text-gray-900'
+                                    }`}
+                                  >
+                                    {feedback.message || '-'}
+                                  </td>
+                                </tr>
+                              ),
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
                 <div className='flex justify-end gap-4'>
                   <Button

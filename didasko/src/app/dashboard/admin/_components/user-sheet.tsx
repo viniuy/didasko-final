@@ -159,18 +159,14 @@ export function UserSheet({
       const spaceParts = restOfName.split(' ').filter((part) => part !== '');
 
       if (spaceParts.length > 0) {
-        firstName = spaceParts[0];
-        // Check for middle initial in the remaining parts
-        if (spaceParts.length > 1) {
-          const middlePart = spaceParts[1];
-          // Handle cases like "E." or "E" or "Edward"
-          if (/^[A-Z]\.?$/.test(middlePart)) {
-            middleInitial = middlePart.replace('.', '');
-          } else if (middlePart.length === 1) {
-            middleInitial = middlePart;
-          } else {
-            middleInitial = middlePart.charAt(0);
-          }
+        // Get all parts except the last one (which might be middle initial)
+        const firstParts = spaceParts.slice(0, -1);
+        firstName = firstParts.join(' ');
+
+        // Check if the last part is a middle initial
+        const lastPart = spaceParts[spaceParts.length - 1];
+        if (/^[A-Z]\.?$/.test(lastPart) || lastPart.length === 1) {
+          middleInitial = lastPart.replace('.', '');
         }
       }
     } else {
@@ -185,23 +181,30 @@ export function UserSheet({
         firstName = parts[0];
         lastName = parts[1];
       } else if (parts.length >= 3) {
-        // First Middle Last or First Middle Middle Last
-        firstName = parts[0];
-        lastName = parts[parts.length - 1];
+        // Handle multiple first names
+        const lastPart = parts[parts.length - 1].toLowerCase();
+        const isSuffix = ['jr', 'sr', 'ii', 'iii', 'iv'].includes(lastPart);
 
-        // Check middle parts for initials
-        const middleParts = parts.slice(1, -1);
-        const middleInitials = middleParts.map((part) => {
-          if (/^[A-Z]\.?$/.test(part)) {
-            return part.replace('.', '');
-          } else if (part.length === 1) {
-            return part;
+        if (isSuffix) {
+          // If there's a suffix, the second-to-last part is the last name
+          lastName = parts.slice(-2).join(' ');
+          // Everything before that is first name
+          firstName = parts.slice(0, -2).join(' ');
+        } else {
+          // Last part is the last name
+          lastName = parts[parts.length - 1];
+
+          // Check if second-to-last part is a middle initial
+          const secondToLast = parts[parts.length - 2];
+          if (/^[A-Z]\.?$/.test(secondToLast) || secondToLast.length === 1) {
+            middleInitial = secondToLast.replace('.', '');
+            // Everything before middle initial is first name
+            firstName = parts.slice(0, -2).join(' ');
           } else {
-            return part.charAt(0);
+            // No middle initial, everything before last name is first name
+            firstName = parts.slice(0, -1).join(' ');
           }
-        });
-
-        middleInitial = middleInitials.join('');
+        }
       }
     }
 
@@ -244,7 +247,8 @@ export function UserSheet({
     lastName: mode === 'edit' ? lastName : '',
     middleInitial: mode === 'edit' ? middleInitial : '',
     email: mode === 'edit' ? user?.email || '' : '',
-    department: mode === 'edit' ? user?.department || '' : '',
+    department:
+      mode === 'edit' ? user?.department || DEPARTMENTS[0] : DEPARTMENTS[0],
     workType: mode === 'edit' ? user?.workType || 'FULL_TIME' : 'FULL_TIME',
     role: mode === 'edit' ? user?.role || 'FACULTY' : 'FACULTY',
     permission: mode === 'edit' ? user?.permission || 'GRANTED' : 'GRANTED',

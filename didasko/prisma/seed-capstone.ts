@@ -19,7 +19,7 @@ const faculty: FacultyMap = {
   vincent: {
     name: 'Vincent Dizon',
     email: 'dizon.292363@alabang.sti.edu.ph',
-    department: 'IT',
+    department: 'IT Department',
     workType: WorkType.FULL_TIME,
     role: Role.FACULTY,
     studentId: '2024-0012',
@@ -27,7 +27,7 @@ const faculty: FacultyMap = {
   arley: {
     name: 'Arley Mae Marabut',
     email: 'marabut.284909@alabang.sti.edu.ph',
-    department: 'IT',
+    department: 'IT Department',
     workType: WorkType.FULL_TIME,
     role: Role.FACULTY,
     studentId: '2024-0023',
@@ -35,7 +35,7 @@ const faculty: FacultyMap = {
   denys: {
     name: 'Denys John Santayana',
     email: 'santayana.309310@alabang.sti.edu.ph',
-    department: 'IT',
+    department: 'IT Department',
     workType: WorkType.FULL_TIME,
     role: Role.FACULTY,
     studentId: '2024-0029',
@@ -43,7 +43,7 @@ const faculty: FacultyMap = {
   jonathan: {
     name: 'Jonathan Francis Corpuz',
     email: 'corpuz.12313@alabang.sti.edu.ph',
-    department: 'IT',
+    department: 'IT Department',
     workType: WorkType.FULL_TIME,
     role: Role.FACULTY,
     studentId: '2024-0006',
@@ -68,6 +68,21 @@ async function initializeFaculty(facultyMember: FacultyMember) {
 async function assignCoursesToFaculty(userId: string) {
   // Get all students
   const allStudents = await prisma.student.findMany();
+
+  // Get all courses
+  const allCourses = await prisma.course.findMany();
+
+  // Assign faculty to all courses
+  for (const course of allCourses) {
+    await prisma.course.update({
+      where: { id: course.id },
+      data: {
+        faculty: {
+          connect: { id: userId },
+        },
+      },
+    });
+  }
 
   // Get IT CAPSTONE course
   const capstoneCourse = await prisma.course.findFirst({
@@ -95,26 +110,7 @@ async function assignCoursesToFaculty(userId: string) {
     throw new Error('MIS course not found');
   }
 
-  // Assign faculty to both courses
-  await prisma.course.update({
-    where: { id: capstoneCourse.id },
-    data: {
-      faculty: {
-        connect: { id: userId },
-      },
-    },
-  });
-
-  await prisma.course.update({
-    where: { id: misCourse.id },
-    data: {
-      faculty: {
-        connect: { id: userId },
-      },
-    },
-  });
-
-  // Enroll all students in both courses
+  // Enroll all students only in CAPSTONE and MIS
   for (const student of allStudents) {
     await prisma.course.update({
       where: { id: capstoneCourse.id },
@@ -135,7 +131,7 @@ async function assignCoursesToFaculty(userId: string) {
     });
   }
 
-  return { capstoneCourse, misCourse };
+  return { capstoneCourse, misCourse, allCourses };
 }
 
 async function main() {
@@ -166,11 +162,13 @@ async function main() {
       const vincent = createdUsers.find((u) => u.key === 'vincent');
       if (vincent) {
         console.log('\nAssigning courses to Vincent Dizon...');
-        const courses = await assignCoursesToFaculty(vincent.user.id);
+        const { allCourses } = await assignCoursesToFaculty(vincent.user.id);
         console.log(
-          `Successfully set up Vincent Dizon as faculty for IT CAPSTONE and MIS courses`,
+          `Successfully set up Vincent Dizon as faculty for all ${allCourses.length} courses`,
         );
-        console.log('All students have been enrolled in both courses');
+        console.log(
+          'All students have been enrolled in IT CAPSTONE and MIS courses',
+        );
         console.log('\n🎓 Good luck on your defense! 🎓');
       }
     } else if (faculty[facultyName]) {
@@ -181,11 +179,13 @@ async function main() {
 
       // Assign courses to the selected faculty member
       console.log(`\nAssigning courses to ${selectedFaculty.name}...`);
-      const courses = await assignCoursesToFaculty(user.id);
+      const { allCourses } = await assignCoursesToFaculty(user.id);
       console.log(
-        `Successfully set up ${selectedFaculty.name} as faculty for IT CAPSTONE and MIS courses`,
+        `Successfully set up ${selectedFaculty.name} as faculty for all ${allCourses.length} courses`,
       );
-      console.log('All students have been enrolled in both courses');
+      console.log(
+        'All students have been enrolled in IT CAPSTONE and MIS courses',
+      );
     } else {
       console.error(
         'Please provide a valid faculty name: vincent, arley, denys, jonathan, or all',

@@ -3,7 +3,8 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
-import { UserResponse, UserCreateInput } from '@/types/user';
+import { UserCreateInput } from '@/types/user';
+import { User } from '@prisma/client';
 
 export async function GET(request: Request) {
   try {
@@ -17,9 +18,6 @@ export async function GET(request: Request) {
     const search = searchParams.get('search');
     const role = searchParams.get('role');
     const department = searchParams.get('department');
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
-    const skip = (page - 1) * limit;
 
     // If email is provided, return single user
     if (email) {
@@ -71,9 +69,6 @@ export async function GET(request: Request) {
       ].filter((condition) => Object.keys(condition).length > 0),
     };
 
-    // Get total count for pagination
-    const total = await prisma.user.count({ where });
-
     // Get users with pagination
     const users = await prisma.user.findMany({
       where,
@@ -88,22 +83,10 @@ export async function GET(request: Request) {
         createdAt: true,
         updatedAt: true,
       },
-      skip,
-      take: limit,
       orderBy: [{ name: 'asc' }, { createdAt: 'desc' }],
     });
 
-    const response: UserResponse = {
-      users,
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
-
-    return NextResponse.json(response);
+    return NextResponse.json(users);
   } catch (error) {
     console.error('Error fetching users:', error);
     return NextResponse.json(
