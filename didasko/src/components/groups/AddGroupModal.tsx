@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { AttendanceStatus } from '@prisma/client';
 
 interface AddGroupModalProps {
   courseCode: string;
@@ -24,12 +25,23 @@ interface AddGroupModalProps {
   nextGroupNumber?: number;
   onGroupAdded?: () => void;
   isValidationNeeded?: boolean;
+  totalStudents?: number;
 }
 
 interface Student {
   id: string;
   name: string;
-  status: 'PRESENT' | 'LATE' | 'ABSENT' | 'No Attendance';
+  firstName: string;
+  lastName: string;
+  middleInitial?: string;
+  image?: string;
+  status: AttendanceStatus | 'NOT_SET';
+  attendanceRecords: {
+    id: string;
+    status: AttendanceStatus;
+    date: string;
+    courseId: string;
+  }[];
 }
 
 interface GroupName {
@@ -42,12 +54,20 @@ interface GroupNumber {
   number: number;
 }
 
+// Add new interface for group size calculation
+interface GroupSizeInfo {
+  maxGroups: number;
+  studentsPerGroup: number;
+  remainingStudents: number;
+}
+
 export function AddGroupModal({
   courseCode,
   excludedStudentIds = [],
   nextGroupNumber,
   onGroupAdded,
   isValidationNeeded = false,
+  totalStudents = 0,
 }: AddGroupModalProps) {
   const [groupNumber, setGroupNumber] = React.useState('');
   const [groupName, setGroupName] = React.useState('');
@@ -59,10 +79,11 @@ export function AddGroupModal({
   const [isLoading, setIsLoading] = React.useState(false);
   const [studentSearch, setStudentSearch] = React.useState('');
   const [open, setOpen] = React.useState(false);
-  const [groupNameError, setGroupNameError] = React.useState('');
   const [groupNumberError, setGroupNumberError] = React.useState('');
+  const [groupNameError, setGroupNameError] = React.useState('');
   const [isValidatingName, setIsValidatingName] = React.useState(false);
   const [isValidatingNumber, setIsValidatingNumber] = React.useState(false);
+  const [studentSelectionError, setStudentSelectionError] = React.useState('');
 
   // Clear form when modal is opened
   React.useEffect(() => {
@@ -74,6 +95,7 @@ export function AddGroupModal({
       setStudentSearch('');
       setGroupNameError('');
       setGroupNumberError('');
+      setStudentSelectionError('');
     }
   }, [open, nextGroupNumber]);
 
@@ -164,55 +186,34 @@ export function AddGroupModal({
     return () => clearTimeout(debounceTimer);
   }, [groupName, courseCode]);
 
-  // Validate group number as user types
-  React.useEffect(() => {
-    const validateGroupNumber = async () => {
-      if (!groupNumber) {
-        setGroupNumberError('');
-        return;
-      }
-
-      const groupNum = parseInt(groupNumber);
-      if (isNaN(groupNum) || groupNum < 1 || groupNum > 15) {
-        setGroupNumberError('Group number must be between 1 and 15');
-        return;
-      }
-
-      setIsValidatingNumber(true);
-      try {
-        const checkResponse = await fetch(
-          `/api/courses/${courseCode}/groups/check-number?number=${groupNum}`,
-        );
-        if (!checkResponse.ok) {
-          throw new Error('Failed to check group number');
-        }
-        const { exists } = await checkResponse.json();
-        if (exists) {
-          setGroupNumberError('A group with this number already exists');
-        } else {
-          setGroupNumberError('');
-        }
-      } catch (error) {
-        console.error('Error checking group number:', error);
-        setGroupNumberError('Error checking group number');
-      } finally {
-        setIsValidatingNumber(false);
-      }
-    };
-
-    const debounceTimer = setTimeout(() => {
-      validateGroupNumber();
-    }, 500); // Debounce for 500ms
-
-    return () => clearTimeout(debounceTimer);
-  }, [groupNumber, courseCode]);
-
-  // Set default group number when nextGroupNumber changes
-  React.useEffect(() => {
-    if (nextGroupNumber !== undefined && nextGroupNumber !== null) {
-      setGroupNumber(String(nextGroupNumber));
+  // Update function to calculate group sizes based on total students
+  const calculateGroupSizes = (totalStudents: number): GroupSizeInfo => {
+    if (totalStudents <= 0) {
+      return { maxGroups: 0, studentsPerGroup: 0, remainingStudents: 0 };
     }
-  }, [nextGroupNumber]);
+
+    // If we have 2 students, they must be in one group
+    if (totalStudents <= 2) {
+      return {
+        maxGroups: 1,
+        studentsPerGroup: totalStudents,
+        remainingStudents: 0,
+      };
+    }
+
+    // Calculate maximum number of groups based on minimum 2 students per group
+    const maxGroups = Math.floor(totalStudents / 2);
+
+    // Calculate base group size and remaining students
+    const baseGroupSize = Math.floor(totalStudents / maxGroups);
+    const remainingStudents = totalStudents % maxGroups;
+
+    return {
+      maxGroups,
+      studentsPerGroup: baseGroupSize,
+      remainingStudents,
+    };
+  };
 
   // Filter out students already in a group
   const availableStudents = students.filter(
@@ -242,13 +243,73 @@ export function AddGroupModal({
     });
   };
 
+  // Update the group number validation effect
+  React.useEffect(() => {
+    const validateGroupNumber = async () => {
+      if (!groupNumber) {
+        setGroupNumberError('');
+        return;
+      }
+
+      const groupNum = parseInt(groupNumber);
+      const groupInfo = calculateGroupSizes(totalStudents);
+
+      if (isNaN(groupNum) || groupNum < 1 || groupNum > groupInfo.maxGroups) {
+        setGroupNumberError(
+          `Group number must be between 1 and ${groupInfo.maxGroups}`,
+        );
+        return;
+      }
+
+      setIsValidatingNumber(true);
+      try {
+        const checkResponse = await fetch(
+          `/api/courses/${courseCode}/groups/check-number?number=${groupNum}`,
+        );
+        if (!checkResponse.ok) {
+          throw new Error('Failed to check group number');
+        }
+        const { exists } = await checkResponse.json();
+        if (exists) {
+          setGroupNumberError('A group with this number already exists');
+        } else {
+          setGroupNumberError('');
+        }
+      } catch (error) {
+        console.error('Error checking group number:', error);
+        setGroupNumberError('Error checking group number');
+      } finally {
+        setIsValidatingNumber(false);
+      }
+    };
+
+    const debounceTimer = setTimeout(() => {
+      validateGroupNumber();
+    }, 500);
+
+    return () => clearTimeout(debounceTimer);
+  }, [groupNumber, courseCode, totalStudents]);
+
+  // Set default group number when nextGroupNumber changes
+  React.useEffect(() => {
+    if (nextGroupNumber !== undefined && nextGroupNumber !== null) {
+      setGroupNumber(String(nextGroupNumber));
+    }
+  }, [nextGroupNumber]);
+
+  // Update the handleSubmit function
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setStudentSelectionError('');
 
     // Validate group number
     const groupNum = parseInt(groupNumber);
-    if (isNaN(groupNum) || groupNum < 1 || groupNum > 15) {
-      setGroupNumberError('Group number must be between 1 and 15');
+    const groupInfo = calculateGroupSizes(totalStudents);
+
+    if (isNaN(groupNum) || groupNum < 1 || groupNum > groupInfo.maxGroups) {
+      setGroupNumberError(
+        `Group number must be between 1 and ${groupInfo.maxGroups}`,
+      );
       return;
     }
 
@@ -274,7 +335,19 @@ export function AddGroupModal({
 
     // Validate minimum number of students
     if (selectedStudents.length < 2) {
-      toast.error('Please select at least 2 students for the group');
+      setStudentSelectionError(
+        'Please select at least 2 students for the group',
+      );
+      return;
+    }
+
+    // Check if this would leave only one student
+    const remainingStudents =
+      availableStudents.length - selectedStudents.length;
+    if (remainingStudents === 1) {
+      setStudentSelectionError(
+        'Cannot create a group that would leave only one student remaining',
+      );
       return;
     }
 
@@ -338,7 +411,7 @@ export function AddGroupModal({
     }
   };
 
-  const statusColor = (status: string) => {
+  const statusColor = (status: AttendanceStatus | 'NOT_SET') => {
     switch (status) {
       case 'PRESENT':
         return 'bg-green-100 text-green-700 border-green-300';
@@ -346,10 +419,29 @@ export function AddGroupModal({
         return 'bg-yellow-100 text-yellow-700 border-yellow-300';
       case 'ABSENT':
         return 'bg-red-100 text-red-700 border-red-300';
-      case 'No Attendance':
+      case 'EXCUSED':
+        return 'bg-blue-100 text-blue-700 border-blue-300';
+      case 'NOT_SET':
         return 'bg-gray-100 text-gray-500 border-gray-300';
       default:
         return 'bg-gray-100 text-gray-500 border-gray-300';
+    }
+  };
+
+  const getStatusDisplay = (status: AttendanceStatus | 'NOT_SET') => {
+    switch (status) {
+      case 'PRESENT':
+        return 'Present';
+      case 'LATE':
+        return 'Late';
+      case 'ABSENT':
+        return 'Absent';
+      case 'EXCUSED':
+        return 'Excused';
+      case 'NOT_SET':
+        return 'No Attendance';
+      default:
+        return 'No Attendance';
     }
   };
 
@@ -419,10 +511,14 @@ export function AddGroupModal({
                     value={groupNumber}
                     onChange={(e) => {
                       const value = e.target.value;
-                      // Only allow numbers and limit to 15
+                      // Only allow numbers and limit to max groups
                       if (/^\d*$/.test(value)) {
                         const num = parseInt(value);
-                        if (value === '' || (num >= 1 && num <= 15)) {
+                        const groupInfo = calculateGroupSizes(totalStudents);
+                        if (
+                          value === '' ||
+                          (num >= 1 && num <= groupInfo.maxGroups)
+                        ) {
                           setGroupNumber(value);
                         }
                       }
@@ -443,31 +539,14 @@ export function AddGroupModal({
                     {groupNumberError}
                   </span>
                 )}
-                {groupNumbers.length > 0 &&
-                  !groupNumberError &&
-                  groupNumber && (
-                    <div className='mt-1 text-xs text-gray-500'>
-                      Available group numbers:
-                      <div className='mt-1 flex flex-wrap gap-1'>
-                        {groupNumbers
-                          .filter((g) =>
-                            g.number.toString().includes(groupNumber),
-                          )
-                          .slice(0, 3)
-                          .map((g) => (
-                            <span
-                              key={g.id}
-                              className='px-2 py-1 bg-gray-100 rounded cursor-pointer hover:bg-gray-200'
-                              onClick={() =>
-                                setGroupNumber(g.number.toString())
-                              }
-                            >
-                              {g.number}
-                            </span>
-                          ))}
-                      </div>
-                    </div>
+                <div className='text-xs text-gray-500 mt-1'>
+                  {totalStudents > 0 && (
+                    <span className='ml-2'>
+                      Maximum: {calculateGroupSizes(totalStudents).maxGroups}{' '}
+                      groups
+                    </span>
                   )}
+                </div>
               </div>
               <div className='flex flex-col'>
                 <label
@@ -585,13 +664,7 @@ export function AddGroupModal({
                           student.status,
                         )}`}
                       >
-                        {student.status === 'PRESENT'
-                          ? 'Present'
-                          : student.status === 'LATE'
-                          ? 'Late'
-                          : student.status === 'ABSENT'
-                          ? 'Absent'
-                          : 'No Attendance'}
+                        {getStatusDisplay(student.status)}
                       </span>
                     </label>
                   ))
@@ -606,6 +679,11 @@ export function AddGroupModal({
                   </span>
                 )}
               </div>
+              {studentSelectionError && (
+                <span className='text-red-500 text-xs mt-1'>
+                  {studentSelectionError}
+                </span>
+              )}
             </div>
           </div>
           <div className='flex justify-between gap-4 mt-6'>

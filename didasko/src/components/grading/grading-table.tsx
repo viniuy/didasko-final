@@ -2291,6 +2291,14 @@ export function GradingTable({
             Number(gradeFilter.failed) +
             Number(gradeFilter.noGrades)
           }
+          onBackClick={() => {
+            if (hasChanges()) {
+              setPendingNavigation(window.location.href);
+              setShowUnsavedChangesDialog(true);
+            } else {
+              window.history.back();
+            }
+          }}
         />
 
         {/* Add Filter Sheet */}

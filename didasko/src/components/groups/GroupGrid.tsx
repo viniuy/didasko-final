@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GroupCard } from './GroupCard';
 import { AddGroupModal } from '@/components/groups/AddGroupModal';
 import { RandomizerButton } from './RandomizerButton';
@@ -35,8 +35,23 @@ export function GroupGrid({
   isValidationNeeded = false,
 }: GroupGridProps) {
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalStudents, setTotalStudents] = useState(0);
   const itemsPerPage = 10;
   const totalPages = Math.ceil((groups.length + 1) / itemsPerPage);
+
+  useEffect(() => {
+    const fetchTotalStudents = async () => {
+      try {
+        const response = await fetch(`/api/courses/${courseCode}/students`);
+        const data = await response.json();
+        setTotalStudents(data.students.length);
+      } catch (error) {
+        console.error('Error fetching total students:', error);
+      }
+    };
+
+    fetchTotalStudents();
+  }, [courseCode]);
 
   const handleGroupDeleted = () => {
     if (onGroupAdded) {
@@ -61,6 +76,7 @@ export function GroupGrid({
           nextGroupNumber={nextGroupNumber}
           onGroupAdded={onGroupAdded}
           isValidationNeeded={isValidationNeeded}
+          totalStudents={totalStudents}
         />
         <RandomizerButton disabled />
       </div>
@@ -91,6 +107,7 @@ export function GroupGrid({
               nextGroupNumber={nextGroupNumber}
               onGroupAdded={onGroupAdded}
               isValidationNeeded={isValidationNeeded}
+              totalStudents={totalStudents}
             />
             <RandomizerButton disabled />
           </div>

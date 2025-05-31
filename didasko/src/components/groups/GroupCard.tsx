@@ -49,7 +49,7 @@ export function GroupCard({
         throw new Error('Failed to delete group');
       }
 
-      toast.success('Group deleted successfully');
+      toast.success('Group disbanded successfully');
       if (onGroupDeleted) {
         onGroupDeleted();
       }

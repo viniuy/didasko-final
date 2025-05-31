@@ -57,13 +57,15 @@ export async function GET(
 
     // Get today's date in UTC
     const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
     console.log('Date range for attendance:', {
       start: today.toISOString(),
       end: tomorrow.toISOString(),
+      localStart: today.toString(),
+      localEnd: tomorrow.toString(),
     });
 
     // Now fetch the course with students using the course ID

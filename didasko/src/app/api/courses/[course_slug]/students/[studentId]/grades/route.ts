@@ -21,6 +21,18 @@ export async function GET(
 
     console.log('Backend received from:', from, 'to:', to);
 
+    // Parse dates and ensure they are in UTC
+    const fromDate = from ? new Date(from) : null;
+    const toDate = to ? new Date(to) : null;
+
+    // Validate dates
+    if (from && isNaN(fromDate.getTime())) {
+      return NextResponse.json({ error: 'Invalid from date' }, { status: 400 });
+    }
+    if (to && isNaN(toDate.getTime())) {
+      return NextResponse.json({ error: 'Invalid to date' }, { status: 400 });
+    }
+
     // Get the course using the slug
     const course = await prisma.course.findUnique({
       where: { slug: course_slug },
@@ -36,12 +48,17 @@ export async function GET(
       where: {
         courseId: course.id,
         studentId,
-        ...(from && to
-          ? { date: { gte: new Date(from), lte: new Date(to) } }
-          : from
-          ? { date: { gte: new Date(from) } }
-          : to
-          ? { date: { lte: new Date(to) } }
+        ...(fromDate && toDate
+          ? {
+              date: {
+                gte: fromDate,
+                lte: toDate,
+              },
+            }
+          : fromDate
+          ? { date: { gte: fromDate } }
+          : toDate
+          ? { date: { lte: toDate } }
           : {}),
       },
       orderBy: { date: 'desc' },
@@ -49,8 +66,8 @@ export async function GET(
 
     console.log(
       'Grades query date range:',
-      from ? new Date(`${from}T00:00:00.000Z`) : 'no from',
-      to ? new Date(`${to}T23:59:59.999Z`) : 'no to',
+      fromDate ? fromDate.toISOString() : 'no from',
+      toDate ? toDate.toISOString() : 'no to',
     );
 
     // Get the latest grade configuration
@@ -88,17 +105,17 @@ export async function GET(
       where: {
         student: { id: studentId },
         quiz: { courseId: course.id },
-        ...(from && to
+        ...(fromDate && toDate
           ? {
               createdAt: {
-                gte: new Date(from),
-                lte: new Date(`${to}T23:59:59.999Z`),
+                gte: fromDate,
+                lte: toDate,
               },
             }
-          : from
-          ? { createdAt: { gte: new Date(from) } }
-          : to
-          ? { createdAt: { lte: new Date(`${to}T23:59:59.999Z`) } }
+          : fromDate
+          ? { createdAt: { gte: fromDate } }
+          : toDate
+          ? { createdAt: { lte: toDate } }
           : {}),
       },
       orderBy: { createdAt: 'desc' },
@@ -106,8 +123,8 @@ export async function GET(
 
     console.log('Found quiz scores:', quizScores);
     console.log('Date range:', {
-      from: from ? new Date(from) : 'no from',
-      to: to ? new Date(`${to}T23:59:59.999Z`) : 'no to',
+      from: fromDate ? fromDate.toISOString() : 'no from',
+      to: toDate ? toDate.toISOString() : 'no to',
     });
 
     // Calculate quiz score average using totalGrade

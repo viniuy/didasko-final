@@ -553,6 +553,7 @@ const GradeConfigDialog = ({
 
       // Set the new configuration as current
       const newConfig = response.data;
+      console.log('Setting new config:', newConfig);
       setCurrentConfig(newConfig);
       setGradebookConfigDate(newConfig.createdAt);
       setHasSelectedConfig(true);
@@ -1188,7 +1189,7 @@ const EditGradeConfigDialog = ({
         }));
       }
     }
-    // setHasChanges(true); // Set hasChanges when config changes
+    setHasChanges(true); // Set hasChanges when config changes
   };
 
   const handleSaveConfig = async () => {
@@ -1233,9 +1234,19 @@ const EditGradeConfigDialog = ({
             quizWeight: config.quizWeight,
             passingThreshold: config.passingThreshold,
             startDate: dateRange?.from
-              ? dateRange.from.toISOString()
+              ? (() => {
+                  const date = new Date(dateRange.from);
+                  date.setUTCHours(0, 0, 0, 0);
+                  return date.toISOString();
+                })()
               : undefined,
-            endDate: dateRange?.to ? dateRange.to.toISOString() : undefined,
+            endDate: dateRange?.to
+              ? (() => {
+                  const date = new Date(dateRange.to);
+                  date.setUTCHours(23, 59, 59, 999);
+                  return date.toISOString();
+                })()
+              : undefined,
           },
         },
       );
@@ -1859,23 +1870,31 @@ export function GradebookTable({
         studentsData.map(async (student: Student) => {
           try {
             console.log('Fetching grades for student:', student.id);
-            const params: any = {};
+            const params = new URLSearchParams();
 
-            if (dateRange?.from) {
+            // Handle date range if present
+            if (dateRange?.from && dateRange?.to) {
+              // Ensure dates are valid
               const fromDate = new Date(dateRange.from);
-              fromDate.setDate(fromDate.getDate() + 1);
-              params.from = fromDate.toISOString().split('T')[0]; // YYYY-MM-DD format
-            }
-            if (dateRange?.to) {
               const toDate = new Date(dateRange.to);
-              toDate.setDate(toDate.getDate() + 1);
-              params.to = toDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+
+              if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+                console.error('Invalid date range:', dateRange);
+                return;
+              }
+
+              // Set to start of day (00:00:00.000) and end of day (23:59:59.999) in UTC
+              fromDate.setUTCHours(0, 0, 0, 0);
+              toDate.setUTCHours(23, 59, 59, 999);
+
+              params.set('from', fromDate.toISOString());
+              params.set('to', toDate.toISOString());
             }
 
             console.log('Grade fetch params:', params);
 
             // Only fetch grades if we have a date range and a current config
-            if (dateRange?.from && dateRange?.to && currentConfig) {
+            if (params.has('from') && params.has('to') && currentConfig) {
               console.log('Fetching grades with params:', params);
               const gradesRes = await axiosInstance.get(
                 `/courses/${courseSlug}/students/${student.id}/grades`,
@@ -1889,7 +1908,6 @@ export function GradebookTable({
               );
 
               if (gradesRes.data) {
-                // Ensure we're using the raw quiz score, not the total grade
                 return {
                   ...student,
                   reportingScore: gradesRes.data.reportingScore,
@@ -1977,16 +1995,18 @@ export function GradebookTable({
     if (courseSlug && dateRange?.from && dateRange?.to && currentConfig) {
       console.log(
         'useEffect dependency check: courseSlug, dateRange, and currentConfig are all set. Fetching data.',
+        { currentConfig },
       );
       fetchData();
     } else if (hasSelectedConfig) {
       console.log(
         'useEffect dependency check: hasSelectedConfig is true, but dateRange or currentConfig is missing.',
+        { currentConfig, dateRange },
       );
-      console.log('Current config:', currentConfig);
     } else {
       console.log(
         'useEffect dependency check: No config selected. Clearing everything.',
+        { currentConfig },
       );
       setStudents([]); // Only clear students if no config is selected
       setCurrentConfig(null); // Ensure currentConfig is null if no config is selected
@@ -1996,7 +2016,15 @@ export function GradebookTable({
 
   // Modify handleConfigSaved to handle both new and existing configurations
   const handleConfigSaved = () => {
+    console.log('Config saved, current state:', {
+      currentConfig,
+      hasSelectedConfig,
+    });
     setHasSelectedConfig(true);
+    // Ensure currentConfig is set when a configuration is saved
+    if (!currentConfig) {
+      console.log('No current config set after saving');
+    }
   };
 
   // Update the date range button to show the configuration's date range
@@ -2098,10 +2126,17 @@ export function GradebookTable({
     console.log('Edit Config clicked');
     console.log('Current config state:', currentConfig);
     console.log('Has selected config:', hasSelectedConfig);
-    if (!hasSelectedConfig) {
+
+    if (!hasSelectedConfig || !currentConfig) {
       toast.error('No configuration selected');
       return;
     }
+
+    if (!currentConfig.id) {
+      toast.error('Invalid configuration');
+      return;
+    }
+
     console.log('Opening edit dialog with config:', currentConfig);
     setShowEditConfigDialog(true);
   };
@@ -2170,6 +2205,34 @@ export function GradebookTable({
       throw error;
     }
   };
+
+  // Add useEffect to load current configuration
+  useEffect(() => {
+    const loadCurrentConfig = async () => {
+      if (!courseSlug) return;
+
+      try {
+        const response = await axiosInstance.get(
+          `/courses/${courseSlug}/grade-components/current`,
+        );
+        if (response.data) {
+          console.log('Loaded current config:', response.data);
+          setCurrentConfig(response.data);
+          setHasSelectedConfig(true);
+          if (response.data.startDate && response.data.endDate) {
+            setDateRange({
+              from: new Date(response.data.startDate),
+              to: new Date(response.data.endDate),
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error loading current configuration:', error);
+      }
+    };
+
+    loadCurrentConfig();
+  }, [courseSlug]);
 
   return (
     <div>

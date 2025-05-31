@@ -14,6 +14,7 @@ interface HeaderSectionProps {
   onDateSelect: () => void;
   onManageReport: () => void;
   filterCount: number;
+  onBackClick: () => void;
 }
 
 export function HeaderSection({
@@ -26,6 +27,7 @@ export function HeaderSection({
   onDateSelect,
   onManageReport,
   filterCount,
+  onBackClick,
 }: HeaderSectionProps) {
   return (
     <div className='bg-white rounded-lg shadow-md'>
@@ -33,7 +35,7 @@ export function HeaderSection({
         <Button
           variant='ghost'
           className='h-9 w-9 p-0 hover:bg-gray-100'
-          onClick={() => window.history.back()}
+          onClick={onBackClick}
         >
           <svg
             className='h-5 w-5 text-gray-500'

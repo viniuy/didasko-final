@@ -25,30 +25,25 @@ export async function GET(
       return NextResponse.json({ error: 'Course not found' }, { status: 404 });
     }
 
-    // Get the group number from the query parameters
-    const { searchParams } = new URL(request.url);
-    const number = searchParams.get('number');
-
-    if (!number) {
-      return NextResponse.json(
-        { error: 'Group number is required' },
-        { status: 400 },
-      );
-    }
-
-    // Check if a group with this number already exists
-    const existingGroup = await prisma.group.findFirst({
+    // Get all groups for the course
+    const groups = await prisma.group.findMany({
       where: {
         courseId: course.id,
-        number: number,
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: {
+        name: 'asc',
       },
     });
 
-    return NextResponse.json({ exists: !!existingGroup });
+    return NextResponse.json({ groups });
   } catch (error) {
-    console.error('Error checking group number:', error);
+    console.error('Error fetching group names:', error);
     return NextResponse.json(
-      { error: 'Failed to check group number' },
+      { error: 'Failed to fetch group names' },
       { status: 500 },
     );
   }

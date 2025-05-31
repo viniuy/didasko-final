@@ -115,7 +115,7 @@ export default function GroupGradingPage({
               <Header />
               <div className='flex items-center justify-between mb-8'>
                 <h1 className='text-3xl font-bold tracking-tight text-[#A0A0A0]'>
-                  Recitation
+                  Group
                 </h1>
               </div>
               <div className='flex-1 overflow-y-auto pb-6'>
@@ -168,7 +168,8 @@ export default function GroupGradingPage({
             <Header />
             <div className='flex items-center justify-between mb-8'>
               <h1 className='text-3xl font-bold tracking-tight text-[#A0A0A0]'>
-                Group {group.number} - {group.name}
+                Group {group.number}
+                {group.name ? ` - ${group.name}` : ''}
               </h1>
               <h1 className='text-2xl font-bold tracking-tight text-[#A0A0A0]'>
                 {format(new Date(), 'EEEE, MMMM d')}
